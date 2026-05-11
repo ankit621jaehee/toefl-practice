@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 
 type Page = "home" | "sentence" | "email" | "discussion";
 
@@ -369,6 +369,44 @@ async function generateQuestionsFromAPI(
   return normalizeQuestions(data.questions as Question[]);
 }
 
+async function generateEmailPromptWithAPI(level: string, topic: string) {
+  const response = await fetch("/api/generate-email-prompt", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      level,
+      topic,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error("Failed to generate email prompt");
+  }
+
+  return (await response.json()) as EmailPrompt;
+}
+
+async function generateAcademicDiscussionWithAPI(level: string, topic: string) {
+  const response = await fetch("/api/generate-academic-discussion", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      level,
+      topic,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error("Failed to generate academic discussion prompt");
+  }
+
+  return (await response.json()) as DiscussionPrompt;
+}
+
 async function scoreEmailWritingWithAPI(prompt: unknown, answer: string) {
   const response = await fetch("/api/score-email-writing", {
     method: "POST",
@@ -458,6 +496,9 @@ export default function App() {
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [results, setResults] = useState<Record<number, number>>({});
 
+  const [currentEmailPrompt, setCurrentEmailPrompt] =
+    useState<EmailPrompt>(sampleEmailPrompt);
+  const [isGeneratingEmailPrompt, setIsGeneratingEmailPrompt] = useState(false);
   const [emailAnswer, setEmailAnswer] = useState("");
   const [emailSubmitted, setEmailSubmitted] = useState(false);
   const [emailFeedback, setEmailFeedback] = useState<WritingFeedback | null>(
@@ -465,6 +506,10 @@ export default function App() {
   );
   const [isScoringEmail, setIsScoringEmail] = useState(false);
 
+  const [currentDiscussionPrompt, setCurrentDiscussionPrompt] =
+    useState<DiscussionPrompt>(sampleDiscussionPrompt);
+  const [isGeneratingDiscussionPrompt, setIsGeneratingDiscussionPrompt] =
+    useState(false);
   const [discussionAnswer, setDiscussionAnswer] = useState("");
   const [discussionSubmitted, setDiscussionSubmitted] = useState(false);
   const [discussionFeedback, setDiscussionFeedback] =
@@ -622,18 +667,46 @@ export default function App() {
     }
   }
 
-  function startEmailPractice() {
+  async function generateNewEmailPrompt() {
     setEmailAnswer("");
     setEmailSubmitted(false);
     setEmailFeedback(null);
-    setPage("email");
+    setIsGeneratingEmailPrompt(true);
+
+    try {
+      const prompt = await generateEmailPromptWithAPI(level, topic);
+      setCurrentEmailPrompt(prompt);
+    } catch (error) {
+      setCurrentEmailPrompt(sampleEmailPrompt);
+    } finally {
+      setIsGeneratingEmailPrompt(false);
+    }
   }
 
-  function startDiscussionPractice() {
+  async function generateNewDiscussionPrompt() {
     setDiscussionAnswer("");
     setDiscussionSubmitted(false);
     setDiscussionFeedback(null);
+    setIsGeneratingDiscussionPrompt(true);
+
+    try {
+      const prompt = await generateAcademicDiscussionWithAPI(level, topic);
+      setCurrentDiscussionPrompt(prompt);
+    } catch (error) {
+      setCurrentDiscussionPrompt(sampleDiscussionPrompt);
+    } finally {
+      setIsGeneratingDiscussionPrompt(false);
+    }
+  }
+
+  async function startEmailPractice() {
+    setPage("email");
+    await generateNewEmailPrompt();
+  }
+
+  async function startDiscussionPractice() {
     setPage("discussion");
+    await generateNewDiscussionPrompt();
   }
 
   async function submitEmailWriting() {
@@ -645,7 +718,7 @@ export default function App() {
 
     try {
       const feedback = await scoreEmailWritingWithAPI(
-        sampleEmailPrompt,
+        currentEmailPrompt,
         emailAnswer
       );
 
@@ -668,7 +741,7 @@ export default function App() {
 
     try {
       const feedback = await scoreAcademicDiscussionWithAPI(
-        sampleDiscussionPrompt,
+        currentDiscussionPrompt,
         discussionAnswer
       );
 
@@ -743,71 +816,15 @@ export default function App() {
                   A/B 对话补全。根据语境把词块拖到横线上，训练句序、搭配和语法结构。
                 </p>
 
-                <div
-                  style={{
-                    display: "flex",
-                    flexWrap: "wrap",
-                    gap: "10px",
-                    marginBottom: "18px",
-                  }}
-                >
-                  <select
-                    value={questionCount}
-                    onChange={(e) => setQuestionCount(Number(e.target.value))}
-                    disabled={isLoading}
-                    style={{
-                      padding: "10px 14px",
-                      border: "1px solid #cbd5e1",
-                      borderRadius: "12px",
-                      background: "white",
-                      fontWeight: 700,
-                    }}
-                  >
-                    <option value={5}>5题</option>
-                    <option value={10}>10题</option>
-                  </select>
-
-                  <select
-                    value={level}
-                    onChange={(e) => setLevel(e.target.value)}
-                    disabled={isLoading}
-                    style={{
-                      padding: "10px 14px",
-                      border: "1px solid #cbd5e1",
-                      borderRadius: "12px",
-                      background: "white",
-                      fontWeight: 700,
-                    }}
-                  >
-                    <option value="Mixed">Mixed</option>
-                    <option value="Easy">Easy</option>
-                    <option value="Medium">Medium</option>
-                    <option value="Hard">Hard</option>
-                  </select>
-
-                  <select
-                    value={topic}
-                    onChange={(e) => setTopic(e.target.value)}
-                    disabled={isLoading}
-                    style={{
-                      padding: "10px 14px",
-                      border: "1px solid #cbd5e1",
-                      borderRadius: "12px",
-                      background: "white",
-                      fontWeight: 700,
-                    }}
-                  >
-                    <option value="Mixed">Mixed</option>
-                    <option value="Travel">Travel</option>
-                    <option value="Campus Life">Campus Life</option>
-                    <option value="Academic Discussion">
-                      Academic Discussion
-                    </option>
-                    <option value="Technology">Technology</option>
-                    <option value="Environment">Environment</option>
-                    <option value="Health">Health</option>
-                  </select>
-                </div>
+                <PracticeControls
+                  questionCount={questionCount}
+                  setQuestionCount={setQuestionCount}
+                  level={level}
+                  setLevel={setLevel}
+                  topic={topic}
+                  setTopic={setTopic}
+                  disabled={isLoading}
+                />
 
                 <button
                   onClick={startNewPractice}
@@ -825,25 +842,66 @@ export default function App() {
               <div style={cardStyle}>
                 <h2 style={{ marginTop: 0 }}>Email Writing</h2>
                 <p style={{ color: "#64748b", lineHeight: 1.7 }}>
-                  练习 TOEFL 邮件写作。根据题目要求写一封邮件，训练礼貌表达、结构和任务完成度。
+                  练习 TOEFL 邮件写作。进入后自动随机生成邮件写作题，并提供 AI
+                  评分。
                 </p>
 
-                <button onClick={startEmailPractice} style={primaryButtonStyle}>
-                  进入邮件写作
+                <PracticeControls
+                  questionCount={questionCount}
+                  setQuestionCount={setQuestionCount}
+                  level={level}
+                  setLevel={setLevel}
+                  topic={topic}
+                  setTopic={setTopic}
+                  disabled={isGeneratingEmailPrompt}
+                  hideCount
+                />
+
+                <button
+                  onClick={startEmailPractice}
+                  disabled={isGeneratingEmailPrompt}
+                  style={{
+                    ...primaryButtonStyle,
+                    background: isGeneratingEmailPrompt ? "#cbd5e1" : "#111827",
+                    cursor: isGeneratingEmailPrompt ? "not-allowed" : "pointer",
+                  }}
+                >
+                  {isGeneratingEmailPrompt ? "正在生成..." : "进入邮件写作"}
                 </button>
               </div>
 
               <div style={cardStyle}>
                 <h2 style={{ marginTop: 0 }}>Academic Discussion</h2>
                 <p style={{ color: "#64748b", lineHeight: 1.7 }}>
-                  练习 TOEFL 学术讨论写作。阅读教授问题和同学观点后，写出自己的看法并进行论证。
+                  练习 TOEFL 学术讨论写作。进入后自动随机生成讨论题，并提供 AI
+                  评分。
                 </p>
+
+                <PracticeControls
+                  questionCount={questionCount}
+                  setQuestionCount={setQuestionCount}
+                  level={level}
+                  setLevel={setLevel}
+                  topic={topic}
+                  setTopic={setTopic}
+                  disabled={isGeneratingDiscussionPrompt}
+                  hideCount
+                />
 
                 <button
                   onClick={startDiscussionPractice}
-                  style={primaryButtonStyle}
+                  disabled={isGeneratingDiscussionPrompt}
+                  style={{
+                    ...primaryButtonStyle,
+                    background: isGeneratingDiscussionPrompt
+                      ? "#cbd5e1"
+                      : "#111827",
+                    cursor: isGeneratingDiscussionPrompt
+                      ? "not-allowed"
+                      : "pointer",
+                  }}
                 >
-                  进入学术讨论
+                  {isGeneratingDiscussionPrompt ? "正在生成..." : "进入学术讨论"}
                 </button>
               </div>
             </div>
@@ -882,7 +940,9 @@ export default function App() {
 
         {page === "email" && (
           <WritingPracticePage
-            title={sampleEmailPrompt.title}
+            title={currentEmailPrompt.title}
+            isGenerating={isGeneratingEmailPrompt}
+            onGenerateNew={generateNewEmailPrompt}
             promptBlock={
               <>
                 <p
@@ -892,7 +952,7 @@ export default function App() {
                     marginBottom: "24px",
                   }}
                 >
-                  {sampleEmailPrompt.scenario}
+                  {currentEmailPrompt.scenario}
                 </p>
 
                 <div
@@ -903,16 +963,16 @@ export default function App() {
                     marginBottom: "24px",
                   }}
                 >
-                  <strong>{sampleEmailPrompt.task}</strong>
+                  <strong>{currentEmailPrompt.task}</strong>
 
                   <ul style={{ lineHeight: 1.8 }}>
-                    {sampleEmailPrompt.requirements.map((requirement) => (
+                    {currentEmailPrompt.requirements.map((requirement) => (
                       <li key={requirement}>{requirement}</li>
                     ))}
                   </ul>
 
                   <p style={{ color: "#64748b", marginBottom: 0 }}>
-                    {sampleEmailPrompt.suggestedLength}
+                    {currentEmailPrompt.suggestedLength}
                   </p>
                 </div>
               </>
@@ -934,7 +994,9 @@ export default function App() {
 
         {page === "discussion" && (
           <WritingPracticePage
-            title={sampleDiscussionPrompt.title}
+            title={currentDiscussionPrompt.title}
+            isGenerating={isGeneratingDiscussionPrompt}
+            onGenerateNew={generateNewDiscussionPrompt}
             promptBlock={
               <>
                 <div
@@ -948,7 +1010,7 @@ export default function App() {
                 >
                   <strong>Professor</strong>
                   <p style={{ marginBottom: 0 }}>
-                    {sampleDiscussionPrompt.professor}
+                    {currentDiscussionPrompt.professor}
                   </p>
                 </div>
 
@@ -969,9 +1031,9 @@ export default function App() {
                       lineHeight: 1.8,
                     }}
                   >
-                    <strong>{sampleDiscussionPrompt.studentOneName}</strong>
+                    <strong>{currentDiscussionPrompt.studentOneName}</strong>
                     <p style={{ marginBottom: 0 }}>
-                      {sampleDiscussionPrompt.studentOnePost}
+                      {currentDiscussionPrompt.studentOnePost}
                     </p>
                   </div>
 
@@ -984,9 +1046,9 @@ export default function App() {
                       lineHeight: 1.8,
                     }}
                   >
-                    <strong>{sampleDiscussionPrompt.studentTwoName}</strong>
+                    <strong>{currentDiscussionPrompt.studentTwoName}</strong>
                     <p style={{ marginBottom: 0 }}>
-                      {sampleDiscussionPrompt.studentTwoPost}
+                      {currentDiscussionPrompt.studentTwoPost}
                     </p>
                   </div>
                 </div>
@@ -1002,9 +1064,9 @@ export default function App() {
                   }}
                 >
                   <strong>Question</strong>
-                  <p>{sampleDiscussionPrompt.question}</p>
+                  <p>{currentDiscussionPrompt.question}</p>
                   <p style={{ marginBottom: 0 }}>
-                    {sampleDiscussionPrompt.suggestedLength}
+                    {currentDiscussionPrompt.suggestedLength}
                   </p>
                 </div>
               </>
@@ -1024,6 +1086,94 @@ export default function App() {
           />
         )}
       </div>
+    </div>
+  );
+}
+
+function PracticeControls({
+  questionCount,
+  setQuestionCount,
+  level,
+  setLevel,
+  topic,
+  setTopic,
+  disabled,
+  hideCount,
+}: {
+  questionCount: number;
+  setQuestionCount: (count: number) => void;
+  level: string;
+  setLevel: (level: string) => void;
+  topic: string;
+  setTopic: (topic: string) => void;
+  disabled: boolean;
+  hideCount?: boolean;
+}) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexWrap: "wrap",
+        gap: "10px",
+        marginBottom: "18px",
+      }}
+    >
+      {!hideCount && (
+        <select
+          value={questionCount}
+          onChange={(e) => setQuestionCount(Number(e.target.value))}
+          disabled={disabled}
+          style={{
+            padding: "10px 14px",
+            border: "1px solid #cbd5e1",
+            borderRadius: "12px",
+            background: "white",
+            fontWeight: 700,
+          }}
+        >
+          <option value={5}>5题</option>
+          <option value={10}>10题</option>
+        </select>
+      )}
+
+      <select
+        value={level}
+        onChange={(e) => setLevel(e.target.value)}
+        disabled={disabled}
+        style={{
+          padding: "10px 14px",
+          border: "1px solid #cbd5e1",
+          borderRadius: "12px",
+          background: "white",
+          fontWeight: 700,
+        }}
+      >
+        <option value="Mixed">Mixed</option>
+        <option value="Easy">Easy</option>
+        <option value="Medium">Medium</option>
+        <option value="Hard">Hard</option>
+      </select>
+
+      <select
+        value={topic}
+        onChange={(e) => setTopic(e.target.value)}
+        disabled={disabled}
+        style={{
+          padding: "10px 14px",
+          border: "1px solid #cbd5e1",
+          borderRadius: "12px",
+          background: "white",
+          fontWeight: 700,
+        }}
+      >
+        <option value="Mixed">Mixed</option>
+        <option value="Travel">Travel</option>
+        <option value="Campus Life">Campus Life</option>
+        <option value="Academic Discussion">Academic Discussion</option>
+        <option value="Technology">Technology</option>
+        <option value="Environment">Environment</option>
+        <option value="Health">Health</option>
+      </select>
     </div>
   );
 }
@@ -1427,6 +1577,8 @@ function SentencePractice({
 
 function WritingPracticePage({
   title,
+  isGenerating,
+  onGenerateNew,
   promptBlock,
   answer,
   setAnswer,
@@ -1439,7 +1591,9 @@ function WritingPracticePage({
   setPage,
 }: {
   title: string;
-  promptBlock: React.ReactNode;
+  isGenerating: boolean;
+  onGenerateNew: () => void;
+  promptBlock: ReactNode;
   answer: string;
   setAnswer: (value: string) => void;
   wordCount: number;
@@ -1452,29 +1606,70 @@ function WritingPracticePage({
 }) {
   return (
     <>
-      <button
-        onClick={() => setPage("home")}
+      <div
         style={{
-          padding: "10px 16px",
-          border: "1px solid #cbd5e1",
-          borderRadius: "12px",
-          background: "white",
-          fontWeight: 700,
-          cursor: "pointer",
+          display: "flex",
+          justifyContent: "space-between",
+          gap: "12px",
+          flexWrap: "wrap",
           marginBottom: "24px",
         }}
       >
-        返回首页
-      </button>
+        <button
+          onClick={() => setPage("home")}
+          style={{
+            padding: "10px 16px",
+            border: "1px solid #cbd5e1",
+            borderRadius: "12px",
+            background: "white",
+            fontWeight: 700,
+            cursor: "pointer",
+          }}
+        >
+          返回首页
+        </button>
+
+        <button
+          onClick={onGenerateNew}
+          disabled={isGenerating || isScoring}
+          style={{
+            padding: "10px 16px",
+            border: "none",
+            borderRadius: "12px",
+            background: isGenerating || isScoring ? "#cbd5e1" : "#111827",
+            color: "white",
+            fontWeight: 700,
+            cursor: isGenerating || isScoring ? "not-allowed" : "pointer",
+          }}
+        >
+          {isGenerating ? "正在生成..." : "换一题"}
+        </button>
+      </div>
 
       <h2 style={{ fontSize: "28px", marginBottom: "10px" }}>{title}</h2>
 
-      {promptBlock}
+      {isGenerating ? (
+        <div
+          style={{
+            padding: "22px",
+            borderRadius: "18px",
+            background: "#f1f5f9",
+            marginBottom: "24px",
+            color: "#64748b",
+            fontWeight: 700,
+          }}
+        >
+          正在生成新题目...
+        </div>
+      ) : (
+        promptBlock
+      )}
 
       <textarea
         value={answer}
         onChange={(event) => setAnswer(event.target.value)}
         placeholder={placeholder}
+        disabled={isGenerating || isScoring}
         style={{
           width: "100%",
           minHeight: "280px",
@@ -1485,6 +1680,7 @@ function WritingPracticePage({
           lineHeight: 1.7,
           resize: "vertical",
           boxSizing: "border-box",
+          background: isGenerating || isScoring ? "#f8fafc" : "white",
         }}
       />
 
@@ -1503,15 +1699,21 @@ function WritingPracticePage({
 
         <button
           onClick={onSubmit}
-          disabled={wordCount === 0 || isScoring}
+          disabled={wordCount === 0 || isScoring || isGenerating}
           style={{
             padding: "12px 24px",
             border: "none",
             borderRadius: "12px",
-            background: wordCount === 0 || isScoring ? "#cbd5e1" : "#111827",
+            background:
+              wordCount === 0 || isScoring || isGenerating
+                ? "#cbd5e1"
+                : "#111827",
             color: "white",
             fontWeight: 700,
-            cursor: wordCount === 0 || isScoring ? "not-allowed" : "pointer",
+            cursor:
+              wordCount === 0 || isScoring || isGenerating
+                ? "not-allowed"
+                : "pointer",
           }}
         >
           {isScoring ? "正在评分..." : "提交并查看反馈"}
