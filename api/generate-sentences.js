@@ -1,7 +1,7 @@
-import OpenAI from "openai";
+import { GoogleGenAI } from "@google/genai";
 
-const client = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
+const ai = new GoogleGenAI({
+  apiKey: process.env.GEMINI_API_KEY,
 });
 
 export default async function handler(req, res) {
@@ -44,6 +44,7 @@ Design rules:
 7. Hide capitalization by making all chunks lowercase.
 8. Do not include punctuation in chunks.
 9. The full sentence formed by answerPrefix + chunks + answerSuffix must equal target.
+10. Make sure chunks are in the exact correct order needed to reconstruct the missing part.
 
 Scoring rule:
 Each question is worth 0.5 points.
@@ -77,31 +78,22 @@ Return format:
         "old city",
         "were"
       ],
-      "explanation": "A asks about the highlight of the trip, so B gives a direct answer. The phrase who showed us around the old city is a relative clause modifying tour guides.",
-      "grammarFocus": "relative clause"
+      "explanation": "A asks about the highlight of the trip, so B gives a direct answer. The phrase who showed us around the old city is a relative clause modifying tour guides."
     }
   ]
 }
 `;
 
-    const completion = await client.chat.completions.create({
-      model: "gpt-4.1-mini",
-      messages: [
-        {
-          role: "system",
-          content:
-            "You generate valid JSON for TOEFL A/B dialogue sentence-building exercises.",
-        },
-        {
-          role: "user",
-          content: prompt,
-        },
-      ],
-      temperature: 0.8,
-      response_format: { type: "json_object" },
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-flash-lite",
+      contents: prompt,
+      config: {
+        responseMimeType: "application/json",
+      },
     });
 
-    const json = JSON.parse(completion.choices[0].message.content);
+    const text = response.text;
+    const json = JSON.parse(text);
 
     return res.status(200).json(json);
   } catch (error) {
