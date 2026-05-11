@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 
-type Page = "home" | "sentence" | "email";
+type Page = "home" | "sentence" | "email" | "discussion";
 
 type Part =
   | {
@@ -34,6 +34,83 @@ type EmailPrompt = {
   task: string;
   requirements: string[];
   suggestedLength: string;
+};
+type DiscussionPrompt = {
+
+  title: string;
+
+  professor: string;
+
+  studentOneName: string;
+
+  studentOnePost: string;
+
+  studentTwoName: string;
+
+  studentTwoPost: string;
+
+  question: string;
+
+  suggestedLength: string;
+
+};
+
+const sampleDiscussionPrompt: DiscussionPrompt = {
+
+  title: "Academic Discussion Practice",
+
+  professor:
+
+    "We've been discussing whether universities should require students to take courses outside their major. Some people believe these courses help students become more well-rounded, while others think students should focus only on their chosen field.",
+
+  studentOneName: "Kelly",
+
+  studentOnePost:
+
+    "I think students should take courses outside their major because they may discover new interests. For example, a science student might take an art history class and develop a better understanding of culture.",
+
+  studentTwoName: "Andrew",
+
+  studentTwoPost:
+
+    "I disagree. College is already expensive and stressful, so students should spend most of their time on courses that directly help their future careers.",
+
+  question:
+
+    "Do you think universities should require students to take courses outside their major? Why or why not?",
+
+  suggestedLength: "Recommended length: at least 100 words",
+
+};
+
+const fallbackDiscussionFeedback = {
+
+  score: "4.0 / 5.0",
+
+  strengths: [
+
+    "The response clearly expresses an opinion.",
+
+    "The writer gives a relevant reason to support the opinion.",
+
+    "The answer connects to the discussion topic.",
+
+  ],
+
+  problems: [
+
+    "The response could develop the example more fully.",
+
+    "Some transitions could be smoother.",
+
+    "The final sentence could make the argument feel more complete.",
+
+  ],
+
+  improvedVersion:
+
+    "I believe universities should require students to take some courses outside their major because these classes can help them develop a broader way of thinking. Although Andrew makes a good point that college can be expensive and stressful, focusing only on career-related courses may limit students' growth. For example, a computer science student who takes a psychology class may better understand how people think, which could help them design more user-friendly technology. In addition, taking different kinds of classes can help students communicate with people from other fields. Therefore, I think general education courses are useful as long as universities do not require too many of them.",
+
 };
 
 const sampleEmailPrompt: EmailPrompt = {
@@ -360,6 +437,9 @@ export default function App() {
   const [emailAnswer, setEmailAnswer] = useState("");
   const [emailSubmitted, setEmailSubmitted] = useState(false);
 
+  const [discussionAnswer, setDiscussionAnswer] = useState("");
+  const [discussionSubmitted, setDiscussionSubmitted] = useState(false);
+
   const currentQuestion = questions[currentIndex];
   const currentSlots = slotsByQuestion[currentQuestion.id] || [];
   const currentAnswers = getBlankAnswers(currentQuestion);
@@ -386,6 +466,7 @@ export default function App() {
   const currentQuestionScore = results[currentQuestion.id];
   const currentQuestionCorrect = isSubmitted && currentQuestionScore === 0.5;
   const emailWordCount = countWords(emailAnswer);
+  const discussionWordCount = countWords(discussionAnswer);
 
   function updateCurrentSlots(newSlots: (Chunk | null)[]) {
     setSlotsByQuestion({
@@ -513,6 +594,12 @@ export default function App() {
     setEmailAnswer("");
     setEmailSubmitted(false);
     setPage("email");
+  }
+
+  function startDiscussionPractice() {
+    setDiscussionAnswer("");
+    setDiscussionSubmitted(false);
+    setPage("discussion");
   }
 
   return (
@@ -672,6 +759,33 @@ export default function App() {
                   }}
                 >
                   进入邮件写作
+                </button>
+              </div>
+              <div
+                style={{
+                  padding: "26px",
+                  border: "1px solid #e2e8f0",
+                  borderRadius: "22px",
+                  background: "#f8fafc",
+                }}
+              >
+                <h2 style={{ marginTop: 0 }}>Academic Discussion</h2>
+                <p style={{ color: "#64748b", lineHeight: 1.7 }}>
+                  练习 TOEFL 学术讨论写作。阅读教授问题和同学观点后，写出自己的看法并进行论证。
+                </p>
+                <button
+                  onClick={startDiscussionPractice}
+                  style={{
+                    padding: "12px 24px",
+                    border: "none",
+                    borderRadius: "12px",
+                    background: "#111827",
+                    color: "white",
+                    fontWeight: 700,
+                    cursor: "pointer",
+                  }}
+                >
+                  进入学术讨论
                 </button>
               </div>
             </div>
