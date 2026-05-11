@@ -139,33 +139,79 @@ ${JSON.stringify(prompt)}
 Student response:
 ${answer}
 
+Feedback quality rules:
+1. Do not give generic comments like "good job" or "improve grammar" unless you explain exactly why.
+2. Every strength should mention a specific feature of the student's response.
+3. Every problem should identify a specific weakness and explain how it affects the score.
+4. Grammar corrections should only include real issues from the student's response.
+5. If the student's response has few grammar errors, focus on style, clarity, development, and naturalness instead.
+6. The improvedVersion should preserve the student's original meaning and improve it, not replace it with a completely unrelated model answer.
+7. The sampleAnswer should be a separate high-scoring answer for the prompt.
+8. The actionPlan should give 3 short, practical steps for improving the next response.
+9. Use clear and direct language suitable for a TOEFL learner.
+
 Return valid JSON only. No markdown.
 
 Return this exact JSON structure:
+
 {
+
   "taskScore": 4.0,
+
   "organizationScore": 4.0,
+
   "languageScore": 4.0,
+
   "naturalnessScore": 4.0,
+
   "strengths": [
-    "strength 1",
-    "strength 2",
-    "strength 3"
+
+    "Specific strength based on the student's email.",
+
+    "Specific strength based on the student's email.",
+
+    "Specific strength based on the student's email."
+
   ],
+
   "problems": [
-    "problem 1",
-    "problem 2",
-    "problem 3"
+
+    "Specific problem and why it matters.",
+
+    "Specific problem and why it matters.",
+
+    "Specific problem and why it matters."
+
   ],
+
   "grammarCorrections": [
+
     {
+
       "original": "student's original phrase or sentence",
+
       "corrected": "corrected phrase or sentence",
+
       "explanation": "brief explanation"
+
     }
+
   ],
-  "improvedVersion": "A polished version of the student's email.",
-  "sampleAnswer": "A strong sample email for this prompt."
+
+  "actionPlan": [
+
+    "Next time, make sure the email has a clear greeting and closing.",
+
+    "Address every bullet point in the prompt directly.",
+
+    "Add one specific detail to make the explanation more convincing."
+
+  ],
+
+  "improvedVersion": "A polished version that preserves the student's original meaning.",
+
+  "sampleAnswer": "A separate strong sample email for this prompt."
+
 }
 `;
 
@@ -192,6 +238,7 @@ Return this exact JSON structure:
       strengths: normalizeArray(json.strengths),
       problems: normalizeArray(json.problems),
       grammarCorrections: normalizeArray(json.grammarCorrections),
+      actionPlan: normalizeArray(json.actionPlan),
       improvedVersion: json.improvedVersion || "",
       sampleAnswer: json.sampleAnswer || "",
     });

@@ -140,6 +140,17 @@ ${JSON.stringify(prompt)}
 Student response:
 ${answer}
 
+Feedback quality rules:
+1. Do not give generic comments like "good job" or "improve grammar" unless you explain exactly why.
+2. Every strength should mention a specific feature of the student's response.
+3. Every problem should identify a specific weakness and explain how it affects the score.
+4. Grammar corrections should only include real issues from the student's response.
+5. If the student's response has few grammar errors, focus on style, clarity, development, and naturalness instead.
+6. The improvedVersion should preserve the student's original meaning and improve it, not replace it with a completely unrelated model answer.
+7. The sampleAnswer should be a separate high-scoring answer for the prompt.
+8. The actionPlan should give 3 short, practical steps for improving the next response.
+9. Use clear and direct language suitable for a TOEFL learner.
+
 Return valid JSON only. No markdown.
 
 Return this exact JSON structure:
@@ -149,14 +160,14 @@ Return this exact JSON structure:
   "languageScore": 4.0,
   "naturalnessScore": 4.0,
   "strengths": [
-    "strength 1",
-    "strength 2",
-    "strength 3"
+    "Specific strength based on the student's response.",
+    "Specific strength based on the student's response.",
+    "Specific strength based on the student's response."
   ],
   "problems": [
-    "problem 1",
-    "problem 2",
-    "problem 3"
+    "Specific problem and why it matters.",
+    "Specific problem and why it matters.",
+    "Specific problem and why it matters."
   ],
   "grammarCorrections": [
     {
@@ -165,8 +176,13 @@ Return this exact JSON structure:
       "explanation": "brief explanation"
     }
   ],
-  "improvedVersion": "A polished version of the student's academic discussion response.",
-  "sampleAnswer": "A strong sample academic discussion response for this prompt."
+  "actionPlan": [
+    "Start with a clear opinion in the first sentence.",
+    "Develop one reason with a concrete example.",
+    "Connect your idea to one classmate's post when possible."
+  ],
+  "improvedVersion": "A polished version that preserves the student's original meaning.",
+  "sampleAnswer": "A separate strong sample academic discussion response for this prompt."
 }
 `;
 
@@ -193,9 +209,11 @@ Return this exact JSON structure:
       strengths: normalizeArray(json.strengths),
       problems: normalizeArray(json.problems),
       grammarCorrections: normalizeArray(json.grammarCorrections),
+      actionPlan: normalizeArray(json.actionPlan),
       improvedVersion: json.improvedVersion || "",
       sampleAnswer: json.sampleAnswer || "",
     });
+    
   } catch (error) {
     return res.status(500).json({
       error: error.message || "Failed to score academic discussion",
