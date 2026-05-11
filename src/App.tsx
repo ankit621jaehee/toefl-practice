@@ -725,7 +725,16 @@ export default function App() {
       setEmailFeedback(feedback);
       setEmailSubmitted(true);
     } catch (error) {
-      setEmailFeedback(fallbackEmailFeedback);
+      setEmailFeedback({
+        score: "评分失败",
+        strengths: [],
+        problems: [
+          "AI 评分接口暂时不可用。请检查 Vercel Function Logs，确认 /api/score-email-writing 是否报错。",
+        ],
+        grammarCorrections: [],
+        improvedVersion: "",
+        sampleAnswer: "",
+      });
       setEmailSubmitted(true);
     } finally {
       setIsScoringEmail(false);
@@ -748,9 +757,18 @@ export default function App() {
       setDiscussionFeedback(feedback);
       setDiscussionSubmitted(true);
     } catch (error) {
-      setDiscussionFeedback(fallbackDiscussionFeedback);
+      setDiscussionFeedback({
+        score: "评分失败",
+        strengths: [],
+        problems: [
+          "AI 评分接口暂时不可用。请检查 Vercel Function Logs，确认 /api/score-academic-discussion 是否报错。",
+        ],
+        grammarCorrections: [],
+        improvedVersion: "",
+        sampleAnswer: "",
+      });
       setDiscussionSubmitted(true);
-    } finally {
+    }finally {
       setIsScoringDiscussion(false);
     }
   }
