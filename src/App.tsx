@@ -48,16 +48,29 @@ type DiscussionPrompt = {
 };
 
 type WritingFeedback = {
+
   score: string;
+
   strengths: string[];
+
   problems: string[];
+
   grammarCorrections: {
+
     original: string;
+
     corrected: string;
+
     explanation: string;
+
   }[];
+
+  actionPlan: string[];
+
   improvedVersion: string;
+
   sampleAnswer: string;
+
 };
 
 const sampleEmailPrompt: EmailPrompt = {
