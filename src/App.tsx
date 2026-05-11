@@ -73,24 +73,6 @@ const sampleEmailPrompt: EmailPrompt = {
   suggestedLength: "Recommended length: 100–150 words",
 };
 
-const fallbackEmailFeedback: WritingFeedback = {
-  score: "4.0 / 5.0",
-  strengths: [
-    "The email has a clear purpose and responds to the professor politely.",
-    "The structure is easy to follow.",
-    "The request is understandable.",
-  ],
-  problems: [
-    "Some sentences could sound more natural and formal.",
-    "The explanation could be more specific.",
-    "The closing could be more polite.",
-  ],
-  grammarCorrections: [],
-  improvedVersion:
-    "Dear Professor Smith,\n\nI am very sorry that I missed my class presentation. I was absent because I had a sudden health problem and could not come to class on time. I understand that the presentation was an important part of the final grade, and I apologize for any inconvenience I caused.\n\nWould it be possible for me to make up the presentation at another time? I would be happy to present during your office hours or at any time that is convenient for you.\n\nThank you very much for your understanding.\n\nSincerely,\nStudent",
-  sampleAnswer:
-    "Dear Professor Smith,\n\nI am sorry that I missed the presentation. I had an unexpected health issue and could not attend class. I understand that the presentation was important for my final grade, and I apologize for the inconvenience.\n\nWould it be possible for me to make up the presentation at another time? I would be happy to present during office hours or whenever it is convenient for you.\n\nThank you for your understanding.\n\nSincerely,\nStudent",
-};
 
 const sampleDiscussionPrompt: DiscussionPrompt = {
   title: "Academic Discussion Practice",
@@ -107,24 +89,7 @@ const sampleDiscussionPrompt: DiscussionPrompt = {
   suggestedLength: "Recommended length: at least 100 words",
 };
 
-const fallbackDiscussionFeedback: WritingFeedback = {
-  score: "4.0 / 5.0",
-  strengths: [
-    "The response clearly expresses an opinion.",
-    "The writer gives a relevant reason to support the opinion.",
-    "The answer connects to the discussion topic.",
-  ],
-  problems: [
-    "The response could develop the example more fully.",
-    "Some transitions could be smoother.",
-    "The final sentence could make the argument feel more complete.",
-  ],
-  grammarCorrections: [],
-  improvedVersion:
-    "I believe universities should require students to take some courses outside their major because these classes can help them develop a broader way of thinking. Although Andrew makes a good point that college can be expensive and stressful, focusing only on career-related courses may limit students' growth. For example, a computer science student who takes a psychology class may better understand how people think, which could help them design more user-friendly technology. In addition, taking different kinds of classes can help students communicate with people from other fields. Therefore, I think general education courses are useful as long as universities do not require too many of them.",
-  sampleAnswer:
-    "I believe universities should require students to take some courses outside their major because these courses help students develop broader skills. Although Andrew is right that college can be stressful and expensive, students may benefit from learning about different fields. For example, a computer science student who takes psychology may better understand how people think, which could help them design better technology. Therefore, I think general education courses are useful as long as schools do not require too many of them.",
-};
+
 
 const fallbackQuestions: Question[] = [
   {
