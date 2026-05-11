@@ -35,82 +35,16 @@ type EmailPrompt = {
   requirements: string[];
   suggestedLength: string;
 };
+
 type DiscussionPrompt = {
-
   title: string;
-
   professor: string;
-
   studentOneName: string;
-
   studentOnePost: string;
-
   studentTwoName: string;
-
   studentTwoPost: string;
-
   question: string;
-
   suggestedLength: string;
-
-};
-
-const sampleDiscussionPrompt: DiscussionPrompt = {
-
-  title: "Academic Discussion Practice",
-
-  professor:
-
-    "We've been discussing whether universities should require students to take courses outside their major. Some people believe these courses help students become more well-rounded, while others think students should focus only on their chosen field.",
-
-  studentOneName: "Kelly",
-
-  studentOnePost:
-
-    "I think students should take courses outside their major because they may discover new interests. For example, a science student might take an art history class and develop a better understanding of culture.",
-
-  studentTwoName: "Andrew",
-
-  studentTwoPost:
-
-    "I disagree. College is already expensive and stressful, so students should spend most of their time on courses that directly help their future careers.",
-
-  question:
-
-    "Do you think universities should require students to take courses outside their major? Why or why not?",
-
-  suggestedLength: "Recommended length: at least 100 words",
-
-};
-
-const fallbackDiscussionFeedback = {
-
-  score: "4.0 / 5.0",
-
-  strengths: [
-
-    "The response clearly expresses an opinion.",
-
-    "The writer gives a relevant reason to support the opinion.",
-
-    "The answer connects to the discussion topic.",
-
-  ],
-
-  problems: [
-
-    "The response could develop the example more fully.",
-
-    "Some transitions could be smoother.",
-
-    "The final sentence could make the argument feel more complete.",
-
-  ],
-
-  improvedVersion:
-
-    "I believe universities should require students to take some courses outside their major because these classes can help them develop a broader way of thinking. Although Andrew makes a good point that college can be expensive and stressful, focusing only on career-related courses may limit students' growth. For example, a computer science student who takes a psychology class may better understand how people think, which could help them design more user-friendly technology. In addition, taking different kinds of classes can help students communicate with people from other fields. Therefore, I think general education courses are useful as long as universities do not require too many of them.",
-
 };
 
 const sampleEmailPrompt: EmailPrompt = {
@@ -140,6 +74,37 @@ const fallbackEmailFeedback = {
   ],
   improvedVersion:
     "Dear Professor Smith,\n\nI am very sorry that I missed my class presentation. I was absent because I had a sudden health problem and could not come to class on time. I understand that the presentation was an important part of the final grade, and I apologize for any inconvenience I caused.\n\nWould it be possible for me to make up the presentation at another time? I would be happy to present during your office hours or at any time that is convenient for you.\n\nThank you very much for your understanding.\n\nSincerely,\nStudent",
+};
+
+const sampleDiscussionPrompt: DiscussionPrompt = {
+  title: "Academic Discussion Practice",
+  professor:
+    "We've been discussing whether universities should require students to take courses outside their major. Some people believe these courses help students become more well-rounded, while others think students should focus only on their chosen field.",
+  studentOneName: "Kelly",
+  studentOnePost:
+    "I think students should take courses outside their major because they may discover new interests. For example, a science student might take an art history class and develop a better understanding of culture.",
+  studentTwoName: "Andrew",
+  studentTwoPost:
+    "I disagree. College is already expensive and stressful, so students should spend most of their time on courses that directly help their future careers.",
+  question:
+    "Do you think universities should require students to take courses outside their major? Why or why not?",
+  suggestedLength: "Recommended length: at least 100 words",
+};
+
+const fallbackDiscussionFeedback = {
+  score: "4.0 / 5.0",
+  strengths: [
+    "The response clearly expresses an opinion.",
+    "The writer gives a relevant reason to support the opinion.",
+    "The answer connects to the discussion topic.",
+  ],
+  problems: [
+    "The response could develop the example more fully.",
+    "Some transitions could be smoother.",
+    "The final sentence could make the argument feel more complete.",
+  ],
+  improvedVersion:
+    "I believe universities should require students to take some courses outside their major because these classes can help them develop a broader way of thinking. Although Andrew makes a good point that college can be expensive and stressful, focusing only on career-related courses may limit students' growth. For example, a computer science student who takes a psychology class may better understand how people think, which could help them design more user-friendly technology. In addition, taking different kinds of classes can help students communicate with people from other fields. Therefore, I think general education courses are useful as long as universities do not require too many of them.",
 };
 
 const fallbackQuestions: Question[] = [
@@ -276,7 +241,10 @@ function cleanAnswer(text: string) {
 
 function getBlankAnswers(question: Question) {
   return question.parts
-    .filter((part): part is { type: "blank"; answer: string } => part.type === "blank")
+    .filter(
+      (part): part is { type: "blank"; answer: string } =>
+        part.type === "blank"
+    )
     .map((part) => cleanAnswer(part.answer));
 }
 
@@ -337,11 +305,6 @@ function normalizeQuestions(apiQuestions: Question[]) {
     const fallback = fallbackQuestions[index % fallbackQuestions.length];
     const finalParts = validParts.length > 0 ? validParts : fallback.parts;
 
-    const chunks = finalParts
-      .filter((part): part is { type: "blank"; answer: string } => part.type === "blank")
-      .map((part) => cleanAnswer(part.answer))
-      .filter(Boolean);
-
     return {
       id: index + 1,
       contextSpeaker: question.contextSpeaker || "A",
@@ -349,7 +312,7 @@ function normalizeQuestions(apiQuestions: Question[]) {
       answerSpeaker: question.answerSpeaker || "B",
       target: question.target || fallback.target,
       parts: finalParts,
-      chunks,
+      chunks: getBlankAnswers({ ...fallback, parts: finalParts }),
       explanation:
         question.explanation ||
         "This question tests sentence structure and logical connection between two speakers.",
@@ -465,6 +428,7 @@ export default function App() {
 
   const currentQuestionScore = results[currentQuestion.id];
   const currentQuestionCorrect = isSubmitted && currentQuestionScore === 0.5;
+
   const emailWordCount = countWords(emailAnswer);
   const discussionWordCount = countWords(discussionAnswer);
 
@@ -602,6 +566,23 @@ export default function App() {
     setPage("discussion");
   }
 
+  const cardStyle = {
+    padding: "26px",
+    border: "1px solid #e2e8f0",
+    borderRadius: "22px",
+    background: "#f8fafc",
+  };
+
+  const primaryButtonStyle = {
+    padding: "12px 24px",
+    border: "none",
+    borderRadius: "12px",
+    background: "#111827",
+    color: "white",
+    fontWeight: 700,
+    cursor: "pointer",
+  };
+
   return (
     <div
       style={{
@@ -629,7 +610,8 @@ export default function App() {
         {page === "home" && (
           <>
             <p style={{ color: "#64748b", marginBottom: "30px" }}>
-              选择练习板块。现在可以练 Build a Sentence，也可以进入邮件写作训练。
+              选择练习板块。现在可以练 Build a Sentence、Email Writing 和
+              Academic Discussion。
             </p>
 
             <div
@@ -639,14 +621,7 @@ export default function App() {
                 gap: "20px",
               }}
             >
-              <div
-                style={{
-                  padding: "26px",
-                  border: "1px solid #e2e8f0",
-                  borderRadius: "22px",
-                  background: "#f8fafc",
-                }}
-              >
+              <div style={cardStyle}>
                 <h2 style={{ marginTop: 0 }}>Build a Sentence</h2>
                 <p style={{ color: "#64748b", lineHeight: 1.7 }}>
                   A/B 对话补全。根据语境把词块拖到横线上，训练句序、搭配和语法结构。
@@ -709,7 +684,9 @@ export default function App() {
                     <option value="Mixed">Mixed</option>
                     <option value="Travel">Travel</option>
                     <option value="Campus Life">Campus Life</option>
-                    <option value="Academic Discussion">Academic Discussion</option>
+                    <option value="Academic Discussion">
+                      Academic Discussion
+                    </option>
                     <option value="Technology">Technology</option>
                     <option value="Environment">Environment</option>
                     <option value="Health">Health</option>
@@ -720,12 +697,8 @@ export default function App() {
                   onClick={startNewPractice}
                   disabled={isLoading}
                   style={{
-                    padding: "12px 24px",
-                    border: "none",
-                    borderRadius: "12px",
+                    ...primaryButtonStyle,
                     background: isLoading ? "#cbd5e1" : "#111827",
-                    color: "white",
-                    fontWeight: 700,
                     cursor: isLoading ? "not-allowed" : "pointer",
                   }}
                 >
@@ -733,57 +706,26 @@ export default function App() {
                 </button>
               </div>
 
-              <div
-                style={{
-                  padding: "26px",
-                  border: "1px solid #e2e8f0",
-                  borderRadius: "22px",
-                  background: "#f8fafc",
-                }}
-              >
+              <div style={cardStyle}>
                 <h2 style={{ marginTop: 0 }}>Email Writing</h2>
                 <p style={{ color: "#64748b", lineHeight: 1.7 }}>
                   练习 TOEFL 邮件写作。根据题目要求写一封邮件，训练礼貌表达、结构和任务完成度。
                 </p>
 
-                <button
-                  onClick={startEmailPractice}
-                  style={{
-                    padding: "12px 24px",
-                    border: "none",
-                    borderRadius: "12px",
-                    background: "#111827",
-                    color: "white",
-                    fontWeight: 700,
-                    cursor: "pointer",
-                  }}
-                >
+                <button onClick={startEmailPractice} style={primaryButtonStyle}>
                   进入邮件写作
                 </button>
               </div>
-              <div
-                style={{
-                  padding: "26px",
-                  border: "1px solid #e2e8f0",
-                  borderRadius: "22px",
-                  background: "#f8fafc",
-                }}
-              >
+
+              <div style={cardStyle}>
                 <h2 style={{ marginTop: 0 }}>Academic Discussion</h2>
                 <p style={{ color: "#64748b", lineHeight: 1.7 }}>
                   练习 TOEFL 学术讨论写作。阅读教授问题和同学观点后，写出自己的看法并进行论证。
                 </p>
+
                 <button
                   onClick={startDiscussionPractice}
-                  style={{
-                    padding: "12px 24px",
-                    border: "none",
-                    borderRadius: "12px",
-                    background: "#111827",
-                    color: "white",
-                    fontWeight: 700,
-                    cursor: "pointer",
-                  }}
+                  style={primaryButtonStyle}
                 >
                   进入学术讨论
                 </button>
@@ -901,7 +843,8 @@ export default function App() {
               }}
             >
               <div>
-                {currentQuestion.contextSpeaker}: {currentQuestion.contextSentence}
+                {currentQuestion.contextSpeaker}:{" "}
+                {currentQuestion.contextSentence}
               </div>
 
               <div style={{ display: "flex", flexWrap: "wrap", gap: "10px" }}>
@@ -1240,52 +1183,224 @@ export default function App() {
             </div>
 
             {emailSubmitted && (
+              <FeedbackBox
+                score={fallbackEmailFeedback.score}
+                strengths={fallbackEmailFeedback.strengths}
+                problems={fallbackEmailFeedback.problems}
+                improvedVersion={fallbackEmailFeedback.improvedVersion}
+              />
+            )}
+          </>
+        )}
+
+        {page === "discussion" && (
+          <>
+            <button
+              onClick={() => setPage("home")}
+              style={{
+                padding: "10px 16px",
+                border: "1px solid #cbd5e1",
+                borderRadius: "12px",
+                background: "white",
+                fontWeight: 700,
+                cursor: "pointer",
+                marginBottom: "24px",
+              }}
+            >
+              返回首页
+            </button>
+
+            <h2 style={{ fontSize: "28px", marginBottom: "10px" }}>
+              {sampleDiscussionPrompt.title}
+            </h2>
+
+            <div
+              style={{
+                padding: "22px",
+                borderRadius: "18px",
+                background: "#f1f5f9",
+                marginBottom: "18px",
+                lineHeight: 1.8,
+              }}
+            >
+              <strong>Professor</strong>
+              <p style={{ marginBottom: 0 }}>{sampleDiscussionPrompt.professor}</p>
+            </div>
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
+                gap: "18px",
+                marginBottom: "18px",
+              }}
+            >
               <div
                 style={{
-                  padding: "24px",
-                  borderRadius: "20px",
-                  background: "#eef2ff",
-                  color: "#312e81",
+                  padding: "20px",
+                  borderRadius: "18px",
+                  background: "#f8fafc",
+                  border: "1px solid #e2e8f0",
+                  lineHeight: 1.8,
                 }}
               >
-                <h3 style={{ marginTop: 0 }}>
-                  Sample Feedback: {fallbackEmailFeedback.score}
-                </h3>
-
-                <strong>Strengths</strong>
-                <ul style={{ lineHeight: 1.8 }}>
-                  {fallbackEmailFeedback.strengths.map((item) => (
-                    <li key={item}>{item}</li>
-                  ))}
-                </ul>
-
-                <strong>Problems</strong>
-                <ul style={{ lineHeight: 1.8 }}>
-                  {fallbackEmailFeedback.problems.map((item) => (
-                    <li key={item}>{item}</li>
-                  ))}
-                </ul>
-
-                <strong>Improved Version</strong>
-                <pre
-                  style={{
-                    whiteSpace: "pre-wrap",
-                    fontFamily:
-                      '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-                    lineHeight: 1.8,
-                    background: "white",
-                    padding: "18px",
-                    borderRadius: "16px",
-                    color: "#111827",
-                  }}
-                >
-                  {fallbackEmailFeedback.improvedVersion}
-                </pre>
+                <strong>{sampleDiscussionPrompt.studentOneName}</strong>
+                <p style={{ marginBottom: 0 }}>
+                  {sampleDiscussionPrompt.studentOnePost}
+                </p>
               </div>
+
+              <div
+                style={{
+                  padding: "20px",
+                  borderRadius: "18px",
+                  background: "#f8fafc",
+                  border: "1px solid #e2e8f0",
+                  lineHeight: 1.8,
+                }}
+              >
+                <strong>{sampleDiscussionPrompt.studentTwoName}</strong>
+                <p style={{ marginBottom: 0 }}>
+                  {sampleDiscussionPrompt.studentTwoPost}
+                </p>
+              </div>
+            </div>
+
+            <div
+              style={{
+                padding: "22px",
+                borderRadius: "18px",
+                background: "#eef2ff",
+                color: "#312e81",
+                marginBottom: "24px",
+                lineHeight: 1.8,
+              }}
+            >
+              <strong>Question</strong>
+              <p>{sampleDiscussionPrompt.question}</p>
+              <p style={{ marginBottom: 0 }}>
+                {sampleDiscussionPrompt.suggestedLength}
+              </p>
+            </div>
+
+            <textarea
+              value={discussionAnswer}
+              onChange={(event) => {
+                setDiscussionAnswer(event.target.value);
+                setDiscussionSubmitted(false);
+              }}
+              placeholder="Write your academic discussion response here..."
+              style={{
+                width: "100%",
+                minHeight: "280px",
+                padding: "18px",
+                borderRadius: "18px",
+                border: "1px solid #cbd5e1",
+                fontSize: "16px",
+                lineHeight: 1.7,
+                resize: "vertical",
+                boxSizing: "border-box",
+              }}
+            />
+
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                marginTop: "14px",
+                marginBottom: "24px",
+              }}
+            >
+              <span style={{ color: "#64748b", fontWeight: 700 }}>
+                Word Count: {discussionWordCount}
+              </span>
+
+              <button
+                onClick={() => setDiscussionSubmitted(true)}
+                disabled={discussionWordCount === 0}
+                style={{
+                  padding: "12px 24px",
+                  border: "none",
+                  borderRadius: "12px",
+                  background:
+                    discussionWordCount === 0 ? "#cbd5e1" : "#111827",
+                  color: "white",
+                  fontWeight: 700,
+                  cursor:
+                    discussionWordCount === 0 ? "not-allowed" : "pointer",
+                }}
+              >
+                提交并查看反馈
+              </button>
+            </div>
+
+            {discussionSubmitted && (
+              <FeedbackBox
+                score={fallbackDiscussionFeedback.score}
+                strengths={fallbackDiscussionFeedback.strengths}
+                problems={fallbackDiscussionFeedback.problems}
+                improvedVersion={fallbackDiscussionFeedback.improvedVersion}
+              />
             )}
           </>
         )}
       </div>
+    </div>
+  );
+}
+
+function FeedbackBox({
+  score,
+  strengths,
+  problems,
+  improvedVersion,
+}: {
+  score: string;
+  strengths: string[];
+  problems: string[];
+  improvedVersion: string;
+}) {
+  return (
+    <div
+      style={{
+        padding: "24px",
+        borderRadius: "20px",
+        background: "#eef2ff",
+        color: "#312e81",
+      }}
+    >
+      <h3 style={{ marginTop: 0 }}>Sample Feedback: {score}</h3>
+
+      <strong>Strengths</strong>
+      <ul style={{ lineHeight: 1.8 }}>
+        {strengths.map((item) => (
+          <li key={item}>{item}</li>
+        ))}
+      </ul>
+
+      <strong>Problems</strong>
+      <ul style={{ lineHeight: 1.8 }}>
+        {problems.map((item) => (
+          <li key={item}>{item}</li>
+        ))}
+      </ul>
+
+      <strong>Improved Version</strong>
+      <pre
+        style={{
+          whiteSpace: "pre-wrap",
+          fontFamily:
+            '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+          lineHeight: 1.8,
+          background: "white",
+          padding: "18px",
+          borderRadius: "16px",
+          color: "#111827",
+        }}
+      >
+        {improvedVersion}
+      </pre>
     </div>
   );
 }
