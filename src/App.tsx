@@ -556,7 +556,7 @@ export default function App() {
 
       setIsSubmitted(false);
 
-      setApiMessage("已成功由 ChatGPT 生成新题组。");
+      setApiMessage("已成功由Gemini生成新题组。");
 
       setPage("practice");
 
