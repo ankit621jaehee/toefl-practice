@@ -710,6 +710,7 @@ export default function App() {
           "AI 评分接口暂时不可用。请检查 Vercel Function Logs，确认 /api/score-email-writing 是否报错。",
         ],
         grammarCorrections: [],
+        actionPlan: [],
         improvedVersion: "",
         sampleAnswer: "",
       });
@@ -742,6 +743,7 @@ export default function App() {
           "AI 评分接口暂时不可用。请检查 Vercel Function Logs，确认 /api/score-academic-discussion 是否报错。",
         ],
         grammarCorrections: [],
+        actionPlan: [],
         improvedVersion: "",
         sampleAnswer: "",
       });
