@@ -1,5 +1,83 @@
 import { GoogleGenAI } from "@google/genai";
 
+function cleanBlankAnswer(text) {
+  return String(text || "")
+    .replace(/[,.!?;:]+$/g, "")
+    .replace(/^[,.!?;:]+/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
+function cleanFixedText(text) {
+  return String(text || "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function countFixedWords(parts) {
+  return parts
+    .filter((part) => part.type === "fixed")
+    .flatMap((part) => cleanFixedText(part.text).split(/\s+/).filter(Boolean))
+    .filter((word) => !/^[,.!?;:]+$/.test(word)).length;
+}
+
+function normalizeParts(parts, target) {
+  if (!Array.isArray(parts)) return [];
+
+  const cleaned = [];
+
+  for (const part of parts) {
+    if (!part || typeof part !== "object") continue;
+
+    if (part.type === "fixed") {
+      const text = cleanFixedText(part.text);
+      if (text) {
+        cleaned.push({
+          type: "fixed",
+          text,
+        });
+      }
+    }
+
+    if (part.type === "blank") {
+      const answer = cleanBlankAnswer(part.answer);
+      if (answer) {
+        cleaned.push({
+          type: "blank",
+          answer,
+        });
+      }
+    }
+  }
+
+  return cleaned;
+}
+
+function getChunksFromParts(parts) {
+  return parts
+    .filter((part) => part.type === "blank")
+    .map((part) => cleanBlankAnswer(part.answer))
+    .filter(Boolean);
+}
+
+function isUsableQuestion(question) {
+  const parts = Array.isArray(question.parts) ? question.parts : [];
+  const chunks = getChunksFromParts(parts);
+  const fixedWords = countFixedWords(parts);
+
+  return (
+    typeof question.contextSentence === "string" &&
+    question.contextSentence.trim() &&
+    typeof question.target === "string" &&
+    question.target.trim() &&
+    parts.length > 0 &&
+    chunks.length >= 6 &&
+    chunks.length <= 9 &&
+    fixedWords <= 3
+  );
+}
+
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
@@ -31,26 +109,25 @@ The student sees:
 4. Several blanks appear in B.
 5. The student chooses word chunks from a word bank and puts them into the blanks.
 
-Very important style:
-The questions should look like these examples:
+The style should look like these examples:
 
 Example 1:
 A: What was the highlight of your trip?
-B: The ____ ____ ____ ____ ____ fantastic.
+B: The ____ ____ ____ ____ ____ ____ fantastic.
 Answer: The tour guides who showed us around the old city were fantastic.
-Word bank: tour guides / who / showed us around / the / old city / were
+Word bank: tour guides / who / showed / us around / the old / city / were
 
 Example 2:
 A: I heard Anna got a promotion.
-B: ____ ____ ____ ____ she will be ____ ____?
+B: ____ ____ ____ ____ she will be ____ ____ ____?
 Answer: Do you know if she will be moving to a different department?
-Word bank: do / you / know / if / moving to / a different department
+Word bank: do / you / know / if / moving / to a / different / department
 
 Example 3:
 A: We're planning a trip to the mountains next weekend.
-B: ____ ____ tell me ____ ____ ____?
+B: ____ ____ tell me ____ ____ ____ ____?
 Answer: Can you tell me whether the cabins will be available?
-Word bank: can / you / whether / the cabins / will be available
+Word bank: can / you / whether / the cabins / will be / available
 
 Example 4:
 A: What did Maria ask you about the book you're reading?
@@ -61,18 +138,22 @@ Word bank: wanted / to know / where / she could / buy / a copy
 Output design rules:
 1. A sentence should be a natural context.
 2. B sentence should be a natural response to A.
-3. B sentence should contain 6 to 13 words.
-4. B should contain 0 to 3 visible fixed words.
-5. The fixed words can appear at the beginning, middle, or end.
-6. Most of B should be hidden in blanks.
-7. Use 4 to 7 blanks per question.
+3. B sentence should contain 8 to 14 words.
+4. Use 6 to 8 blanks per question.
+5. Use 0 to 3 visible fixed words total in B.
+6. Fixed words can appear at the beginning, middle, or end.
+7. Most of B should be hidden in blanks.
 8. Each blank corresponds to one chunk.
-9. A chunk can be one word or a short phrase.
-10. Do not make chunks too long.
-11. Do not use Chinese.
-12. Do not create overly easy sentences like "What time does it start?" too often.
-13. Mix question-answer, statement-question, and statement-statement patterns.
-14. The answer must be reconstructable exactly from the fixed words and chunks.
+9. Chunks should usually be 1 word or 2 words.
+10. Only use a 3-word chunk when it is a very natural phrase.
+11. Do not create huge chunks like "a different department" if it can be split into "a different" and "department".
+12. Do not create huge chunks like "will be available" if it can be split into "will be" and "available".
+13. Do not put punctuation in blank answers.
+14. Punctuation must stay in fixed parts, such as "." or "?".
+15. Do not include commas, periods, or question marks in the word bank.
+16. Do not use Chinese.
+17. Mix question-answer, statement-question, and statement-statement patterns.
+18. The answer must be reconstructable exactly from the fixed words and chunks.
 
 Selected difficulty: ${level}
 Selected topic: ${topic}
@@ -95,9 +176,10 @@ Return this exact JSON structure:
         { "type": "fixed", "text": "The" },
         { "type": "blank", "answer": "tour guides" },
         { "type": "blank", "answer": "who" },
-        { "type": "blank", "answer": "showed us around" },
-        { "type": "blank", "answer": "the" },
-        { "type": "blank", "answer": "old city" },
+        { "type": "blank", "answer": "showed" },
+        { "type": "blank", "answer": "us around" },
+        { "type": "blank", "answer": "the old" },
+        { "type": "blank", "answer": "city" },
         { "type": "blank", "answer": "were" },
         { "type": "fixed", "text": "fantastic." }
       ],
@@ -108,12 +190,14 @@ Return this exact JSON structure:
 
 Requirements for parts:
 1. parts must reconstruct the full target sentence in order.
-2. fixed parts are visible words shown to the student.
+2. fixed parts are visible words or punctuation shown to the student.
 3. blank parts are hidden spaces the student fills.
 4. Every blank part must have an answer.
-5. Use 4 to 7 blank parts.
-6. Use no more than 3 fixed words total.
-7. Punctuation should usually be attached to fixed parts at the end, such as "fantastic." or "?".
+5. Use 6 to 8 blank parts.
+6. Use no more than 3 visible fixed words total.
+7. Never put punctuation in blank answers.
+8. Punctuation should be in fixed parts only.
+9. Fixed punctuation can be its own part, for example { "type": "fixed", "text": "?" }.
 `;
 
     const response = await ai.models.generateContent({
@@ -137,19 +221,8 @@ Requirements for parts:
     }
 
     const cleanedQuestions = json.questions.map((question, index) => {
-      const parts = Array.isArray(question.parts)
-        ? question.parts.filter((part) => {
-            if (!part || typeof part !== "object") return false;
-            if (part.type === "fixed") return typeof part.text === "string";
-            if (part.type === "blank") return typeof part.answer === "string";
-            return false;
-          })
-        : [];
-
-      const chunks = parts
-        .filter((part) => part.type === "blank")
-        .map((part) => part.answer.trim().toLowerCase())
-        .filter(Boolean);
+      const parts = normalizeParts(question.parts, question.target);
+      const chunks = getChunksFromParts(parts);
 
       return {
         id: index + 1,
@@ -170,8 +243,14 @@ Requirements for parts:
       };
     });
 
+    const usableQuestions = cleanedQuestions.filter(isUsableQuestion);
+
+    if (usableQuestions.length === 0) {
+      throw new Error("Gemini generated unusable questions");
+    }
+
     return res.status(200).json({
-      questions: cleanedQuestions,
+      questions: usableQuestions,
     });
   } catch (error) {
     return res.status(500).json({
