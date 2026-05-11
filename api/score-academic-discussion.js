@@ -24,6 +24,7 @@ function formatScore(score) {
 
 function applyMinimumLengthCap(score, wordCount) {
   let finalScore = score;
+
   if (wordCount < 5) {
     finalScore = Math.min(finalScore, 0.5);
   } else if (wordCount < 10) {
@@ -37,11 +38,20 @@ function applyMinimumLengthCap(score, wordCount) {
   } else if (wordCount < 100) {
     finalScore = Math.min(finalScore, 4.0);
   }
+
   return finalScore;
 }
 
 function normalizeArray(value) {
   return Array.isArray(value) ? value : [];
+}
+
+function safeJsonParse(text) {
+  try {
+    return JSON.parse(text);
+  } catch (error) {
+    throw new Error(`Gemini returned invalid JSON: ${text.slice(0, 300)}`);
+  }
 }
 
 function calculateDiscussionScore(json, wordCount) {
@@ -131,14 +141,8 @@ Minimum length rules:
 Be consistent:
 Use the same standards every time.
 Do not give a high score to a very short response just because it has few grammar mistakes.
-Do not be overly harsh on a complete 90+ word response only because it is not very long.
+Do not be overly harsh on a complete 100+ word response only because it is not very long.
 A strong response should express an opinion and support it.
-
-Academic discussion prompt:
-${JSON.stringify(prompt)}
-
-Student response:
-${answer}
 
 Feedback quality rules:
 1. Do not give generic comments like "good job" or "improve grammar" unless you explain exactly why.
@@ -150,6 +154,12 @@ Feedback quality rules:
 7. The sampleAnswer should be a separate high-scoring answer for the prompt.
 8. The actionPlan should give 3 short, practical steps for improving the next response.
 9. Use clear and direct language suitable for a TOEFL learner.
+
+Academic discussion prompt:
+${JSON.stringify(prompt)}
+
+Student response:
+${answer}
 
 Return valid JSON only. No markdown.
 
@@ -197,11 +207,11 @@ Return this exact JSON structure:
 
     const text = response.text || "";
 
-    if (!text) {
+    if (!text.trim()) {
       throw new Error("Gemini returned empty response");
     }
 
-    const json = JSON.parse(text);
+    const json = safeJsonParse(text);
     const finalScore = calculateDiscussionScore(json, wordCount);
 
     return res.status(200).json({
@@ -213,10 +223,12 @@ Return this exact JSON structure:
       improvedVersion: json.improvedVersion || "",
       sampleAnswer: json.sampleAnswer || "",
     });
-    
   } catch (error) {
+    console.error("Score academic discussion error:", error);
+
     return res.status(500).json({
-      error: error.message || "Failed to score academic discussion",
+      error: error?.message || "Failed to score academic discussion",
+      details: String(error),
     });
   }
 }

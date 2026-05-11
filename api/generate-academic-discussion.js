@@ -1,5 +1,13 @@
 import { GoogleGenAI } from "@google/genai";
 
+function safeJsonParse(text) {
+  try {
+    return JSON.parse(text);
+  } catch (error) {
+    throw new Error(`Gemini returned invalid JSON: ${text.slice(0, 300)}`);
+  }
+}
+
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
@@ -13,8 +21,6 @@ export default async function handler(req, res) {
     const ai = new GoogleGenAI({
       apiKey: process.env.GEMINI_API_KEY,
     });
-
-    const { level = "Medium", topic = "Mixed" } = req.body || {};
 
     const prompt = `
 You are a TOEFL Academic Discussion prompt generator.
@@ -48,11 +54,10 @@ Requirements:
 6. The task should be suitable for TOEFL learners.
 7. Avoid overly political or sensitive topics.
 8. Suggested length should be at least 100 words.
+9. Make the topic different from common sample prompts when possible.
+10. Do not include markdown.
 
-Selected difficulty: ${level}
-Selected topic: ${topic}
-
-Return valid JSON only. No markdown.
+Return valid JSON only.
 
 Return this exact JSON structure:
 {
@@ -72,31 +77,44 @@ Return this exact JSON structure:
       contents: prompt,
       config: {
         responseMimeType: "application/json",
+        temperature: 0.7,
       },
     });
 
     const text = response.text || "";
 
-    if (!text) {
+    if (!text.trim()) {
       throw new Error("Gemini returned empty response");
     }
 
-    const json = JSON.parse(text);
+    const json = safeJsonParse(text);
 
     return res.status(200).json({
       title: json.title || "Academic Discussion Practice",
-      professor: json.professor || "",
+      professor:
+        json.professor ||
+        "We've been discussing how students can balance academic success with personal well-being. Some people believe students should focus mainly on grades, while others think mental health and personal growth are equally important.",
       studentOneName: json.studentOneName || "Kelly",
-      studentOnePost: json.studentOnePost || "",
+      studentOnePost:
+        json.studentOnePost ||
+        "I think students should focus on grades because academic performance can affect scholarships and future opportunities.",
       studentTwoName: json.studentTwoName || "Andrew",
-      studentTwoPost: json.studentTwoPost || "",
-      question: json.question || "",
+      studentTwoPost:
+        json.studentTwoPost ||
+        "I believe personal well-being is just as important because students cannot perform well if they are constantly stressed.",
+      question:
+        json.question ||
+        "Do you think students should prioritize academic success or personal well-being? Explain your reasoning.",
       suggestedLength:
         json.suggestedLength || "Recommended length: at least 100 words",
     });
   } catch (error) {
+    console.error("Generate academic discussion error:", error);
+
     return res.status(500).json({
-      error: error.message || "Failed to generate academic discussion prompt",
+      error:
+        error?.message || "Failed to generate academic discussion prompt",
+      details: String(error),
     });
   }
 }
