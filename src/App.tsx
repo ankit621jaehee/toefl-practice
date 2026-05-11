@@ -846,17 +846,6 @@ export default function App() {
                   评分。
                 </p>
 
-                <PracticeControls
-                  questionCount={questionCount}
-                  setQuestionCount={setQuestionCount}
-                  level={level}
-                  setLevel={setLevel}
-                  topic={topic}
-                  setTopic={setTopic}
-                  disabled={isGeneratingEmailPrompt}
-                  hideCount
-                />
-
                 <button
                   onClick={startEmailPractice}
                   disabled={isGeneratingEmailPrompt}
@@ -877,16 +866,6 @@ export default function App() {
                   评分。
                 </p>
 
-                <PracticeControls
-                  questionCount={questionCount}
-                  setQuestionCount={setQuestionCount}
-                  level={level}
-                  setLevel={setLevel}
-                  topic={topic}
-                  setTopic={setTopic}
-                  disabled={isGeneratingDiscussionPrompt}
-                  hideCount
-                />
 
                 <button
                   onClick={startDiscussionPractice}
