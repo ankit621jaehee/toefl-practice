@@ -1,88 +1,5 @@
 import { GoogleGenAI } from "@google/genai";
 
-function removeFinalPunctuation(sentence) {
-  return sentence.trim().replace(/[.!?。！？]+$/g, "");
-}
-
-function getFinalPunctuation(sentence) {
-  const match = sentence.trim().match(/[.!?]$/);
-  return match ? match[0] : ".";
-}
-
-function cleanChunkText(text) {
-  return text
-    .replace(/[,.!?;:]/g, "")
-    .replace(/\s+/g, " ")
-    .trim()
-    .toLowerCase();
-}
-
-function splitIntoChunks(sentence) {
-  const cleanSentence = removeFinalPunctuation(sentence);
-  const words = cleanSentence.split(/\s+/).filter(Boolean);
-
-  if (words.length <= 4) {
-    return words.map((word) => cleanChunkText(word)).filter(Boolean);
-  }
-
-  const chunks = [];
-  let index = 0;
-
-  while (index < words.length) {
-    const remaining = words.length - index;
-
-    if (remaining <= 2) {
-      chunks.push(words.slice(index).join(" "));
-      break;
-    }
-
-    if (remaining === 3) {
-      chunks.push(words.slice(index, index + 1).join(" "));
-      chunks.push(words.slice(index + 1).join(" "));
-      break;
-    }
-
-    const groupSize = remaining >= 8 ? 2 : remaining >= 5 ? 2 : 1;
-    chunks.push(words.slice(index, index + groupSize).join(" "));
-    index += groupSize;
-  }
-
-  return chunks.map((chunk) => cleanChunkText(chunk)).filter(Boolean);
-}
-
-function normalizeQuestion(question, index, level, topic) {
-  const rawTarget =
-    typeof question.target === "string" && question.target.trim()
-      ? question.target.trim()
-      : "I am not sure about it yet.";
-
-  const punctuation = getFinalPunctuation(rawTarget);
-  const chunks = splitIntoChunks(rawTarget);
-
-  return {
-    id: index + 1,
-    level: question.level || level,
-    topic: question.topic || topic,
-    relationType: question.relationType || "question-answer",
-    contextSpeaker: "A",
-    contextSentence:
-      question.contextSentence ||
-      "What was the main point of the conversation?",
-    answerSpeaker: "B",
-
-    // 关键：不再使用 Gemini 生成的 prefix/suffix
-    // 这样 B 句不会出现一大堆已有单词
-    answerPrefix: "",
-    answerSuffix: punctuation,
-
-    target: rawTarget,
-    chunks,
-    explanation:
-      question.explanation ||
-      "This question tests sentence structure and logical connection between two speakers.",
-  };
-}
-
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
@@ -104,40 +21,63 @@ You are a TOEFL Build a Sentence exercise generator.
 
 Generate ${count} TOEFL-style A/B dialogue sentence-building questions.
 
-Important:
-You only need to generate the full target sentence.
-The website will automatically hide the sentence and split it into draggable chunks.
-Do not decide the blanks yourself.
+The exercise is NOT a translation task.
+It is a dialogue sentence-building task.
 
-Question format:
-1. Speaker A gives one sentence.
-2. Speaker B gives one natural response.
-3. Speaker B's response should be the target sentence.
+The student sees:
+1. Speaker A's sentence.
+2. Speaker B's incomplete sentence.
+3. Some fixed words are already shown in B.
+4. Several blanks appear in B.
+5. The student chooses word chunks from a word bank and puts them into the blanks.
 
-Dialogue relationship rules:
-1. If A is a question, B should be an answer.
-2. If A is a statement, B can be a follow-up question.
-3. If A is a statement, B can also be another statement that naturally continues the idea.
-4. Mix these three types:
-   - question-answer
-   - statement-question
-   - statement-statement
+Very important style:
+The questions should look like these examples:
 
-Target sentence rules:
-1. The target sentence must be natural English.
-2. The target sentence should be suitable for TOEFL learners.
-3. The target sentence should contain 8 to 16 words.
-4. The sentence should test useful grammar, collocation, or logical connection.
-5. Do not make the sentence too short.
-6. Do not make the sentence too simple.
-7. Do not create translation questions.
-8. Do not include Chinese.
+Example 1:
+A: What was the highlight of your trip?
+B: The ____ ____ ____ ____ ____ fantastic.
+Answer: The tour guides who showed us around the old city were fantastic.
+Word bank: tour guides / who / showed us around / the / old city / were
+
+Example 2:
+A: I heard Anna got a promotion.
+B: ____ ____ ____ ____ she will be ____ ____?
+Answer: Do you know if she will be moving to a different department?
+Word bank: do / you / know / if / moving to / a different department
+
+Example 3:
+A: We're planning a trip to the mountains next weekend.
+B: ____ ____ tell me ____ ____ ____?
+Answer: Can you tell me whether the cabins will be available?
+Word bank: can / you / whether / the cabins / will be available
+
+Example 4:
+A: What did Maria ask you about the book you're reading?
+B: She ____ ____ ____ ____ ____ ____.
+Answer: She wanted to know where she could buy a copy.
+Word bank: wanted / to know / where / she could / buy / a copy
+
+Output design rules:
+1. A sentence should be a natural context.
+2. B sentence should be a natural response to A.
+3. B sentence should contain 6 to 13 words.
+4. B should contain 0 to 3 visible fixed words.
+5. The fixed words can appear at the beginning, middle, or end.
+6. Most of B should be hidden in blanks.
+7. Use 4 to 7 blanks per question.
+8. Each blank corresponds to one chunk.
+9. A chunk can be one word or a short phrase.
+10. Do not make chunks too long.
+11. Do not use Chinese.
+12. Do not create overly easy sentences like "What time does it start?" too often.
+13. Mix question-answer, statement-question, and statement-statement patterns.
+14. The answer must be reconstructable exactly from the fixed words and chunks.
 
 Selected difficulty: ${level}
 Selected topic: ${topic}
 
 Return valid JSON only. No markdown.
-Do not include any explanation outside JSON.
 
 Return this exact JSON structure:
 {
@@ -145,16 +85,35 @@ Return this exact JSON structure:
     {
       "id": 1,
       "level": "Medium",
-      "topic": "Campus Life",
-      "relationType": "statement-statement",
+      "topic": "Travel",
+      "relationType": "question-answer",
       "contextSpeaker": "A",
-      "contextSentence": "Have you decided what you want to major in yet?",
+      "contextSentence": "What was the highlight of your trip?",
       "answerSpeaker": "B",
-      "target": "I'm still not sure about it, but I'm leaning towards history.",
-      "explanation": "A asks about the speaker's future major. B gives a cautious answer and uses but to introduce a current preference."
+      "target": "The tour guides who showed us around the old city were fantastic.",
+      "parts": [
+        { "type": "fixed", "text": "The" },
+        { "type": "blank", "answer": "tour guides" },
+        { "type": "blank", "answer": "who" },
+        { "type": "blank", "answer": "showed us around" },
+        { "type": "blank", "answer": "the" },
+        { "type": "blank", "answer": "old city" },
+        { "type": "blank", "answer": "were" },
+        { "type": "fixed", "text": "fantastic." }
+      ],
+      "explanation": "A asks about the highlight of the trip. B answers with a noun phrase followed by a relative clause."
     }
   ]
 }
+
+Requirements for parts:
+1. parts must reconstruct the full target sentence in order.
+2. fixed parts are visible words shown to the student.
+3. blank parts are hidden spaces the student fills.
+4. Every blank part must have an answer.
+5. Use 4 to 7 blank parts.
+6. Use no more than 3 fixed words total.
+7. Punctuation should usually be attached to fixed parts at the end, such as "fantastic." or "?".
 `;
 
     const response = await ai.models.generateContent({
@@ -177,9 +136,39 @@ Return this exact JSON structure:
       throw new Error("Gemini response does not contain questions array");
     }
 
-    const cleanedQuestions = json.questions.map((question, index) =>
-      normalizeQuestion(question, index, level, topic)
-    );
+    const cleanedQuestions = json.questions.map((question, index) => {
+      const parts = Array.isArray(question.parts)
+        ? question.parts.filter((part) => {
+            if (!part || typeof part !== "object") return false;
+            if (part.type === "fixed") return typeof part.text === "string";
+            if (part.type === "blank") return typeof part.answer === "string";
+            return false;
+          })
+        : [];
+
+      const chunks = parts
+        .filter((part) => part.type === "blank")
+        .map((part) => part.answer.trim().toLowerCase())
+        .filter(Boolean);
+
+      return {
+        id: index + 1,
+        level: question.level || level,
+        topic: question.topic || topic,
+        relationType: question.relationType || "question-answer",
+        contextSpeaker: "A",
+        contextSentence:
+          question.contextSentence ||
+          "What was the main point of the conversation?",
+        answerSpeaker: "B",
+        target: question.target || "",
+        parts,
+        chunks,
+        explanation:
+          question.explanation ||
+          "This question tests sentence structure and logical connection between two speakers.",
+      };
+    });
 
     return res.status(200).json({
       questions: cleanedQuestions,
