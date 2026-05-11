@@ -27,29 +27,130 @@ function cleanChunk(chunk) {
     .toLowerCase();
 }
 
+const nounPhraseStarters = new Set([
+  "a",
+  "an",
+  "the",
+  "any",
+  "some",
+  "this",
+  "that",
+  "these",
+  "those",
+  "my",
+  "your",
+  "his",
+  "her",
+  "our",
+  "their",
+]);
+
+const commonAdjectives = new Set([
+  "old",
+  "new",
+  "good",
+  "great",
+  "important",
+  "different",
+  "available",
+  "assigned",
+  "quiet",
+  "public",
+  "private",
+  "main",
+  "major",
+  "final",
+  "first",
+  "last",
+  "next",
+  "same",
+  "local",
+  "academic",
+  "specific",
+  "useful",
+]);
+
+function isLikelyNounPhrase(words, index) {
+  const current = words[index]?.toLowerCase();
+  const next = words[index + 1]?.toLowerCase();
+  const third = words[index + 2]?.toLowerCase();
+
+  if (!current || !next) return false;
+
+  // any assistance / some data / the cabins / a copy
+  if (nounPhraseStarters.has(current)) {
+    // the old city / a different department
+    if (third && commonAdjectives.has(next)) {
+      return 3;
+    }
+
+    return 2;
+  }
+
+  // old city / quiet area / different department
+  if (commonAdjectives.has(current)) {
+    return 2;
+  }
+
+  return false;
+}
+
 function splitWordsIntoChunks(words) {
   const chunks = [];
   let index = 0;
 
   while (index < words.length) {
-    const remaining = words.length - index;
+    const current = words[index]?.toLowerCase();
+    const next = words[index + 1]?.toLowerCase();
 
-    if (remaining <= 2) {
-      chunks.push(words.slice(index).join(" "));
-      break;
+    // 保留自然名词短语：any assistance / the old city / a different department
+    const nounPhraseLength = isLikelyNounPhrase(words, index);
+    if (nounPhraseLength) {
+      chunks.push(words.slice(index, index + nounPhraseLength).join(" "));
+      index += nounPhraseLength;
+      continue;
     }
 
-    // 尽量拆细：多数是 1 个词或 2 个词
-    if (remaining >= 8) {
+    // 保留很常见的短语搭配，但不要太长
+    if (current === "to" && next) {
       chunks.push(words.slice(index, index + 2).join(" "));
       index += 2;
-    } else if (remaining >= 5) {
-      chunks.push(words.slice(index, index + 1).join(" "));
-      index += 1;
-    } else {
-      chunks.push(words.slice(index, index + 2).join(" "));
-      index += 2;
+      continue;
     }
+
+    if (current === "will" && next === "be") {
+      chunks.push("will be");
+      index += 2;
+      continue;
+    }
+
+    if (current === "could" && next === "you") {
+      chunks.push("could you");
+      index += 2;
+      continue;
+    }
+
+    if (current === "can" && next === "you") {
+      chunks.push("can you");
+      index += 2;
+      continue;
+    }
+
+    if (current === "do" && next === "you") {
+      chunks.push("do you");
+      index += 2;
+      continue;
+    }
+
+    if (current === "did" && next === "you") {
+      chunks.push("did you");
+      index += 2;
+      continue;
+    }
+
+    // 其他情况尽量单词拆分
+    chunks.push(words[index]);
+    index += 1;
   }
 
   return chunks.map(cleanChunk).filter(Boolean);
@@ -168,11 +269,13 @@ export default async function handler(req, res) {
     });
 
     const { count = 5, level = "Medium", topic = "Mixed" } = req.body || {};
+    const requestedCount = Number(count) || 5;
+    const generatedCount = requestedCount + 3;
 
     const prompt = `
 You are a TOEFL Build a Sentence exercise generator.
 
-Generate ${count} TOEFL-style A/B dialogue sentence-building questions.
+Generate ${generatedCount} TOEFL-style A/B dialogue sentence-building questions.
 
 Important:
 You only need to generate Speaker A's context sentence, Speaker B's full target sentence, and the explanation.
@@ -214,6 +317,7 @@ Rules:
 7. Avoid repeated sentence patterns.
 8. Do not include Chinese.
 9. Do not include markdown.
+10. Make every question different in topic and sentence pattern.
 
 Selected difficulty: ${level}
 Selected topic: ${topic}
@@ -262,8 +366,16 @@ Return this exact JSON structure:
       normalizeQuestion(question, index, level, topic)
     );
 
+    const finalQuestions = cleanedQuestions.slice(0, requestedCount);
+
+    if (finalQuestions.length < requestedCount) {
+      throw new Error(
+        `Gemini only generated ${finalQuestions.length} usable questions, but ${requestedCount} were requested`
+      );
+    }
+
     return res.status(200).json({
-      questions: cleanedQuestions,
+      questions: finalQuestions,
     });
   } catch (error) {
     return res.status(500).json({
