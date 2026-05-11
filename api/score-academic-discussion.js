@@ -6,39 +6,59 @@ function countWords(text) {
     : 0;
 }
 
-function extractNumericScore(scoreText) {
-  const match = String(scoreText || "").match(/\d+(\.\d+)?/);
-  return match ? Number(match[0]) : 0;
+function clampScore(score) {
+  const number = Number(score);
+
+  if (Number.isNaN(number)) return 0;
+
+  return Math.max(0, Math.min(5, number));
+}
+
+function roundToOneDecimal(score) {
+  return Math.round(score * 10) / 10;
 }
 
 function formatScore(score) {
-  return `${score.toFixed(1)} / 5.0`;
+  return `${roundToOneDecimal(score).toFixed(1)} / 5.0`;
 }
 
-function applyLengthCap(scoreText, wordCount) {
-  let score = extractNumericScore(scoreText);
-
+function applyMinimumLengthCap(score, wordCount) {
+  let finalScore = score;
   if (wordCount < 5) {
-    score = Math.min(score, 0.5);
+    finalScore = Math.min(finalScore, 0.5);
   } else if (wordCount < 10) {
-    score = Math.min(score, 1.0);
+    finalScore = Math.min(finalScore, 1.0);
   } else if (wordCount < 30) {
-    score = Math.min(score, 2.0);
-  } else if (wordCount < 50) {
-    score = Math.min(score, 3.0);
+    finalScore = Math.min(finalScore, 2.0);
+  } else if (wordCount < 60) {
+    finalScore = Math.min(finalScore, 3.0);
   } else if (wordCount < 80) {
-    score = Math.min(score, 3.5);
-  } else if (wordCount < 90) {
-    score = Math.min(score, 3.8);
-  } else if (wordCount < 110) {
-    score = Math.min(score, 4.2);
+    finalScore = Math.min(finalScore, 3.5);
+  } else if (wordCount < 100) {
+    finalScore = Math.min(finalScore, 4.0);
   }
-
-  return formatScore(score);
+  return finalScore;
 }
 
 function normalizeArray(value) {
   return Array.isArray(value) ? value : [];
+}
+
+function calculateDiscussionScore(json, wordCount) {
+  const opinionScore = clampScore(json.opinionScore);
+  const developmentScore = clampScore(json.developmentScore);
+  const languageScore = clampScore(json.languageScore);
+  const naturalnessScore = clampScore(json.naturalnessScore);
+
+  let score =
+    opinionScore * 0.35 +
+    developmentScore * 0.3 +
+    languageScore * 0.25 +
+    naturalnessScore * 0.1;
+
+  score = applyMinimumLengthCap(score, wordCount);
+
+  return formatScore(score);
 }
 
 export default async function handler(req, res) {
@@ -66,53 +86,53 @@ export default async function handler(req, res) {
     const wordCount = countWords(answer);
 
     const scoringPrompt = `
-You are a strict TOEFL Academic Discussion evaluator.
+You are a strict but fair TOEFL Academic Discussion evaluator.
 
 Evaluate the student's academic discussion response.
 
-Scoring scale:
-- 5.0: Excellent response. Clear opinion, strong reasoning, relevant examples, connects to the discussion, natural academic language.
-- 4.0: Good response. Clear opinion and relevant support, with minor language or development issues.
-- 3.0: Fair response. Some opinion and support, but development is limited or unclear.
-- 2.0: Weak response. Very limited, vague, incomplete, or only slightly related.
-- 1.0: Very poor response. Only a few relevant words or one incomplete idea.
-- 0.0: Empty, irrelevant, or not a response to the discussion.
+Important scoring principle:
+Do not over-focus on word count once the response reaches around 100 words.
+Word count is mainly used to identify clearly incomplete responses.
+A response with 100+ words should be scored mainly based on opinion, contribution, development, organization, language, and naturalness.
 
-Main scoring criteria:
-1. Clear opinion:
-   - Does the student clearly express a position?
-2. Response to the professor:
-   - Does the student answer the discussion question?
-3. Contribution to the discussion:
-   - Does the student add something new?
-   - Does the student avoid simply copying classmates' ideas?
-4. Development:
-   - Reasons, explanations, and examples.
-5. Organization:
-   - Logical flow.
-6. Language:
-   - Grammar accuracy.
-   - Vocabulary.
-   - Academic naturalness.
+Student word count: ${wordCount}
 
-Length penalty rules:
-- Student word count is ${wordCount}.
-- If the response has fewer than 5 words, the score must be between 0.0 and 0.5.
-- If the response has 5 to 9 words, the score must be between 0.0 and 1.0.
-- If the response has 10 to 29 words, the score must not exceed 2.0.
-- If the response has 30 to 49 words, the score must not exceed 3.0.
-- If the response has 50 to 79 words, the score must not exceed 3.5.
-- A response generally needs at least 90 words to receive 4.0 or above.
-- A response generally needs at least 110 words to receive 4.5 or above.
-- If the response does not express a clear opinion, the score must not exceed 3.0.
-- If the response does not respond to the professor's question, the score must not exceed 2.5.
-- If the response only repeats a classmate's idea without adding its own reasoning, the score must not exceed 3.0.
-- If the response only contains a short phrase or a single sentence, the score must not exceed 1.5.
+Score each dimension from 0.0 to 5.0 using one decimal place.
 
-Important:
-Be strict. Do not reward a very short response just because it has no grammar mistakes.
-A few correct words are not enough for a high score.
-Academic Discussion responses must show an opinion and support it.
+Dimension 1: opinionScore
+- Does the student clearly answer the professor's question?
+- Is there a clear opinion or position?
+- Does the response stay on topic?
+
+Dimension 2: developmentScore
+- Does the student give reasons, explanations, or examples?
+- Does the response contribute something new to the discussion?
+- Does it connect to or respond to the classmates' ideas when useful?
+
+Dimension 3: languageScore
+- Grammar accuracy.
+- Vocabulary.
+- Sentence control.
+- Clarity.
+
+Dimension 4: naturalnessScore
+- Academic discussion style.
+- Naturalness.
+- Logical flow.
+
+Minimum length rules:
+- If fewer than 5 words, all dimension scores should be very low.
+- If 5 to 9 words, the response is extremely incomplete.
+- If 10 to 29 words, the response is clearly incomplete.
+- If 30 to 59 words, the response may be partially complete but underdeveloped.
+- If 60 to 99 words, the response can be acceptable but probably lacks development.
+- If 100 words or more, do not penalize mainly for length.
+
+Be consistent:
+Use the same standards every time.
+Do not give a high score to a very short response just because it has few grammar mistakes.
+Do not be overly harsh on a complete 90+ word response only because it is not very long.
+A strong response should express an opinion and support it.
 
 Academic discussion prompt:
 ${JSON.stringify(prompt)}
@@ -124,7 +144,10 @@ Return valid JSON only. No markdown.
 
 Return this exact JSON structure:
 {
-  "score": "2.0 / 5.0",
+  "opinionScore": 4.0,
+  "developmentScore": 4.0,
+  "languageScore": 4.0,
+  "naturalnessScore": 4.0,
   "strengths": [
     "strength 1",
     "strength 2",
@@ -152,6 +175,7 @@ Return this exact JSON structure:
       contents: scoringPrompt,
       config: {
         responseMimeType: "application/json",
+        temperature: 0.1,
       },
     });
 
@@ -162,10 +186,10 @@ Return this exact JSON structure:
     }
 
     const json = JSON.parse(text);
-    const cappedScore = applyLengthCap(json.score || "0.0 / 5.0", wordCount);
+    const finalScore = calculateDiscussionScore(json, wordCount);
 
     return res.status(200).json({
-      score: cappedScore,
+      score: finalScore,
       strengths: normalizeArray(json.strengths),
       problems: normalizeArray(json.problems),
       grammarCorrections: normalizeArray(json.grammarCorrections),
