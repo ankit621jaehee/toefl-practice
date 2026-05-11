@@ -1,5 +1,88 @@
 import { GoogleGenAI } from "@google/genai";
 
+function removeFinalPunctuation(sentence) {
+  return sentence.trim().replace(/[.!?。！？]+$/g, "");
+}
+
+function getFinalPunctuation(sentence) {
+  const match = sentence.trim().match(/[.!?]$/);
+  return match ? match[0] : ".";
+}
+
+function cleanChunkText(text) {
+  return text
+    .replace(/[,.!?;:]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
+function splitIntoChunks(sentence) {
+  const cleanSentence = removeFinalPunctuation(sentence);
+  const words = cleanSentence.split(/\s+/).filter(Boolean);
+
+  if (words.length <= 4) {
+    return words.map((word) => cleanChunkText(word)).filter(Boolean);
+  }
+
+  const chunks = [];
+  let index = 0;
+
+  while (index < words.length) {
+    const remaining = words.length - index;
+
+    if (remaining <= 2) {
+      chunks.push(words.slice(index).join(" "));
+      break;
+    }
+
+    if (remaining === 3) {
+      chunks.push(words.slice(index, index + 1).join(" "));
+      chunks.push(words.slice(index + 1).join(" "));
+      break;
+    }
+
+    const groupSize = remaining >= 8 ? 2 : remaining >= 5 ? 2 : 1;
+    chunks.push(words.slice(index, index + groupSize).join(" "));
+    index += groupSize;
+  }
+
+  return chunks.map((chunk) => cleanChunkText(chunk)).filter(Boolean);
+}
+
+function normalizeQuestion(question, index, level, topic) {
+  const rawTarget =
+    typeof question.target === "string" && question.target.trim()
+      ? question.target.trim()
+      : "I am not sure about it yet.";
+
+  const punctuation = getFinalPunctuation(rawTarget);
+  const chunks = splitIntoChunks(rawTarget);
+
+  return {
+    id: index + 1,
+    level: question.level || level,
+    topic: question.topic || topic,
+    relationType: question.relationType || "question-answer",
+    contextSpeaker: "A",
+    contextSentence:
+      question.contextSentence ||
+      "What was the main point of the conversation?",
+    answerSpeaker: "B",
+
+    // 关键：不再使用 Gemini 生成的 prefix/suffix
+    // 这样 B 句不会出现一大堆已有单词
+    answerPrefix: "",
+    answerSuffix: punctuation,
+
+    target: rawTarget,
+    chunks,
+    explanation:
+      question.explanation ||
+      "This question tests sentence structure and logical connection between two speakers.",
+  };
+}
+
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
@@ -21,107 +104,54 @@ You are a TOEFL Build a Sentence exercise generator.
 
 Generate ${count} TOEFL-style A/B dialogue sentence-building questions.
 
-The exercise format:
-1. Show one previous sentence as A.
-2. Show the next sentence as B.
-3. B must contain only 0 to 2 visible fixed words.
-4. Most of B must be hidden as blanks.
-5. The student will drag shuffled chunks into the blanks.
-6. Do not provide Chinese hints.
-7. Do not create translation questions.
+Important:
+You only need to generate the full target sentence.
+The website will automatically hide the sentence and split it into draggable chunks.
+Do not decide the blanks yourself.
+
+Question format:
+1. Speaker A gives one sentence.
+2. Speaker B gives one natural response.
+3. Speaker B's response should be the target sentence.
 
 Dialogue relationship rules:
 1. If A is a question, B should be an answer.
-2. If A is a statement, B can be:
-   - a follow-up question, or
-   - another statement that naturally continues the idea.
-3. Mix these three patterns:
+2. If A is a statement, B can be a follow-up question.
+3. If A is a statement, B can also be another statement that naturally continues the idea.
+4. Mix these three types:
    - question-answer
    - statement-question
    - statement-statement
 
-Design rules:
-1. The target sentence should sound natural.
+Target sentence rules:
+1. The target sentence must be natural English.
 2. The target sentence should be suitable for TOEFL learners.
 3. The target sentence should contain 8 to 16 words.
-
-4. answerPrefix and answerSuffix are the visible fixed words in B.
-5. The total number of visible fixed words in answerPrefix and answerSuffix must be 0 to 2 words.
-6. Usually, answerPrefix should be empty or contain only 1 word.
-7. Usually, answerSuffix should be empty or contain only 1 word.
-8. Do not make answerPrefix or answerSuffix a full phrase.
-9. Do not put more than 2 visible words outside the blanks.
-10. Do not put the complete target sentence into answerPrefix or answerSuffix.
-
-11. The missing part must be split into chunks.
-12. chunks must not be empty.
-13. chunks must contain at least 4 items.
-14. Chunks can be single words or meaningful phrase groups.
-15. Hide capitalization by making all chunks lowercase.
-16. Do not include punctuation in chunks.
-17. Most of the B sentence should appear in chunks.
-18. The chunks, in order, plus answerPrefix and answerSuffix, must reconstruct the target sentence exactly.
-19. Make sure chunks are in the exact correct order needed to reconstruct the missing part.
-
-Very important:
-Bad example:
-{
-  "answerPrefix": "Oh really, have you considered",
-  "answerSuffix": "requirements?",
-  "chunks": ["the essay"]
-}
-This is wrong because too many words are visible.
-
-Good example:
-{
-  "answerPrefix": "",
-  "answerSuffix": "requirements?",
-  "target": "Oh really, have you considered the essay requirements?",
-  "chunks": ["oh really", "have you considered", "the essay"]
-}
-This is correct because most of the sentence is hidden in chunks.
-
-Another good example:
-{
-  "answerPrefix": "The",
-  "answerSuffix": "",
-  "target": "The tour guides who showed us around the old city were fantastic.",
-  "chunks": ["tour guides", "who", "showed us around", "the old city", "were fantastic"]
-}
-
-Scoring rule:
-Each question is worth 0.5 points.
-If all blanks are correct, the student gets 0.5.
-If one or more blanks are wrong, the student gets 0.
+4. The sentence should test useful grammar, collocation, or logical connection.
+5. Do not make the sentence too short.
+6. Do not make the sentence too simple.
+7. Do not create translation questions.
+8. Do not include Chinese.
 
 Selected difficulty: ${level}
 Selected topic: ${topic}
 
 Return valid JSON only. No markdown.
-Do not include explanations outside the JSON.
+Do not include any explanation outside JSON.
 
-Return format:
+Return this exact JSON structure:
 {
   "questions": [
     {
       "id": 1,
       "level": "Medium",
-      "topic": "Travel",
-      "relationType": "question-answer",
+      "topic": "Campus Life",
+      "relationType": "statement-statement",
       "contextSpeaker": "A",
-      "contextSentence": "What was the highlight of your trip?",
+      "contextSentence": "Have you decided what you want to major in yet?",
       "answerSpeaker": "B",
-      "answerPrefix": "The",
-      "answerSuffix": "",
-      "target": "The tour guides who showed us around the old city were fantastic.",
-      "chunks": [
-        "tour guides",
-        "who",
-        "showed us around",
-        "the old city",
-        "were fantastic"
-      ],
-      "explanation": "A asks about the highlight of the trip, so B gives a direct answer. The phrase who showed us around the old city is a relative clause modifying tour guides."
+      "target": "I'm still not sure about it, but I'm leaning towards history.",
+      "explanation": "A asks about the speaker's future major. B gives a cautious answer and uses but to introduce a current preference."
     }
   ]
 }
@@ -147,32 +177,9 @@ Return format:
       throw new Error("Gemini response does not contain questions array");
     }
 
-    const cleanedQuestions = json.questions.map((question, index) => {
-      const chunks = Array.isArray(question.chunks)
-        ? question.chunks.filter(
-            (chunk) => typeof chunk === "string" && chunk.trim() !== ""
-          )
-        : [];
-
-      return {
-        id: index + 1,
-        level: question.level || level,
-        topic: question.topic || topic,
-        relationType: question.relationType || "question-answer",
-        contextSpeaker: question.contextSpeaker || "A",
-        contextSentence:
-          question.contextSentence ||
-          "What was the main point of the conversation?",
-        answerSpeaker: question.answerSpeaker || "B",
-        answerPrefix: question.answerPrefix || "",
-        answerSuffix: question.answerSuffix || "",
-        target: question.target || "",
-        chunks,
-        explanation:
-          question.explanation ||
-          "This question tests sentence structure and logical connection between two speakers.",
-      };
-    });
+    const cleanedQuestions = json.questions.map((question, index) =>
+      normalizeQuestion(question, index, level, topic)
+    );
 
     return res.status(200).json({
       questions: cleanedQuestions,
