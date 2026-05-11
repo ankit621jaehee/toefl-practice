@@ -47,6 +47,19 @@ type DiscussionPrompt = {
   suggestedLength: string;
 };
 
+type WritingFeedback = {
+  score: string;
+  strengths: string[];
+  problems: string[];
+  grammarCorrections: {
+    original: string;
+    corrected: string;
+    explanation: string;
+  }[];
+  improvedVersion: string;
+  sampleAnswer: string;
+};
+
 const sampleEmailPrompt: EmailPrompt = {
   title: "Email Writing Practice",
   scenario:
@@ -60,7 +73,7 @@ const sampleEmailPrompt: EmailPrompt = {
   suggestedLength: "Recommended length: 100–150 words",
 };
 
-const fallbackEmailFeedback = {
+const fallbackEmailFeedback: WritingFeedback = {
   score: "4.0 / 5.0",
   strengths: [
     "The email has a clear purpose and responds to the professor politely.",
@@ -72,8 +85,11 @@ const fallbackEmailFeedback = {
     "The explanation could be more specific.",
     "The closing could be more polite.",
   ],
+  grammarCorrections: [],
   improvedVersion:
     "Dear Professor Smith,\n\nI am very sorry that I missed my class presentation. I was absent because I had a sudden health problem and could not come to class on time. I understand that the presentation was an important part of the final grade, and I apologize for any inconvenience I caused.\n\nWould it be possible for me to make up the presentation at another time? I would be happy to present during your office hours or at any time that is convenient for you.\n\nThank you very much for your understanding.\n\nSincerely,\nStudent",
+  sampleAnswer:
+    "Dear Professor Smith,\n\nI am sorry that I missed the presentation. I had an unexpected health issue and could not attend class. I understand that the presentation was important for my final grade, and I apologize for the inconvenience.\n\nWould it be possible for me to make up the presentation at another time? I would be happy to present during office hours or whenever it is convenient for you.\n\nThank you for your understanding.\n\nSincerely,\nStudent",
 };
 
 const sampleDiscussionPrompt: DiscussionPrompt = {
@@ -91,7 +107,7 @@ const sampleDiscussionPrompt: DiscussionPrompt = {
   suggestedLength: "Recommended length: at least 100 words",
 };
 
-const fallbackDiscussionFeedback = {
+const fallbackDiscussionFeedback: WritingFeedback = {
   score: "4.0 / 5.0",
   strengths: [
     "The response clearly expresses an opinion.",
@@ -103,8 +119,11 @@ const fallbackDiscussionFeedback = {
     "Some transitions could be smoother.",
     "The final sentence could make the argument feel more complete.",
   ],
+  grammarCorrections: [],
   improvedVersion:
     "I believe universities should require students to take some courses outside their major because these classes can help them develop a broader way of thinking. Although Andrew makes a good point that college can be expensive and stressful, focusing only on career-related courses may limit students' growth. For example, a computer science student who takes a psychology class may better understand how people think, which could help them design more user-friendly technology. In addition, taking different kinds of classes can help students communicate with people from other fields. Therefore, I think general education courses are useful as long as universities do not require too many of them.",
+  sampleAnswer:
+    "I believe universities should require students to take some courses outside their major because these courses help students develop broader skills. Although Andrew is right that college can be stressful and expensive, students may benefit from learning about different fields. For example, a computer science student who takes psychology may better understand how people think, which could help them design better technology. Therefore, I think general education courses are useful as long as schools do not require too many of them.",
 };
 
 const fallbackQuestions: Question[] = [
@@ -350,6 +369,48 @@ async function generateQuestionsFromAPI(
   return normalizeQuestions(data.questions as Question[]);
 }
 
+async function scoreEmailWritingWithAPI(prompt: unknown, answer: string) {
+  const response = await fetch("/api/score-email-writing", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      prompt,
+      answer,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error("Failed to score email writing");
+  }
+
+  const data = await response.json();
+
+  return data as WritingFeedback;
+}
+
+async function scoreAcademicDiscussionWithAPI(prompt: unknown, answer: string) {
+  const response = await fetch("/api/score-academic-discussion", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      prompt,
+      answer,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error("Failed to score academic discussion");
+  }
+
+  const data = await response.json();
+
+  return data as WritingFeedback;
+}
+
 function isQuestionComplete(slots: (Chunk | null)[]) {
   return slots.every((slot) => slot !== null);
 }
@@ -399,9 +460,16 @@ export default function App() {
 
   const [emailAnswer, setEmailAnswer] = useState("");
   const [emailSubmitted, setEmailSubmitted] = useState(false);
+  const [emailFeedback, setEmailFeedback] = useState<WritingFeedback | null>(
+    null
+  );
+  const [isScoringEmail, setIsScoringEmail] = useState(false);
 
   const [discussionAnswer, setDiscussionAnswer] = useState("");
   const [discussionSubmitted, setDiscussionSubmitted] = useState(false);
+  const [discussionFeedback, setDiscussionFeedback] =
+    useState<WritingFeedback | null>(null);
+  const [isScoringDiscussion, setIsScoringDiscussion] = useState(false);
 
   const currentQuestion = questions[currentIndex];
   const currentSlots = slotsByQuestion[currentQuestion.id] || [];
@@ -557,13 +625,61 @@ export default function App() {
   function startEmailPractice() {
     setEmailAnswer("");
     setEmailSubmitted(false);
+    setEmailFeedback(null);
     setPage("email");
   }
 
   function startDiscussionPractice() {
     setDiscussionAnswer("");
     setDiscussionSubmitted(false);
+    setDiscussionFeedback(null);
     setPage("discussion");
+  }
+
+  async function submitEmailWriting() {
+    if (emailWordCount === 0) return;
+
+    setIsScoringEmail(true);
+    setEmailSubmitted(false);
+    setEmailFeedback(null);
+
+    try {
+      const feedback = await scoreEmailWritingWithAPI(
+        sampleEmailPrompt,
+        emailAnswer
+      );
+
+      setEmailFeedback(feedback);
+      setEmailSubmitted(true);
+    } catch (error) {
+      setEmailFeedback(fallbackEmailFeedback);
+      setEmailSubmitted(true);
+    } finally {
+      setIsScoringEmail(false);
+    }
+  }
+
+  async function submitDiscussionWriting() {
+    if (discussionWordCount === 0) return;
+
+    setIsScoringDiscussion(true);
+    setDiscussionSubmitted(false);
+    setDiscussionFeedback(null);
+
+    try {
+      const feedback = await scoreAcademicDiscussionWithAPI(
+        sampleDiscussionPrompt,
+        discussionAnswer
+      );
+
+      setDiscussionFeedback(feedback);
+      setDiscussionSubmitted(true);
+    } catch (error) {
+      setDiscussionFeedback(fallbackDiscussionFeedback);
+      setDiscussionSubmitted(true);
+    } finally {
+      setIsScoringDiscussion(false);
+    }
   }
 
   const cardStyle = {
@@ -735,618 +851,684 @@ export default function App() {
         )}
 
         {page === "sentence" && (
-          <>
-            <button
-              onClick={() => setPage("home")}
-              style={{
-                padding: "10px 16px",
-                border: "1px solid #cbd5e1",
-                borderRadius: "12px",
-                background: "white",
-                fontWeight: 700,
-                cursor: "pointer",
-                marginBottom: "24px",
-              }}
-            >
-              返回首页
-            </button>
-
-            <p style={{ color: "#64748b", marginBottom: "24px" }}>
-              A/B 对话补全。把词块拖到 B 句横线上。全部题目完成后统一批改。
-              每题 0.5 分，错一空即为 0。
-            </p>
-
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                gap: "16px",
-                marginBottom: "30px",
-                padding: "16px 20px",
-                background: "#f1f5f9",
-                borderRadius: "16px",
-                fontWeight: 700,
-              }}
-            >
-              <span>
-                Question {currentIndex + 1} / {questions.length}
-              </span>
-
-              <span>
-                已完成：{completedCount} / {questions.length}
-              </span>
-
-              <span>
-                {isSubmitted
-                  ? `总分：${totalScore} / ${questions.length * 0.5}`
-                  : "尚未提交"}
-              </span>
-            </div>
-
-            <div
-              style={{
-                display: "flex",
-                gap: "8px",
-                marginBottom: "28px",
-              }}
-            >
-              {questions.map((question, index) => {
-                const slots = slotsByQuestion[question.id] || [];
-                const complete = isQuestionComplete(slots);
-                const score = results[question.id];
-
-                let background = "white";
-                let color = "#334155";
-                let borderColor = "#cbd5e1";
-
-                if (index === currentIndex) {
-                  background = "#111827";
-                  color = "white";
-                  borderColor = "#111827";
-                } else if (isSubmitted && score === 0) {
-                  background = "#fff1f2";
-                  color = "#be123c";
-                  borderColor = "#f43f5e";
-                } else if (complete) {
-                  background = "#eef2ff";
-                  color = "#312e81";
-                  borderColor = "#c7d2fe";
-                }
-
-                return (
-                  <button
-                    key={question.id}
-                    onClick={() => setCurrentIndex(index)}
-                    style={{
-                      width: "42px",
-                      height: "42px",
-                      borderRadius: "12px",
-                      border: `1px solid ${borderColor}`,
-                      background,
-                      color,
-                      fontWeight: 800,
-                      cursor: "pointer",
-                    }}
-                  >
-                    {index + 1}
-                  </button>
-                );
-              })}
-            </div>
-
-            <div
-              style={{
-                fontSize: "26px",
-                lineHeight: "2.2",
-                fontWeight: 700,
-                marginBottom: "36px",
-              }}
-            >
-              <div>
-                {currentQuestion.contextSpeaker}:{" "}
-                {currentQuestion.contextSentence}
-              </div>
-
-              <div style={{ display: "flex", flexWrap: "wrap", gap: "10px" }}>
-                <span>{currentQuestion.answerSpeaker}:</span>
-
-                {(() => {
-                  let blankIndex = 0;
-
-                  return currentQuestion.parts.map((part, partIndex) => {
-                    if (part.type === "fixed") {
-                      return <span key={`fixed-${partIndex}`}>{part.text}</span>;
-                    }
-
-                    const slotIndex = blankIndex;
-                    blankIndex += 1;
-
-                    const slot = currentSlots[slotIndex];
-                    const slotIsWrong =
-                      isSubmitted && slot?.text !== currentAnswers[slotIndex];
-
-                    return (
-                      <button
-                        key={`blank-${partIndex}`}
-                        onClick={() => removeChunk(slotIndex)}
-                        onDragOver={(e) => e.preventDefault()}
-                        onDrop={() => {
-                          if (dragged) {
-                            placeChunk(dragged, slotIndex);
-                            setDragged(null);
-                          }
-                        }}
-                        style={{
-                          minWidth: "120px",
-                          minHeight: "42px",
-                          border: "2px solid",
-                          borderColor: slotIsWrong ? "#f43f5e" : "#cbd5e1",
-                          borderRadius: "12px",
-                          background: slotIsWrong
-                            ? "#fff1f2"
-                            : slot
-                            ? "#eef2ff"
-                            : "white",
-                          color: slotIsWrong ? "#be123c" : "#111827",
-                          fontSize: "18px",
-                          fontWeight: 700,
-                          cursor: isSubmitted ? "default" : "pointer",
-                        }}
-                      >
-                        {slot?.text || ""}
-                      </button>
-                    );
-                  });
-                })()}
-              </div>
-            </div>
-
-            <div
-              style={{
-                background: "#f1f5f9",
-                padding: "20px",
-                borderRadius: "18px",
-                marginBottom: "24px",
-              }}
-            >
-              <div
-                style={{
-                  fontSize: "14px",
-                  color: "#64748b",
-                  marginBottom: "12px",
-                }}
-              >
-                可选词 / Word Bank
-              </div>
-
-              <div style={{ display: "flex", flexWrap: "wrap", gap: "10px" }}>
-                {currentBank.map((chunk) => (
-                  <button
-                    key={chunk.id}
-                    draggable={!isSubmitted}
-                    onDragStart={() => setDragged(chunk)}
-                    onClick={() => {
-                      const emptyIndex = currentSlots.findIndex(
-                        (slot) => slot === null
-                      );
-
-                      if (emptyIndex !== -1) {
-                        placeChunk(chunk, emptyIndex);
-                      }
-                    }}
-                    style={{
-                      padding: "10px 16px",
-                      border: "1px solid #cbd5e1",
-                      borderRadius: "999px",
-                      background: "white",
-                      fontSize: "16px",
-                      fontWeight: 600,
-                      cursor: isSubmitted ? "default" : "grab",
-                    }}
-                  >
-                    {chunk.text}
-                  </button>
-                ))}
-
-                {currentBank.length === 0 && (
-                  <span style={{ color: "#64748b" }}>本题词库已清空。</span>
-                )}
-              </div>
-            </div>
-
-            <div style={{ display: "flex", flexWrap: "wrap", gap: "12px" }}>
-              <button
-                onClick={previousQuestion}
-                disabled={currentIndex === 0}
-                style={{
-                  padding: "12px 20px",
-                  border: "1px solid #cbd5e1",
-                  borderRadius: "12px",
-                  background: "white",
-                  fontWeight: 700,
-                  cursor: currentIndex === 0 ? "not-allowed" : "pointer",
-                }}
-              >
-                上一题
-              </button>
-
-              <button
-                onClick={nextQuestion}
-                disabled={currentIndex === questions.length - 1}
-                style={{
-                  padding: "12px 20px",
-                  border: "1px solid #cbd5e1",
-                  borderRadius: "12px",
-                  background: "white",
-                  fontWeight: 700,
-                  cursor:
-                    currentIndex === questions.length - 1
-                      ? "not-allowed"
-                      : "pointer",
-                }}
-              >
-                下一题
-              </button>
-
-              <button
-                onClick={resetCurrentQuestion}
-                disabled={isSubmitted}
-                style={{
-                  padding: "12px 20px",
-                  border: "1px solid #cbd5e1",
-                  borderRadius: "12px",
-                  background: "white",
-                  fontWeight: 700,
-                  cursor: isSubmitted ? "not-allowed" : "pointer",
-                }}
-              >
-                清空本题
-              </button>
-
-              <button
-                onClick={submitAll}
-                disabled={isSubmitted}
-                style={{
-                  padding: "12px 20px",
-                  border: "none",
-                  borderRadius: "12px",
-                  background: isSubmitted ? "#cbd5e1" : "#111827",
-                  color: "white",
-                  fontWeight: 700,
-                  cursor: isSubmitted ? "not-allowed" : "pointer",
-                }}
-              >
-                提交全部并批改
-              </button>
-
-              <button
-                onClick={restartAll}
-                style={{
-                  padding: "12px 20px",
-                  border: "1px solid #cbd5e1",
-                  borderRadius: "12px",
-                  background: "white",
-                  fontWeight: 700,
-                  cursor: "pointer",
-                }}
-              >
-                重新开始
-              </button>
-            </div>
-
-            {apiMessage && (
-              <div
-                style={{
-                  marginTop: "20px",
-                  padding: "16px 20px",
-                  borderRadius: "16px",
-                  background: "#eef2ff",
-                  color: "#312e81",
-                  fontWeight: 700,
-                }}
-              >
-                {apiMessage}
-              </div>
-            )}
-
-            {isSubmitted && (
-              <div
-                style={{
-                  marginTop: "24px",
-                  padding: "20px",
-                  borderRadius: "18px",
-                  background: currentQuestionCorrect ? "#f8fafc" : "#fff1f2",
-                  color: currentQuestionCorrect ? "#334155" : "#be123c",
-                  fontWeight: 700,
-                }}
-              >
-                当前题得分：{currentQuestionScore} / 0.5
-              </div>
-            )}
-
-            {isSubmitted && (
-              <div
-                style={{
-                  marginTop: "20px",
-                  padding: "20px",
-                  borderRadius: "18px",
-                  background: "#eef2ff",
-                  color: "#312e81",
-                }}
-              >
-                <strong>正确答案：</strong>
-                {currentQuestion.answerSpeaker}:{" "}
-                {currentQuestion.target || renderFullAnswer(currentQuestion)}
-                <br />
-                <br />
-                <strong>解析：</strong>
-                {currentQuestion.explanation}
-              </div>
-            )}
-          </>
+          <SentencePractice
+            questions={questions}
+            currentIndex={currentIndex}
+            setCurrentIndex={setCurrentIndex}
+            slotsByQuestion={slotsByQuestion}
+            currentSlots={currentSlots}
+            currentAnswers={currentAnswers}
+            currentQuestion={currentQuestion}
+            currentBank={currentBank}
+            completedCount={completedCount}
+            totalScore={totalScore}
+            isSubmitted={isSubmitted}
+            results={results}
+            dragged={dragged}
+            setDragged={setDragged}
+            apiMessage={apiMessage}
+            currentQuestionCorrect={currentQuestionCorrect}
+            currentQuestionScore={currentQuestionScore}
+            setPage={setPage}
+            previousQuestion={previousQuestion}
+            nextQuestion={nextQuestion}
+            resetCurrentQuestion={resetCurrentQuestion}
+            submitAll={submitAll}
+            restartAll={restartAll}
+            removeChunk={removeChunk}
+            placeChunk={placeChunk}
+          />
         )}
 
         {page === "email" && (
-          <>
-            <button
-              onClick={() => setPage("home")}
-              style={{
-                padding: "10px 16px",
-                border: "1px solid #cbd5e1",
-                borderRadius: "12px",
-                background: "white",
-                fontWeight: 700,
-                cursor: "pointer",
-                marginBottom: "24px",
-              }}
-            >
-              返回首页
-            </button>
+          <WritingPracticePage
+            title={sampleEmailPrompt.title}
+            promptBlock={
+              <>
+                <p
+                  style={{
+                    color: "#64748b",
+                    lineHeight: 1.8,
+                    marginBottom: "24px",
+                  }}
+                >
+                  {sampleEmailPrompt.scenario}
+                </p>
 
-            <h2 style={{ fontSize: "28px", marginBottom: "10px" }}>
-              {sampleEmailPrompt.title}
-            </h2>
+                <div
+                  style={{
+                    padding: "22px",
+                    borderRadius: "18px",
+                    background: "#f1f5f9",
+                    marginBottom: "24px",
+                  }}
+                >
+                  <strong>{sampleEmailPrompt.task}</strong>
 
-            <p style={{ color: "#64748b", lineHeight: 1.8, marginBottom: "24px" }}>
-              {sampleEmailPrompt.scenario}
-            </p>
+                  <ul style={{ lineHeight: 1.8 }}>
+                    {sampleEmailPrompt.requirements.map((requirement) => (
+                      <li key={requirement}>{requirement}</li>
+                    ))}
+                  </ul>
 
-            <div
-              style={{
-                padding: "22px",
-                borderRadius: "18px",
-                background: "#f1f5f9",
-                marginBottom: "24px",
-              }}
-            >
-              <strong>{sampleEmailPrompt.task}</strong>
-
-              <ul style={{ lineHeight: 1.8 }}>
-                {sampleEmailPrompt.requirements.map((requirement) => (
-                  <li key={requirement}>{requirement}</li>
-                ))}
-              </ul>
-
-              <p style={{ color: "#64748b", marginBottom: 0 }}>
-                {sampleEmailPrompt.suggestedLength}
-              </p>
-            </div>
-
-            <textarea
-              value={emailAnswer}
-              onChange={(event) => {
-                setEmailAnswer(event.target.value);
-                setEmailSubmitted(false);
-              }}
-              placeholder="Write your email here..."
-              style={{
-                width: "100%",
-                minHeight: "260px",
-                padding: "18px",
-                borderRadius: "18px",
-                border: "1px solid #cbd5e1",
-                fontSize: "16px",
-                lineHeight: 1.7,
-                resize: "vertical",
-                boxSizing: "border-box",
-              }}
-            />
-
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                marginTop: "14px",
-                marginBottom: "24px",
-              }}
-            >
-              <span style={{ color: "#64748b", fontWeight: 700 }}>
-                Word Count: {emailWordCount}
-              </span>
-
-              <button
-                onClick={() => setEmailSubmitted(true)}
-                disabled={emailWordCount === 0}
-                style={{
-                  padding: "12px 24px",
-                  border: "none",
-                  borderRadius: "12px",
-                  background: emailWordCount === 0 ? "#cbd5e1" : "#111827",
-                  color: "white",
-                  fontWeight: 700,
-                  cursor: emailWordCount === 0 ? "not-allowed" : "pointer",
-                }}
-              >
-                提交并查看反馈
-              </button>
-            </div>
-
-            {emailSubmitted && (
-              <FeedbackBox
-                score={fallbackEmailFeedback.score}
-                strengths={fallbackEmailFeedback.strengths}
-                problems={fallbackEmailFeedback.problems}
-                improvedVersion={fallbackEmailFeedback.improvedVersion}
-              />
-            )}
-          </>
+                  <p style={{ color: "#64748b", marginBottom: 0 }}>
+                    {sampleEmailPrompt.suggestedLength}
+                  </p>
+                </div>
+              </>
+            }
+            answer={emailAnswer}
+            setAnswer={(value) => {
+              setEmailAnswer(value);
+              setEmailSubmitted(false);
+            }}
+            wordCount={emailWordCount}
+            placeholder="Write your email here..."
+            isScoring={isScoringEmail}
+            onSubmit={submitEmailWriting}
+            submitted={emailSubmitted}
+            feedback={emailFeedback}
+            setPage={setPage}
+          />
         )}
 
         {page === "discussion" && (
-          <>
-            <button
-              onClick={() => setPage("home")}
-              style={{
-                padding: "10px 16px",
-                border: "1px solid #cbd5e1",
-                borderRadius: "12px",
-                background: "white",
-                fontWeight: 700,
-                cursor: "pointer",
-                marginBottom: "24px",
-              }}
-            >
-              返回首页
-            </button>
+          <WritingPracticePage
+            title={sampleDiscussionPrompt.title}
+            promptBlock={
+              <>
+                <div
+                  style={{
+                    padding: "22px",
+                    borderRadius: "18px",
+                    background: "#f1f5f9",
+                    marginBottom: "18px",
+                    lineHeight: 1.8,
+                  }}
+                >
+                  <strong>Professor</strong>
+                  <p style={{ marginBottom: 0 }}>
+                    {sampleDiscussionPrompt.professor}
+                  </p>
+                </div>
 
-            <h2 style={{ fontSize: "28px", marginBottom: "10px" }}>
-              {sampleDiscussionPrompt.title}
-            </h2>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
+                    gap: "18px",
+                    marginBottom: "18px",
+                  }}
+                >
+                  <div
+                    style={{
+                      padding: "20px",
+                      borderRadius: "18px",
+                      background: "#f8fafc",
+                      border: "1px solid #e2e8f0",
+                      lineHeight: 1.8,
+                    }}
+                  >
+                    <strong>{sampleDiscussionPrompt.studentOneName}</strong>
+                    <p style={{ marginBottom: 0 }}>
+                      {sampleDiscussionPrompt.studentOnePost}
+                    </p>
+                  </div>
 
-            <div
-              style={{
-                padding: "22px",
-                borderRadius: "18px",
-                background: "#f1f5f9",
-                marginBottom: "18px",
-                lineHeight: 1.8,
-              }}
-            >
-              <strong>Professor</strong>
-              <p style={{ marginBottom: 0 }}>{sampleDiscussionPrompt.professor}</p>
-            </div>
+                  <div
+                    style={{
+                      padding: "20px",
+                      borderRadius: "18px",
+                      background: "#f8fafc",
+                      border: "1px solid #e2e8f0",
+                      lineHeight: 1.8,
+                    }}
+                  >
+                    <strong>{sampleDiscussionPrompt.studentTwoName}</strong>
+                    <p style={{ marginBottom: 0 }}>
+                      {sampleDiscussionPrompt.studentTwoPost}
+                    </p>
+                  </div>
+                </div>
 
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
-                gap: "18px",
-                marginBottom: "18px",
-              }}
-            >
-              <div
-                style={{
-                  padding: "20px",
-                  borderRadius: "18px",
-                  background: "#f8fafc",
-                  border: "1px solid #e2e8f0",
-                  lineHeight: 1.8,
-                }}
-              >
-                <strong>{sampleDiscussionPrompt.studentOneName}</strong>
-                <p style={{ marginBottom: 0 }}>
-                  {sampleDiscussionPrompt.studentOnePost}
-                </p>
-              </div>
-
-              <div
-                style={{
-                  padding: "20px",
-                  borderRadius: "18px",
-                  background: "#f8fafc",
-                  border: "1px solid #e2e8f0",
-                  lineHeight: 1.8,
-                }}
-              >
-                <strong>{sampleDiscussionPrompt.studentTwoName}</strong>
-                <p style={{ marginBottom: 0 }}>
-                  {sampleDiscussionPrompt.studentTwoPost}
-                </p>
-              </div>
-            </div>
-
-            <div
-              style={{
-                padding: "22px",
-                borderRadius: "18px",
-                background: "#eef2ff",
-                color: "#312e81",
-                marginBottom: "24px",
-                lineHeight: 1.8,
-              }}
-            >
-              <strong>Question</strong>
-              <p>{sampleDiscussionPrompt.question}</p>
-              <p style={{ marginBottom: 0 }}>
-                {sampleDiscussionPrompt.suggestedLength}
-              </p>
-            </div>
-
-            <textarea
-              value={discussionAnswer}
-              onChange={(event) => {
-                setDiscussionAnswer(event.target.value);
-                setDiscussionSubmitted(false);
-              }}
-              placeholder="Write your academic discussion response here..."
-              style={{
-                width: "100%",
-                minHeight: "280px",
-                padding: "18px",
-                borderRadius: "18px",
-                border: "1px solid #cbd5e1",
-                fontSize: "16px",
-                lineHeight: 1.7,
-                resize: "vertical",
-                boxSizing: "border-box",
-              }}
-            />
-
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                marginTop: "14px",
-                marginBottom: "24px",
-              }}
-            >
-              <span style={{ color: "#64748b", fontWeight: 700 }}>
-                Word Count: {discussionWordCount}
-              </span>
-
-              <button
-                onClick={() => setDiscussionSubmitted(true)}
-                disabled={discussionWordCount === 0}
-                style={{
-                  padding: "12px 24px",
-                  border: "none",
-                  borderRadius: "12px",
-                  background:
-                    discussionWordCount === 0 ? "#cbd5e1" : "#111827",
-                  color: "white",
-                  fontWeight: 700,
-                  cursor:
-                    discussionWordCount === 0 ? "not-allowed" : "pointer",
-                }}
-              >
-                提交并查看反馈
-              </button>
-            </div>
-
-            {discussionSubmitted && (
-              <FeedbackBox
-                score={fallbackDiscussionFeedback.score}
-                strengths={fallbackDiscussionFeedback.strengths}
-                problems={fallbackDiscussionFeedback.problems}
-                improvedVersion={fallbackDiscussionFeedback.improvedVersion}
-              />
-            )}
-          </>
+                <div
+                  style={{
+                    padding: "22px",
+                    borderRadius: "18px",
+                    background: "#eef2ff",
+                    color: "#312e81",
+                    marginBottom: "24px",
+                    lineHeight: 1.8,
+                  }}
+                >
+                  <strong>Question</strong>
+                  <p>{sampleDiscussionPrompt.question}</p>
+                  <p style={{ marginBottom: 0 }}>
+                    {sampleDiscussionPrompt.suggestedLength}
+                  </p>
+                </div>
+              </>
+            }
+            answer={discussionAnswer}
+            setAnswer={(value) => {
+              setDiscussionAnswer(value);
+              setDiscussionSubmitted(false);
+            }}
+            wordCount={discussionWordCount}
+            placeholder="Write your academic discussion response here..."
+            isScoring={isScoringDiscussion}
+            onSubmit={submitDiscussionWriting}
+            submitted={discussionSubmitted}
+            feedback={discussionFeedback}
+            setPage={setPage}
+          />
         )}
       </div>
     </div>
+  );
+}
+
+function SentencePractice({
+  questions,
+  currentIndex,
+  setCurrentIndex,
+  slotsByQuestion,
+  currentSlots,
+  currentAnswers,
+  currentQuestion,
+  currentBank,
+  completedCount,
+  totalScore,
+  isSubmitted,
+  results,
+  dragged,
+  setDragged,
+  apiMessage,
+  currentQuestionCorrect,
+  currentQuestionScore,
+  setPage,
+  previousQuestion,
+  nextQuestion,
+  resetCurrentQuestion,
+  submitAll,
+  restartAll,
+  removeChunk,
+  placeChunk,
+}: {
+  questions: Question[];
+  currentIndex: number;
+  setCurrentIndex: (index: number) => void;
+  slotsByQuestion: Record<number, (Chunk | null)[]>;
+  currentSlots: (Chunk | null)[];
+  currentAnswers: string[];
+  currentQuestion: Question;
+  currentBank: Chunk[];
+  completedCount: number;
+  totalScore: number;
+  isSubmitted: boolean;
+  results: Record<number, number>;
+  dragged: Chunk | null;
+  setDragged: (chunk: Chunk | null) => void;
+  apiMessage: string;
+  currentQuestionCorrect: boolean;
+  currentQuestionScore: number | undefined;
+  setPage: (page: Page) => void;
+  previousQuestion: () => void;
+  nextQuestion: () => void;
+  resetCurrentQuestion: () => void;
+  submitAll: () => void;
+  restartAll: () => void;
+  removeChunk: (slotIndex: number) => void;
+  placeChunk: (chunk: Chunk, slotIndex: number) => void;
+}) {
+  return (
+    <>
+      <button
+        onClick={() => setPage("home")}
+        style={{
+          padding: "10px 16px",
+          border: "1px solid #cbd5e1",
+          borderRadius: "12px",
+          background: "white",
+          fontWeight: 700,
+          cursor: "pointer",
+          marginBottom: "24px",
+        }}
+      >
+        返回首页
+      </button>
+
+      <p style={{ color: "#64748b", marginBottom: "24px" }}>
+        A/B 对话补全。把词块拖到 B 句横线上。全部题目完成后统一批改。每题
+        0.5 分，错一空即为 0。
+      </p>
+
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          gap: "16px",
+          marginBottom: "30px",
+          padding: "16px 20px",
+          background: "#f1f5f9",
+          borderRadius: "16px",
+          fontWeight: 700,
+        }}
+      >
+        <span>
+          Question {currentIndex + 1} / {questions.length}
+        </span>
+
+        <span>
+          已完成：{completedCount} / {questions.length}
+        </span>
+
+        <span>
+          {isSubmitted
+            ? `总分：${totalScore} / ${questions.length * 0.5}`
+            : "尚未提交"}
+        </span>
+      </div>
+
+      <div style={{ display: "flex", gap: "8px", marginBottom: "28px" }}>
+        {questions.map((question, index) => {
+          const slots = slotsByQuestion[question.id] || [];
+          const complete = isQuestionComplete(slots);
+          const score = results[question.id];
+
+          let background = "white";
+          let color = "#334155";
+          let borderColor = "#cbd5e1";
+
+          if (index === currentIndex) {
+            background = "#111827";
+            color = "white";
+            borderColor = "#111827";
+          } else if (isSubmitted && score === 0) {
+            background = "#fff1f2";
+            color = "#be123c";
+            borderColor = "#f43f5e";
+          } else if (complete) {
+            background = "#eef2ff";
+            color = "#312e81";
+            borderColor = "#c7d2fe";
+          }
+
+          return (
+            <button
+              key={question.id}
+              onClick={() => setCurrentIndex(index)}
+              style={{
+                width: "42px",
+                height: "42px",
+                borderRadius: "12px",
+                border: `1px solid ${borderColor}`,
+                background,
+                color,
+                fontWeight: 800,
+                cursor: "pointer",
+              }}
+            >
+              {index + 1}
+            </button>
+          );
+        })}
+      </div>
+
+      <div
+        style={{
+          fontSize: "26px",
+          lineHeight: "2.2",
+          fontWeight: 700,
+          marginBottom: "36px",
+        }}
+      >
+        <div>
+          {currentQuestion.contextSpeaker}: {currentQuestion.contextSentence}
+        </div>
+
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "10px" }}>
+          <span>{currentQuestion.answerSpeaker}:</span>
+
+          {(() => {
+            let blankIndex = 0;
+
+            return currentQuestion.parts.map((part, partIndex) => {
+              if (part.type === "fixed") {
+                return <span key={`fixed-${partIndex}`}>{part.text}</span>;
+              }
+
+              const slotIndex = blankIndex;
+              blankIndex += 1;
+
+              const slot = currentSlots[slotIndex];
+              const slotIsWrong =
+                isSubmitted && slot?.text !== currentAnswers[slotIndex];
+
+              return (
+                <button
+                  key={`blank-${partIndex}`}
+                  onClick={() => removeChunk(slotIndex)}
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={() => {
+                    if (dragged) {
+                      placeChunk(dragged, slotIndex);
+                      setDragged(null);
+                    }
+                  }}
+                  style={{
+                    minWidth: "120px",
+                    minHeight: "42px",
+                    border: "2px solid",
+                    borderColor: slotIsWrong ? "#f43f5e" : "#cbd5e1",
+                    borderRadius: "12px",
+                    background: slotIsWrong
+                      ? "#fff1f2"
+                      : slot
+                      ? "#eef2ff"
+                      : "white",
+                    color: slotIsWrong ? "#be123c" : "#111827",
+                    fontSize: "18px",
+                    fontWeight: 700,
+                    cursor: isSubmitted ? "default" : "pointer",
+                  }}
+                >
+                  {slot?.text || ""}
+                </button>
+              );
+            });
+          })()}
+        </div>
+      </div>
+
+      <div
+        style={{
+          background: "#f1f5f9",
+          padding: "20px",
+          borderRadius: "18px",
+          marginBottom: "24px",
+        }}
+      >
+        <div
+          style={{
+            fontSize: "14px",
+            color: "#64748b",
+            marginBottom: "12px",
+          }}
+        >
+          可选词 / Word Bank
+        </div>
+
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "10px" }}>
+          {currentBank.map((chunk) => (
+            <button
+              key={chunk.id}
+              draggable={!isSubmitted}
+              onDragStart={() => setDragged(chunk)}
+              onClick={() => {
+                const emptyIndex = currentSlots.findIndex(
+                  (slot) => slot === null
+                );
+
+                if (emptyIndex !== -1) {
+                  placeChunk(chunk, emptyIndex);
+                }
+              }}
+              style={{
+                padding: "10px 16px",
+                border: "1px solid #cbd5e1",
+                borderRadius: "999px",
+                background: "white",
+                fontSize: "16px",
+                fontWeight: 600,
+                cursor: isSubmitted ? "default" : "grab",
+              }}
+            >
+              {chunk.text}
+            </button>
+          ))}
+
+          {currentBank.length === 0 && (
+            <span style={{ color: "#64748b" }}>本题词库已清空。</span>
+          )}
+        </div>
+      </div>
+
+      <div style={{ display: "flex", flexWrap: "wrap", gap: "12px" }}>
+        <button
+          onClick={previousQuestion}
+          disabled={currentIndex === 0}
+          style={{
+            padding: "12px 20px",
+            border: "1px solid #cbd5e1",
+            borderRadius: "12px",
+            background: "white",
+            fontWeight: 700,
+            cursor: currentIndex === 0 ? "not-allowed" : "pointer",
+          }}
+        >
+          上一题
+        </button>
+
+        <button
+          onClick={nextQuestion}
+          disabled={currentIndex === questions.length - 1}
+          style={{
+            padding: "12px 20px",
+            border: "1px solid #cbd5e1",
+            borderRadius: "12px",
+            background: "white",
+            fontWeight: 700,
+            cursor:
+              currentIndex === questions.length - 1 ? "not-allowed" : "pointer",
+          }}
+        >
+          下一题
+        </button>
+
+        <button
+          onClick={resetCurrentQuestion}
+          disabled={isSubmitted}
+          style={{
+            padding: "12px 20px",
+            border: "1px solid #cbd5e1",
+            borderRadius: "12px",
+            background: "white",
+            fontWeight: 700,
+            cursor: isSubmitted ? "not-allowed" : "pointer",
+          }}
+        >
+          清空本题
+        </button>
+
+        <button
+          onClick={submitAll}
+          disabled={isSubmitted}
+          style={{
+            padding: "12px 20px",
+            border: "none",
+            borderRadius: "12px",
+            background: isSubmitted ? "#cbd5e1" : "#111827",
+            color: "white",
+            fontWeight: 700,
+            cursor: isSubmitted ? "not-allowed" : "pointer",
+          }}
+        >
+          提交全部并批改
+        </button>
+
+        <button
+          onClick={restartAll}
+          style={{
+            padding: "12px 20px",
+            border: "1px solid #cbd5e1",
+            borderRadius: "12px",
+            background: "white",
+            fontWeight: 700,
+            cursor: "pointer",
+          }}
+        >
+          重新开始
+        </button>
+      </div>
+
+      {apiMessage && (
+        <div
+          style={{
+            marginTop: "20px",
+            padding: "16px 20px",
+            borderRadius: "16px",
+            background: "#eef2ff",
+            color: "#312e81",
+            fontWeight: 700,
+          }}
+        >
+          {apiMessage}
+        </div>
+      )}
+
+      {isSubmitted && (
+        <div
+          style={{
+            marginTop: "24px",
+            padding: "20px",
+            borderRadius: "18px",
+            background: currentQuestionCorrect ? "#f8fafc" : "#fff1f2",
+            color: currentQuestionCorrect ? "#334155" : "#be123c",
+            fontWeight: 700,
+          }}
+        >
+          当前题得分：{currentQuestionScore} / 0.5
+        </div>
+      )}
+
+      {isSubmitted && (
+        <div
+          style={{
+            marginTop: "20px",
+            padding: "20px",
+            borderRadius: "18px",
+            background: "#eef2ff",
+            color: "#312e81",
+          }}
+        >
+          <strong>正确答案：</strong>
+          {currentQuestion.answerSpeaker}:{" "}
+          {currentQuestion.target || renderFullAnswer(currentQuestion)}
+          <br />
+          <br />
+          <strong>解析：</strong>
+          {currentQuestion.explanation}
+        </div>
+      )}
+    </>
+  );
+}
+
+function WritingPracticePage({
+  title,
+  promptBlock,
+  answer,
+  setAnswer,
+  wordCount,
+  placeholder,
+  isScoring,
+  onSubmit,
+  submitted,
+  feedback,
+  setPage,
+}: {
+  title: string;
+  promptBlock: React.ReactNode;
+  answer: string;
+  setAnswer: (value: string) => void;
+  wordCount: number;
+  placeholder: string;
+  isScoring: boolean;
+  onSubmit: () => void;
+  submitted: boolean;
+  feedback: WritingFeedback | null;
+  setPage: (page: Page) => void;
+}) {
+  return (
+    <>
+      <button
+        onClick={() => setPage("home")}
+        style={{
+          padding: "10px 16px",
+          border: "1px solid #cbd5e1",
+          borderRadius: "12px",
+          background: "white",
+          fontWeight: 700,
+          cursor: "pointer",
+          marginBottom: "24px",
+        }}
+      >
+        返回首页
+      </button>
+
+      <h2 style={{ fontSize: "28px", marginBottom: "10px" }}>{title}</h2>
+
+      {promptBlock}
+
+      <textarea
+        value={answer}
+        onChange={(event) => setAnswer(event.target.value)}
+        placeholder={placeholder}
+        style={{
+          width: "100%",
+          minHeight: "280px",
+          padding: "18px",
+          borderRadius: "18px",
+          border: "1px solid #cbd5e1",
+          fontSize: "16px",
+          lineHeight: 1.7,
+          resize: "vertical",
+          boxSizing: "border-box",
+        }}
+      />
+
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          marginTop: "14px",
+          marginBottom: "24px",
+        }}
+      >
+        <span style={{ color: "#64748b", fontWeight: 700 }}>
+          Word Count: {wordCount}
+        </span>
+
+        <button
+          onClick={onSubmit}
+          disabled={wordCount === 0 || isScoring}
+          style={{
+            padding: "12px 24px",
+            border: "none",
+            borderRadius: "12px",
+            background: wordCount === 0 || isScoring ? "#cbd5e1" : "#111827",
+            color: "white",
+            fontWeight: 700,
+            cursor: wordCount === 0 || isScoring ? "not-allowed" : "pointer",
+          }}
+        >
+          {isScoring ? "正在评分..." : "提交并查看反馈"}
+        </button>
+      </div>
+
+      {submitted && feedback && (
+        <FeedbackBox
+          score={feedback.score}
+          strengths={feedback.strengths}
+          problems={feedback.problems}
+          grammarCorrections={feedback.grammarCorrections}
+          improvedVersion={feedback.improvedVersion}
+          sampleAnswer={feedback.sampleAnswer}
+        />
+      )}
+    </>
   );
 }
 
@@ -1354,12 +1536,20 @@ function FeedbackBox({
   score,
   strengths,
   problems,
+  grammarCorrections,
   improvedVersion,
+  sampleAnswer,
 }: {
   score: string;
   strengths: string[];
   problems: string[];
+  grammarCorrections?: {
+    original: string;
+    corrected: string;
+    explanation: string;
+  }[];
   improvedVersion: string;
+  sampleAnswer?: string;
 }) {
   return (
     <div
@@ -1370,7 +1560,7 @@ function FeedbackBox({
         color: "#312e81",
       }}
     >
-      <h3 style={{ marginTop: 0 }}>Sample Feedback: {score}</h3>
+      <h3 style={{ marginTop: 0 }}>AI Feedback: {score}</h3>
 
       <strong>Strengths</strong>
       <ul style={{ lineHeight: 1.8 }}>
@@ -1385,6 +1575,37 @@ function FeedbackBox({
           <li key={item}>{item}</li>
         ))}
       </ul>
+
+      {grammarCorrections && grammarCorrections.length > 0 && (
+        <>
+          <strong>Grammar Corrections</strong>
+          <div style={{ display: "grid", gap: "12px", marginTop: "12px" }}>
+            {grammarCorrections.map((item, index) => (
+              <div
+                key={`${item.original}-${index}`}
+                style={{
+                  background: "white",
+                  padding: "14px",
+                  borderRadius: "14px",
+                  color: "#111827",
+                  lineHeight: 1.7,
+                }}
+              >
+                <div>
+                  <strong>Original:</strong> {item.original}
+                </div>
+                <div>
+                  <strong>Corrected:</strong> {item.corrected}
+                </div>
+                <div style={{ color: "#64748b" }}>
+                  <strong>Why:</strong> {item.explanation}
+                </div>
+              </div>
+            ))}
+          </div>
+          <br />
+        </>
+      )}
 
       <strong>Improved Version</strong>
       <pre
@@ -1401,6 +1622,26 @@ function FeedbackBox({
       >
         {improvedVersion}
       </pre>
+
+      {sampleAnswer && (
+        <>
+          <strong>Sample Answer</strong>
+          <pre
+            style={{
+              whiteSpace: "pre-wrap",
+              fontFamily:
+                '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+              lineHeight: 1.8,
+              background: "white",
+              padding: "18px",
+              borderRadius: "16px",
+              color: "#111827",
+            }}
+          >
+            {sampleAnswer}
+          </pre>
+        </>
+      )}
     </div>
   );
 }
