@@ -388,10 +388,19 @@ async function generateAcademicDiscussionWithAPI(level: string, topic: string) {
 }
 
 async function scoreEmailWritingWithAPI(prompt: unknown, answer: string) {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+
+  if (!session?.access_token) {
+    throw new Error("Please sign in before using AI scoring.");
+  }
+
   const response = await fetch("/api/score-email-writing", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
+      Authorization: `Bearer ${session.access_token}`,
     },
     body: JSON.stringify({
       prompt,
@@ -399,13 +408,16 @@ async function scoreEmailWritingWithAPI(prompt: unknown, answer: string) {
     }),
   });
 
-  if (!response.ok) {
-    throw new Error("Failed to score email writing");
-  }
-
   const data = await response.json();
 
-  return data as WritingFeedback;
+  if (!response.ok) {
+    throw new Error(data.error || "Failed to score email writing");
+  }
+
+  return data as WritingFeedback & {
+    balance?: number;
+    cost?: number;
+  };
 }
 
 async function scoreAcademicDiscussionWithAPI(prompt: unknown, answer: string) {
@@ -874,23 +886,32 @@ async function handleRedeemCode() {
 
       setEmailFeedback(feedback);
       setEmailSubmitted(true);
+
+      if (typeof feedback.balance === "number") {
+        setPoints(feedback.balance);
+      } else if (user) {
+        await loadPoints(user.id);
+      } 
     } catch (error) {
-      setEmailFeedback({
-        score: "评分失败",
-        strengths: [],
-        problems: [
-          "AI 评分接口暂时不可用。请检查 Vercel Function Logs，确认 /api/score-email-writing 是否报错。",
-        ],
-        grammarCorrections: [],
-        actionPlan: [],
-        improvedVersion: "",
-        sampleAnswer: "",
-      });
-      setEmailSubmitted(true);
+        const message =
+          error instanceof Error
+            ? error.message
+            : "AI scoring failed. Please try again.";
+
+        setEmailFeedback({
+          score: "评分失败",
+          strengths: [],
+          problems: [message],
+          grammarCorrections: [],
+          actionPlan: [],
+          improvedVersion: "",
+          sampleAnswer: "",
+        });
+        setEmailSubmitted(true);
     } finally {
-      setIsScoringEmail(false);
+        setIsScoringEmail(false);
     }
-  }
+  } 
 
   async function submitDiscussionWriting() {
     if (discussionWordCount === 0) return;

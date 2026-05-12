@@ -1,4 +1,32 @@
 import { GoogleGenAI } from "@google/genai";
+import { createClient } from "@supabase/supabase-js";
+
+const EMAIL_SCORE_COST = 3;
+
+function createAdminClient() {
+  const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!supabaseUrl) {
+    throw new Error("Missing SUPABASE_URL");
+  }
+
+  if (!serviceRoleKey) {
+    throw new Error("Missing SUPABASE_SERVICE_ROLE_KEY");
+  }
+
+  return createClient(supabaseUrl, serviceRoleKey);
+}
+
+function getBearerToken(req) {
+  const authHeader = req.headers.authorization || "";
+
+  if (!authHeader.startsWith("Bearer ")) {
+    return "";
+  }
+
+  return authHeader.replace("Bearer ", "").trim();
+}
 
 function countWords(text) {
   return String(text || "").trim()
@@ -44,6 +72,14 @@ function normalizeArray(value) {
   return Array.isArray(value) ? value : [];
 }
 
+function safeJsonParse(text) {
+  try {
+    return JSON.parse(text);
+  } catch (error) {
+    throw new Error(`Gemini returned invalid JSON: ${text.slice(0, 300)}`);
+  }
+}
+
 function calculateEmailScore(json, wordCount) {
   const taskScore = clampScore(json.taskScore);
   const organizationScore = clampScore(json.organizationScore);
@@ -61,14 +97,84 @@ function calculateEmailScore(json, wordCount) {
   return formatScore(score);
 }
 
+async function getUserFromToken(supabaseAdmin, token) {
+  if (!token) {
+    return null;
+  }
+
+  const {
+    data: { user },
+    error,
+  } = await supabaseAdmin.auth.getUser(token);
+
+  if (error || !user) {
+    return null;
+  }
+
+  return user;
+}
+
+async function getUserProfile(supabaseAdmin, userId) {
+  const { data, error } = await supabaseAdmin
+    .from("profiles")
+    .select("points")
+    .eq("id", userId)
+    .single();
+
+  if (error || !data) {
+    throw new Error("User profile not found.");
+  }
+
+  return data;
+}
+
+async function deductPoints(supabaseAdmin, userId, currentPoints, cost) {
+  const newBalance = currentPoints - cost;
+
+  const { error } = await supabaseAdmin
+    .from("profiles")
+    .update({
+      points: newBalance,
+    })
+    .eq("id", userId);
+
+  if (error) {
+    throw error;
+  }
+
+  return newBalance;
+}
+
 export default async function handler(req, res) {
   if (req.method !== "POST") {
-    return res.status(405).json({ error: "Method not allowed" });
+    return res.status(405).json({
+      error: "Method not allowed",
+    });
   }
 
   try {
     if (!process.env.GEMINI_API_KEY) {
       throw new Error("Missing GEMINI_API_KEY environment variable");
+    }
+
+    const supabaseAdmin = createAdminClient();
+    const token = getBearerToken(req);
+    const user = await getUserFromToken(supabaseAdmin, token);
+
+    if (!user) {
+      return res.status(401).json({
+        error: "Please sign in before using AI scoring.",
+      });
+    }
+
+    const profile = await getUserProfile(supabaseAdmin, user.id);
+
+    if (profile.points < EMAIL_SCORE_COST) {
+      return res.status(402).json({
+        error: `Not enough points. Email Writing scoring costs ${EMAIL_SCORE_COST} points.`,
+        balance: profile.points,
+        cost: EMAIL_SCORE_COST,
+      });
     }
 
     const ai = new GoogleGenAI({
@@ -133,12 +239,6 @@ Use the same standards every time.
 Do not give a high score to a very short response just because it has few grammar mistakes.
 Do not be overly harsh on a complete 90+ word response only because it is not very long.
 
-Email prompt:
-${JSON.stringify(prompt)}
-
-Student response:
-${answer}
-
 Feedback quality rules:
 1. Do not give generic comments like "good job" or "improve grammar" unless you explain exactly why.
 2. Every strength should mention a specific feature of the student's response.
@@ -150,68 +250,44 @@ Feedback quality rules:
 8. The actionPlan should give 3 short, practical steps for improving the next response.
 9. Use clear and direct language suitable for a TOEFL learner.
 
+Email prompt:
+${JSON.stringify(prompt)}
+
+Student response:
+${answer}
+
 Return valid JSON only. No markdown.
 
 Return this exact JSON structure:
-
 {
-
   "taskScore": 4.0,
-
   "organizationScore": 4.0,
-
   "languageScore": 4.0,
-
   "naturalnessScore": 4.0,
-
   "strengths": [
-
     "Specific strength based on the student's email.",
-
     "Specific strength based on the student's email.",
-
     "Specific strength based on the student's email."
-
   ],
-
   "problems": [
-
     "Specific problem and why it matters.",
-
     "Specific problem and why it matters.",
-
     "Specific problem and why it matters."
-
   ],
-
   "grammarCorrections": [
-
     {
-
       "original": "student's original phrase or sentence",
-
       "corrected": "corrected phrase or sentence",
-
       "explanation": "brief explanation"
-
     }
-
   ],
-
   "actionPlan": [
-
     "Next time, make sure the email has a clear greeting and closing.",
-
     "Address every bullet point in the prompt directly.",
-
     "Add one specific detail to make the explanation more convincing."
-
   ],
-
   "improvedVersion": "A polished version that preserves the student's original meaning.",
-
   "sampleAnswer": "A separate strong sample email for this prompt."
-
 }
 `;
 
@@ -226,12 +302,19 @@ Return this exact JSON structure:
 
     const text = response.text || "";
 
-    if (!text) {
+    if (!text.trim()) {
       throw new Error("Gemini returned empty response");
     }
 
-    const json = JSON.parse(text);
+    const json = safeJsonParse(text);
     const finalScore = calculateEmailScore(json, wordCount);
+
+    const newBalance = await deductPoints(
+      supabaseAdmin,
+      user.id,
+      profile.points,
+      EMAIL_SCORE_COST
+    );
 
     return res.status(200).json({
       score: finalScore,
@@ -241,10 +324,24 @@ Return this exact JSON structure:
       actionPlan: normalizeArray(json.actionPlan),
       improvedVersion: json.improvedVersion || "",
       sampleAnswer: json.sampleAnswer || "",
+      cost: EMAIL_SCORE_COST,
+      balance: newBalance,
     });
   } catch (error) {
+    console.error("Email scoring error:", error);
+
+    const message = error?.message || String(error);
+
+    if (message.includes("429") || message.toLowerCase().includes("quota")) {
+      return res.status(429).json({
+        error: "AI scoring quota exceeded. Please try again later.",
+        details: message,
+      });
+    }
+
     return res.status(500).json({
-      error: error.message || "Failed to score email writing",
+      error: error?.message || "Failed to score email writing",
+      details: String(error),
     });
   }
 }
