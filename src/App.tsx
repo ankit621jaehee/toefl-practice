@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type { User } from "@supabase/supabase-js";
 import { supabase } from "./supabaseClient";
 
-type Page = "home" | "sentence" | "email" | "discussion";
+type Page = "home" | "sentence" | "email" | "discussion" | "records";
 
 type Part =
   | {
@@ -61,6 +61,16 @@ type WritingFeedback = {
   actionPlan: string[];
   improvedVersion: string;
   sampleAnswer: string;
+};
+type PracticeRecord = {
+  id: string;
+  practice_type: string;
+  prompt: EmailPrompt | DiscussionPrompt | Record<string, unknown>;
+  answer: string;
+  feedback: WritingFeedback;
+  score: string;
+  points_spent: number;
+  created_at: string;
 };
 const EMAIL_SCORING_COST = 3;
 const DISCUSSION_SCORING_COST = 3;
@@ -477,6 +487,9 @@ function App() {
   const [redeemCode, setRedeemCode] = useState("");
   const [redeemMessage, setRedeemMessage] = useState("");
   const [isRedeeming, setIsRedeeming] = useState(false);
+  const [records, setRecords] = useState<PracticeRecord[]>([]);
+  const [isLoadingRecords, setIsLoadingRecords] = useState(false);
+  const [recordMessage, setRecordMessage] = useState(""); 
 
   const [page, setPage] = useState<Page>("home");
 
@@ -638,6 +651,33 @@ async function handleRedeemCode() {
   } finally {
     setIsRedeeming(false);
   }
+}
+
+async function loadPracticeRecords() {
+  if (!user) {
+    setRecordMessage("Please sign in first.");
+    return;
+  }
+
+  setIsLoadingRecords(true);
+  setRecordMessage("");
+
+  const { data, error } = await supabase
+    .from("practice_records")
+    .select(
+      "id, practice_type, prompt, answer, feedback, score, points_spent, created_at"
+    )
+    .eq("user_id", user.id)
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    setRecordMessage(error.message);
+    setIsLoadingRecords(false);
+    return;
+  }
+
+  setRecords((data || []) as PracticeRecord[]);
+  setIsLoadingRecords(false);
 }
 
   const [questions, setQuestions] = useState<Question[]>(fallbackQuestions);
@@ -1023,6 +1063,10 @@ async function handleRedeemCode() {
               onSignIn={handleSignIn}
               onSignOut={handleSignOut}
               onRedeemCode={handleRedeemCode}
+              onViewRecords={async () => {
+                setPage("records");
+                await loadPracticeRecords();
+              }}
             />
 
 
@@ -1293,6 +1337,17 @@ async function handleRedeemCode() {
             setPage={setPage}
           />
         )}
+
+        {page === "records" && (
+          <PracticeRecordsPage
+            records={records}
+            isLoading={isLoadingRecords}
+            message={recordMessage}
+            setPage={setPage}
+          />
+        )}
+
+
       </div>
     </div>
   );
@@ -2094,6 +2149,7 @@ function AuthPanel({
   onSignIn,
   onSignOut,
   onRedeemCode,
+  onViewRecords,
 }: {
   user: User | null;
   points: number;
@@ -2111,6 +2167,7 @@ function AuthPanel({
   onSignIn: () => void;
   onSignOut: () => void;
   onRedeemCode: () => void;
+  onViewRecords:()=> void;
 }) {
   return (
     <section
@@ -2178,7 +2235,21 @@ function AuthPanel({
             </p>
           )}
 
-          <div style={{ marginTop: "16px" }}>
+
+
+
+          <div
+            style={{
+              display: "flex",
+              gap: "12px",
+              flexWrap: "wrap",
+              marginTop: "16px",
+            }}
+          >
+            <button type="button" onClick={onViewRecords}>
+              View Practice Records
+            </button>
+            
             <button type="button" onClick={onSignOut}>
               Sign out
             </button>
@@ -2255,6 +2326,108 @@ function AuthPanel({
         </>
       )}
     </section>
+  );
+}
+
+function PracticeRecordsPage({
+  records,
+  isLoading,
+  message,
+  setPage,
+}: {
+  records: PracticeRecord[];
+  isLoading: boolean;
+  message: string;
+  setPage: (page: Page) => void;
+}) {
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setPage("home")}
+        style={{
+          padding: "10px 16px",
+          border: "1px solid #cbd5e1",
+          borderRadius: "12px",
+          background: "white",
+          fontWeight: 700,
+          cursor: "pointer",
+          marginBottom: "24px",
+        }}
+      >
+        返回首页
+      </button>
+
+      <h2 style={{ fontSize: "28px", marginBottom: "10px" }}>
+        Practice Records
+      </h2>
+
+      {isLoading && <p style={{ color: "#64748b" }}>Loading records...</p>}
+      {message && <p style={{ color: "#be123c" }}>{message}</p>}
+
+      {!isLoading && records.length === 0 && (
+        <p style={{ color: "#64748b" }}>No practice records yet.</p>
+      )}
+
+      <div style={{ display: "grid", gap: "18px" }}>
+        {records.map((record) => (
+          <div
+            key={record.id}
+            style={{
+              border: "1px solid #e2e8f0",
+              borderRadius: "18px",
+              padding: "20px",
+              background: "#f8fafc",
+            }}
+          >
+            <div style={{ color: "#64748b", marginBottom: "8px" }}>
+              {new Date(record.created_at).toLocaleString()} ·{" "}
+              {record.practice_type} · {record.points_spent} points spent
+            </div>
+
+            <h3 style={{ marginTop: 0 }}>Score: {record.score}</h3>
+
+            <strong>Question</strong>
+            <pre
+              style={{
+                whiteSpace: "pre-wrap",
+                background: "white",
+                padding: "14px",
+                borderRadius: "14px",
+                lineHeight: 1.7,
+                overflowX: "auto",
+              }}
+            >
+              {JSON.stringify(record.prompt, null, 2)}
+            </pre>
+
+            <strong>Your Answer</strong>
+            <pre
+              style={{
+                whiteSpace: "pre-wrap",
+                background: "white",
+                padding: "14px",
+                borderRadius: "14px",
+                lineHeight: 1.7,
+              }}
+            >
+              {record.answer}
+            </pre>
+
+            <strong>Feedback</strong>
+            <FeedbackBox
+              score={record.feedback.score}
+              strengths={record.feedback.strengths || []}
+              problems={record.feedback.problems || []}
+              grammarCorrections={record.feedback.grammarCorrections || []}
+              actionPlan={record.feedback.actionPlan || []}
+              improvedVersion={record.feedback.improvedVersion || ""}
+              sampleAnswer={record.feedback.sampleAnswer || ""}
+            />
+          </div>
+        ))}
+      </div>
+    </>
   );
 }
 
