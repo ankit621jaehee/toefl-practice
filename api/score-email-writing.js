@@ -145,6 +145,31 @@ async function deductPoints(supabaseAdmin, userId, currentPoints, cost) {
   return newBalance;
 }
 
+async function savePracticeRecord({
+  supabaseAdmin,
+  userId,
+  practiceType,
+  prompt,
+  answer,
+  feedback,
+  score,
+  pointsSpent,
+}) {
+  const { error } = await supabaseAdmin.from("practice_records").insert({
+    user_id: userId,
+    practice_type: practiceType,
+    prompt,
+    answer,
+    feedback,
+    score,
+    points_spent: pointsSpent,
+  });
+
+  if (error) {
+    console.error("Failed to save practice record:", error);
+  }
+}
+
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({
@@ -177,10 +202,6 @@ export default async function handler(req, res) {
       });
     }
 
-    const ai = new GoogleGenAI({
-      apiKey: process.env.GEMINI_API_KEY,
-    });
-
     const { prompt, answer } = req.body || {};
 
     if (!prompt || !answer) {
@@ -188,6 +209,10 @@ export default async function handler(req, res) {
         error: "Missing prompt or answer",
       });
     }
+
+    const ai = new GoogleGenAI({
+      apiKey: process.env.GEMINI_API_KEY,
+    });
 
     const wordCount = countWords(answer);
 
@@ -315,50 +340,6 @@ Return this exact JSON structure:
       profile.points,
       EMAIL_SCORE_COST
     );
-    async function savePracticeRecord({
-      supabaseAdmin,
-      userId,
-      practiceType,
-      prompt,
-      answer,
-      feedback,
-      score,
-      pointsSpent,
-    }) {
-      const { error } = await supabaseAdmin.from("practice_records").insert({
-        user_id: userId,
-        practice_type: practiceType,
-        prompt,
-        answer,
-        feedback,
-        score,
-        points_spent: pointsSpent,
-      });
-
-      if (error) {
-        console.error("Failed to save practice record:", error);
-      }
-    }
-
-    const finalFeedback = {
-      score: finalScore,
-      strengths: normalizeArray(json.strengths),
-      problems: normalizeArray(json.problems),
-      grammarCorrections: normalizeArray(json.grammarCorrections),
-      actionPlan: normalizeArray(json.actionPlan),
-      improvedVersion: json.improvedVersion || "",
-      sampleAnswer: json.sampleAnswer || "",
-    };
-    await savePracticeRecord({
-      supabaseAdmin,
-      userId: user.id,
-      practiceType: "email",
-      prompt,
-      answer,
-      feedback: finalFeedback,
-      score: finalScore,
-      pointsSpent: EMAIL_SCORE_COST,
-    });
 
     const finalFeedback = {
       score: finalScore,
@@ -386,9 +367,6 @@ Return this exact JSON structure:
       cost: EMAIL_SCORE_COST,
       balance: newBalance,
     });
-
-
-
   } catch (error) {
     console.error("Email scoring error:", error);
 

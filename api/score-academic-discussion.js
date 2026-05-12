@@ -142,7 +142,30 @@ async function deductPoints(supabaseAdmin, userId, currentPoints, cost) {
 
   return newBalance;
 }
+async function savePracticeRecord({
+  supabaseAdmin,
+  userId,
+  practiceType,
+  prompt,
+  answer,
+  feedback,
+  score,
+  pointsSpent,
+}) {
+  const { error } = await supabaseAdmin.from("practice_records").insert({
+    user_id: userId,
+    practice_type: practiceType,
+    prompt,
+    answer,
+    feedback,
+    score,
+    points_spent: pointsSpent,
+  });
 
+  if (error) {
+    console.error("Failed to save practice record:", error);
+  }
+}
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({
