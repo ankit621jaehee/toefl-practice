@@ -459,24 +459,60 @@ function App() {
   const [authPassword, setAuthPassword] = useState("");
   const [authMessage, setAuthMessage] = useState("");
   const [isAuthLoading, setIsAuthLoading] = useState(false);
+  const [points, setPoints] = useState(0);
+  const [redeemCode, setRedeemCode] = useState("");
+  const [redeemMessage, setRedeemMessage] = useState("");
+  const [isRedeeming, setIsRedeeming] = useState(false);
 
   const [page, setPage] = useState<Page>("home");
 
   useEffect(() => {
-  supabase.auth.getUser().then(({ data }) => {
+  async function loadUser() {
+    const { data } = await supabase.auth.getUser();
     setUser(data.user);
-  });
+
+    if (data.user) {
+      await loadPoints(data.user.id);
+    } else {
+      setPoints(0);
+    }
+  }
+
+  loadUser();
 
   const {
     data: { subscription },
   } = supabase.auth.onAuthStateChange((_event, session) => {
-    setUser(session?.user ?? null);
+    const currentUser = session?.user ?? null;
+    setUser(currentUser);
+
+    if (currentUser) {
+      loadPoints(currentUser.id);
+    } else {
+      setPoints(0);
+    }
   });
 
   return () => {
     subscription.unsubscribe();
   };
 }, []);
+
+async function loadPoints(userId: string) {
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("points")
+    .eq("id", userId)
+    .single();
+
+  if (error) {
+    console.error("Failed to load points:", error.message);
+    setPoints(0);
+    return;
+  }
+
+  setPoints(data?.points ?? 0);
+}
 
 async function handleSignUp() {
   if (!authEmail || !authPassword) {
@@ -530,9 +566,66 @@ async function handleSignIn() {
 async function handleSignOut() {
   await supabase.auth.signOut();
   setUser(null);
+  setPoints(0);
   setAuthMessage("Signed out.");
 }
-  
+
+async function handleRedeemCode() {
+
+  if (!user) {
+    setRedeemMessage("Please sign in first.");
+    return;
+  }
+
+  if (!redeemCode.trim()) {
+    setRedeemMessage("Please enter a redeem code.");
+    return;
+  }
+
+  setIsRedeeming(true);
+  setRedeemMessage("");
+
+  try {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+
+    if (!session?.access_token) {
+      setRedeemMessage("Your login session has expired. Please sign in again.");
+      setIsRedeeming(false);
+      return;
+    }
+
+    const response = await fetch("/api/redeem-code", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${session.access_token}`,
+      },
+      body: JSON.stringify({
+        code: redeemCode,
+      }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      setRedeemMessage(data.error || "Failed to redeem code.");
+      setIsRedeeming(false);
+      return;
+    }
+
+    setPoints(data.balance ?? points);
+    setRedeemCode("");
+    setRedeemMessage(data.message || "Redeemed successfully.");
+  } catch (error) {
+    console.error("Redeem failed:", error);
+    setRedeemMessage("Failed to redeem code. Please try again.");
+  } finally {
+    setIsRedeeming(false);
+  }
+}
+
   const [questions, setQuestions] = useState<Question[]>(fallbackQuestions);
   const [questionCount, setQuestionCount] = useState(5);
   const [level, setLevel] = useState("Medium");
@@ -883,15 +976,21 @@ async function handleSignOut() {
 
             <AuthPanel
               user={user}
+              points={points}
               authEmail={authEmail}
               authPassword={authPassword}
               authMessage={authMessage}
               isAuthLoading={isAuthLoading}
+              redeemCode={redeemCode}
+              redeemMessage={redeemMessage}
+              isRedeeming={isRedeeming}
               setAuthEmail={setAuthEmail}
               setAuthPassword={setAuthPassword}
+              setRedeemCode={setRedeemCode}
               onSignUp={handleSignUp}
               onSignIn={handleSignIn}
               onSignOut={handleSignOut}
+              onRedeemCode={handleRedeemCode}
             />
 
 
@@ -1921,26 +2020,38 @@ function FeedbackBox({
 
 function AuthPanel({
   user,
+  points,
   authEmail,
   authPassword,
   authMessage,
   isAuthLoading,
+  redeemCode,
+  redeemMessage,
+  isRedeeming,
   setAuthEmail,
   setAuthPassword,
+  setRedeemCode,
   onSignUp,
   onSignIn,
   onSignOut,
+  onRedeemCode,
 }: {
   user: User | null;
+  points: number;
   authEmail: string;
   authPassword: string;
   authMessage: string;
   isAuthLoading: boolean;
+  redeemCode: string;
+  redeemMessage: string;
+  isRedeeming: boolean;
   setAuthEmail: (value: string) => void;
   setAuthPassword: (value: string) => void;
+  setRedeemCode: (value: string) => void;
   onSignUp: () => void;
   onSignIn: () => void;
   onSignOut: () => void;
+  onRedeemCode: () => void;
 }) {
   return (
     <section
@@ -1970,11 +2081,49 @@ function AuthPanel({
         <>
           <h2 style={{ marginTop: 0 }}>Welcome back</h2>
           <p style={{ color: "#64748b" }}>Signed in as {user.email}</p>
-          <p style={{ color: "#64748b" }}>Current points: 0</p>
+          <p style={{ color: "#64748b" }}>Current points: {points}</p>
 
-          <button type="button" onClick={onSignOut}>
-            Sign out
-          </button>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "minmax(220px, 1fr) auto",
+              gap: "12px",
+              marginTop: "16px",
+              alignItems: "center",
+            }}
+          >
+            <input
+              value={redeemCode}
+              onChange={(event) => setRedeemCode(event.target.value)}
+              placeholder="Enter redeem code"
+              type="text"
+              style={{
+                width: "100%",
+                border: "1px solid #d8dee8",
+                borderRadius: "14px",
+                padding: "12px 14px",
+                fontSize: "14px",
+                boxSizing: "border-box",
+                textTransform: "uppercase",
+              }}
+            />
+
+            <button type="button" onClick={onRedeemCode} disabled={isRedeeming}>
+              {isRedeeming ? "Redeeming..." : "Redeem"}
+            </button>
+          </div>
+
+          {redeemMessage && (
+            <p style={{ color: "#64748b", marginTop: "12px" }}>
+              {redeemMessage}
+            </p>
+          )}
+
+          <div style={{ marginTop: "16px" }}>
+            <button type="button" onClick={onSignOut}>
+              Sign out
+            </button>
+          </div>
         </>
       ) : (
         <>
@@ -2038,11 +2187,13 @@ function AuthPanel({
               Sign up
             </button>
           </div>
-        </>
-      )}
 
-      {authMessage && (
-        <p style={{ color: "#64748b", marginTop: "14px" }}>{authMessage}</p>
+          {authMessage && (
+            <p style={{ color: "#64748b", marginTop: "14px" }}>
+              {authMessage}
+            </p>
+          )}
+        </>
       )}
     </section>
   );
