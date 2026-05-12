@@ -315,7 +315,10 @@ Return this exact JSON structure:
       DISCUSSION_SCORE_COST
     );
 
-    return res.status(200).json({
+
+
+
+    const finalFeedback = {
       score: finalScore,
       strengths: normalizeArray(json.strengths),
       problems: normalizeArray(json.problems),
@@ -323,9 +326,29 @@ Return this exact JSON structure:
       actionPlan: normalizeArray(json.actionPlan),
       improvedVersion: json.improvedVersion || "",
       sampleAnswer: json.sampleAnswer || "",
+    };
+
+    await savePracticeRecord({
+      supabaseAdmin,
+      userId: user.id,
+      practiceType: "discussion",
+      prompt,
+      answer,
+      feedback: finalFeedback,
+      score: finalScore,
+      pointsSpent: DISCUSSION_SCORE_COST,
+    });
+
+    return res.status(200).json({
+      ...finalFeedback,
       cost: DISCUSSION_SCORE_COST,
       balance: newBalance,
     });
+
+
+
+
+
   } catch (error) {
     console.error("Academic discussion scoring error:", error);
 

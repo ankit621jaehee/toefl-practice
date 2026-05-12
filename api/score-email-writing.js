@@ -315,8 +315,32 @@ Return this exact JSON structure:
       profile.points,
       EMAIL_SCORE_COST
     );
+    async function savePracticeRecord({
+      supabaseAdmin,
+      userId,
+      practiceType,
+      prompt,
+      answer,
+      feedback,
+      score,
+      pointsSpent,
+    }) {
+      const { error } = await supabaseAdmin.from("practice_records").insert({
+        user_id: userId,
+        practice_type: practiceType,
+        prompt,
+        answer,
+        feedback,
+        score,
+        points_spent: pointsSpent,
+      });
 
-    return res.status(200).json({
+      if (error) {
+        console.error("Failed to save practice record:", error);
+      }
+    }
+
+    const finalFeedback = {
       score: finalScore,
       strengths: normalizeArray(json.strengths),
       problems: normalizeArray(json.problems),
@@ -324,9 +348,47 @@ Return this exact JSON structure:
       actionPlan: normalizeArray(json.actionPlan),
       improvedVersion: json.improvedVersion || "",
       sampleAnswer: json.sampleAnswer || "",
+    };
+    await savePracticeRecord({
+      supabaseAdmin,
+      userId: user.id,
+      practiceType: "email",
+      prompt,
+      answer,
+      feedback: finalFeedback,
+      score: finalScore,
+      pointsSpent: EMAIL_SCORE_COST,
+    });
+
+    const finalFeedback = {
+      score: finalScore,
+      strengths: normalizeArray(json.strengths),
+      problems: normalizeArray(json.problems),
+      grammarCorrections: normalizeArray(json.grammarCorrections),
+      actionPlan: normalizeArray(json.actionPlan),
+      improvedVersion: json.improvedVersion || "",
+      sampleAnswer: json.sampleAnswer || "",
+    };
+
+    await savePracticeRecord({
+      supabaseAdmin,
+      userId: user.id,
+      practiceType: "email",
+      prompt,
+      answer,
+      feedback: finalFeedback,
+      score: finalScore,
+      pointsSpent: EMAIL_SCORE_COST,
+    });
+
+    return res.status(200).json({
+      ...finalFeedback,
       cost: EMAIL_SCORE_COST,
       balance: newBalance,
     });
+
+
+
   } catch (error) {
     console.error("Email scoring error:", error);
 
