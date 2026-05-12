@@ -421,10 +421,19 @@ async function scoreEmailWritingWithAPI(prompt: unknown, answer: string) {
 }
 
 async function scoreAcademicDiscussionWithAPI(prompt: unknown, answer: string) {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+
+  if (!session?.access_token) {
+    throw new Error("Please sign in before using AI scoring.");
+  }
+
   const response = await fetch("/api/score-academic-discussion", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
+      Authorization: `Bearer ${session.access_token}`,
     },
     body: JSON.stringify({
       prompt,
@@ -432,13 +441,16 @@ async function scoreAcademicDiscussionWithAPI(prompt: unknown, answer: string) {
     }),
   });
 
-  if (!response.ok) {
-    throw new Error("Failed to score academic discussion");
-  }
-
   const data = await response.json();
 
-  return data as WritingFeedback;
+  if (!response.ok) {
+    throw new Error(data.error || "Failed to score academic discussion");
+  }
+
+  return data as WritingFeedback & {
+    balance?: number;
+    cost?: number;
+  };
 }
 
 function isQuestionComplete(slots: (Chunk | null)[]) {
@@ -928,20 +940,29 @@ async function handleRedeemCode() {
 
       setDiscussionFeedback(feedback);
       setDiscussionSubmitted(true);
+
+      if (typeof feedback.balance === "number") {
+        setPoints(feedback.balance);
+      } else if (user) {
+        await loadPoints(user.id);
+      }
     } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "AI scoring failed. Please try again.";
+
       setDiscussionFeedback({
         score: "评分失败",
         strengths: [],
-        problems: [
-          "AI 评分接口暂时不可用。请检查 Vercel Function Logs，确认 /api/score-academic-discussion 是否报错。",
-        ],
+        problems: [message],
         grammarCorrections: [],
         actionPlan: [],
         improvedVersion: "",
         sampleAnswer: "",
       });
       setDiscussionSubmitted(true);
-    }finally {
+    } finally {
       setIsScoringDiscussion(false);
     }
   }
@@ -1917,6 +1938,7 @@ function WritingPracticePage({
           strengths={feedback.strengths}
           problems={feedback.problems}
           grammarCorrections={feedback.grammarCorrections}
+          actionPlan={feedback.actionPlan}
           improvedVersion={feedback.improvedVersion}
           sampleAnswer={feedback.sampleAnswer}
         />
@@ -1930,6 +1952,7 @@ function FeedbackBox({
   strengths,
   problems,
   grammarCorrections,
+  actionPlan,
   improvedVersion,
   sampleAnswer,
 }: {
@@ -1941,6 +1964,7 @@ function FeedbackBox({
     corrected: string;
     explanation: string;
   }[];
+  actionPlan?: string[];
   improvedVersion: string;
   sampleAnswer?: string;
 }) {
@@ -1997,6 +2021,17 @@ function FeedbackBox({
             ))}
           </div>
           <br />
+        </>
+      )}
+
+      {actionPlan && actionPlan.length > 0 && (
+        <>
+          <strong>Action Plan</strong>
+          <ul style={{ lineHeight: 1.8 }}>
+            {actionPlan.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
         </>
       )}
 

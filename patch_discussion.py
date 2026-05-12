@@ -1,4 +1,240 @@
-import { GoogleGenAI } from "@google/genai";
+from pathlib import Path
+import re
+
+app_path = Path("src/App.tsx")
+app = app_path.read_text()
+
+new_score_discussion = r'''async function scoreAcademicDiscussionWithAPI(prompt: unknown, answer: string) {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+
+  if (!session?.access_token) {
+    throw new Error("Please sign in before using AI scoring.");
+  }
+
+  const response = await fetch("/api/score-academic-discussion", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${session.access_token}`,
+    },
+    body: JSON.stringify({
+      prompt,
+      answer,
+    }),
+  });
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(data.error || "Failed to score academic discussion");
+  }
+
+  return data as WritingFeedback & {
+    balance?: number;
+    cost?: number;
+  };
+}'''
+
+app = re.sub(
+    r"async function scoreAcademicDiscussionWithAPI\(prompt: unknown, answer: string\) \{[\s\S]*?\n\}\n\nfunction isQuestionComplete",
+    new_score_discussion + "\n\nfunction isQuestionComplete",
+    app,
+)
+
+new_submit_discussion = r'''async function submitDiscussionWriting() {
+    if (discussionWordCount === 0) return;
+
+    setIsScoringDiscussion(true);
+    setDiscussionSubmitted(false);
+    setDiscussionFeedback(null);
+
+    try {
+      const feedback = await scoreAcademicDiscussionWithAPI(
+        currentDiscussionPrompt,
+        discussionAnswer
+      );
+
+      setDiscussionFeedback(feedback);
+      setDiscussionSubmitted(true);
+
+      if (typeof feedback.balance === "number") {
+        setPoints(feedback.balance);
+      } else if (user) {
+        await loadPoints(user.id);
+      }
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "AI scoring failed. Please try again.";
+
+      setDiscussionFeedback({
+        score: "评分失败",
+        strengths: [],
+        problems: [message],
+        grammarCorrections: [],
+        actionPlan: [],
+        improvedVersion: "",
+        sampleAnswer: "",
+      });
+      setDiscussionSubmitted(true);
+    } finally {
+      setIsScoringDiscussion(false);
+    }
+  }'''
+
+app = re.sub(
+    r"async function submitDiscussionWriting\(\) \{[\s\S]*?\n  \}\n\n  const cardStyle",
+    new_submit_discussion + "\n\n  const cardStyle",
+    app,
+)
+
+app = app.replace(
+    """          grammarCorrections={feedback.grammarCorrections}
+          improvedVersion={feedback.improvedVersion}""",
+    """          grammarCorrections={feedback.grammarCorrections}
+          actionPlan={feedback.actionPlan}
+          improvedVersion={feedback.improvedVersion}""",
+)
+
+new_feedback_box = r'''function FeedbackBox({
+  score,
+  strengths,
+  problems,
+  grammarCorrections,
+  actionPlan,
+  improvedVersion,
+  sampleAnswer,
+}: {
+  score: string;
+  strengths: string[];
+  problems: string[];
+  grammarCorrections?: {
+    original: string;
+    corrected: string;
+    explanation: string;
+  }[];
+  actionPlan?: string[];
+  improvedVersion: string;
+  sampleAnswer?: string;
+}) {
+  return (
+    <div
+      style={{
+        padding: "24px",
+        borderRadius: "20px",
+        background: "#eef2ff",
+        color: "#312e81",
+      }}
+    >
+      <h3 style={{ marginTop: 0 }}>AI Feedback: {score}</h3>
+
+      <strong>Strengths</strong>
+      <ul style={{ lineHeight: 1.8 }}>
+        {strengths.map((item) => (
+          <li key={item}>{item}</li>
+        ))}
+      </ul>
+
+      <strong>Problems</strong>
+      <ul style={{ lineHeight: 1.8 }}>
+        {problems.map((item) => (
+          <li key={item}>{item}</li>
+        ))}
+      </ul>
+
+      {grammarCorrections && grammarCorrections.length > 0 && (
+        <>
+          <strong>Grammar Corrections</strong>
+          <div style={{ display: "grid", gap: "12px", marginTop: "12px" }}>
+            {grammarCorrections.map((item, index) => (
+              <div
+                key={`${item.original}-${index}`}
+                style={{
+                  background: "white",
+                  padding: "14px",
+                  borderRadius: "14px",
+                  color: "#111827",
+                  lineHeight: 1.7,
+                }}
+              >
+                <div>
+                  <strong>Original:</strong> {item.original}
+                </div>
+                <div>
+                  <strong>Corrected:</strong> {item.corrected}
+                </div>
+                <div style={{ color: "#64748b" }}>
+                  <strong>Why:</strong> {item.explanation}
+                </div>
+              </div>
+            ))}
+          </div>
+          <br />
+        </>
+      )}
+
+      {actionPlan && actionPlan.length > 0 && (
+        <>
+          <strong>Action Plan</strong>
+          <ul style={{ lineHeight: 1.8 }}>
+            {actionPlan.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
+        </>
+      )}
+
+      <strong>Improved Version</strong>
+      <pre
+        style={{
+          whiteSpace: "pre-wrap",
+          fontFamily:
+            '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+          lineHeight: 1.8,
+          background: "white",
+          padding: "18px",
+          borderRadius: "16px",
+          color: "#111827",
+        }}
+      >
+        {improvedVersion}
+      </pre>
+
+      {sampleAnswer && (
+        <>
+          <strong>Sample Answer</strong>
+          <pre
+            style={{
+              whiteSpace: "pre-wrap",
+              fontFamily:
+                '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+              lineHeight: 1.8,
+              background: "white",
+              padding: "18px",
+              borderRadius: "16px",
+              color: "#111827",
+            }}
+          >
+            {sampleAnswer}
+          </pre>
+        </>
+      )}
+    </div>
+  );
+}'''
+
+app = re.sub(
+    r"function FeedbackBox\(\{[\s\S]*?\n\}\n\nfunction AuthPanel",
+    new_feedback_box + "\n\nfunction AuthPanel",
+    app,
+)
+
+app_path.write_text(app)
+
+backend = r'''import { GoogleGenAI } from "@google/genai";
 import { createClient } from "@supabase/supabase-js";
 
 const DISCUSSION_SCORE_COST = 3;
@@ -344,3 +580,8 @@ Return this exact JSON structure:
     });
   }
 }
+'''
+
+Path("api/score-academic-discussion.js").write_text(backend)
+
+print("Patched src/App.tsx and api/score-academic-discussion.js")
