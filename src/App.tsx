@@ -1,4 +1,6 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import type { User } from "@supabase/supabase-js";
+import { supabase } from "./supabaseClient";
 
 type Page = "home" | "sentence" | "email" | "discussion";
 
@@ -451,9 +453,86 @@ function countWords(text: string) {
   return text.trim() ? text.trim().split(/\s+/).length : 0;
 }
 
-export default function App() {
+function App() {
+  const [user, setUser] = useState<User | null>(null);
+  const [authEmail, setAuthEmail] = useState("");
+  const [authPassword, setAuthPassword] = useState("");
+  const [authMessage, setAuthMessage] = useState("");
+  const [isAuthLoading, setIsAuthLoading] = useState(false);
+
   const [page, setPage] = useState<Page>("home");
 
+  useEffect(() => {
+  supabase.auth.getUser().then(({ data }) => {
+    setUser(data.user);
+  });
+
+  const {
+    data: { subscription },
+  } = supabase.auth.onAuthStateChange((_event, session) => {
+    setUser(session?.user ?? null);
+  });
+
+  return () => {
+    subscription.unsubscribe();
+  };
+}, []);
+
+async function handleSignUp() {
+  if (!authEmail || !authPassword) {
+    setAuthMessage("Please enter your email and password.");
+    return;
+  }
+
+  setIsAuthLoading(true);
+  setAuthMessage("");
+
+  const { error } = await supabase.auth.signUp({
+    email: authEmail,
+    password: authPassword,
+  });
+
+  if (error) {
+    setAuthMessage(error.message);
+  } else {
+    setAuthMessage(
+      "Registration successful. Please check your email if confirmation is required."
+    );
+  }
+
+  setIsAuthLoading(false);
+}
+
+async function handleSignIn() {
+  if (!authEmail || !authPassword) {
+    setAuthMessage("Please enter your email and password.");
+    return;
+  }
+
+  setIsAuthLoading(true);
+  setAuthMessage("");
+
+  const { error } = await supabase.auth.signInWithPassword({
+    email: authEmail,
+    password: authPassword,
+  });
+
+  if (error) {
+    setAuthMessage(error.message);
+  } else {
+    setAuthMessage("Signed in successfully.");
+    setAuthPassword("");
+  }
+
+  setIsAuthLoading(false);
+}
+
+async function handleSignOut() {
+  await supabase.auth.signOut();
+  setUser(null);
+  setAuthMessage("Signed out.");
+}
+  
   const [questions, setQuestions] = useState<Question[]>(fallbackQuestions);
   const [questionCount, setQuestionCount] = useState(5);
   const [level, setLevel] = useState("Medium");
@@ -800,6 +879,21 @@ export default function App() {
               选择练习板块。现在可以练 Build a Sentence、Email Writing 和
               Academic Discussion。
             </p>
+
+
+            <AuthPanel
+              user={user}
+              authEmail={authEmail}
+              authPassword={authPassword}
+              authMessage={authMessage}
+              isAuthLoading={isAuthLoading}
+              setAuthEmail={setAuthEmail}
+              setAuthPassword={setAuthPassword}
+              onSignUp={handleSignUp}
+              onSignIn={handleSignIn}
+              onSignOut={handleSignOut}
+            />
+
 
             <div
               style={{
@@ -1824,3 +1918,134 @@ function FeedbackBox({
     </div>
   );
 }
+
+function AuthPanel({
+  user,
+  authEmail,
+  authPassword,
+  authMessage,
+  isAuthLoading,
+  setAuthEmail,
+  setAuthPassword,
+  onSignUp,
+  onSignIn,
+  onSignOut,
+}: {
+  user: User | null;
+  authEmail: string;
+  authPassword: string;
+  authMessage: string;
+  isAuthLoading: boolean;
+  setAuthEmail: (value: string) => void;
+  setAuthPassword: (value: string) => void;
+  onSignUp: () => void;
+  onSignIn: () => void;
+  onSignOut: () => void;
+}) {
+  return (
+    <section
+      style={{
+        background: "#ffffff",
+        border: "1px solid #e5e7eb",
+        borderRadius: "24px",
+        padding: "24px",
+        marginBottom: "24px",
+        boxShadow: "0 10px 30px rgba(15, 23, 42, 0.06)",
+      }}
+    >
+      <div
+        style={{
+          fontSize: "13px",
+          fontWeight: 700,
+          color: "#64748b",
+          marginBottom: "8px",
+          textTransform: "uppercase",
+          letterSpacing: "0.08em",
+        }}
+      >
+        Account
+      </div>
+
+      {user ? (
+        <>
+          <h2 style={{ marginTop: 0 }}>Welcome back</h2>
+          <p style={{ color: "#64748b" }}>Signed in as {user.email}</p>
+          <p style={{ color: "#64748b" }}>Current points: 0</p>
+
+          <button type="button" onClick={onSignOut}>
+            Sign out
+          </button>
+        </>
+      ) : (
+        <>
+          <h2 style={{ marginTop: 0 }}>Sign in to use your points</h2>
+          <p style={{ color: "#64748b" }}>
+            Create an account or sign in before using practice credits.
+          </p>
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+              gap: "12px",
+              marginTop: "16px",
+            }}
+          >
+            <input
+              value={authEmail}
+              onChange={(event) => setAuthEmail(event.target.value)}
+              placeholder="Email"
+              type="email"
+              style={{
+                width: "100%",
+                border: "1px solid #d8dee8",
+                borderRadius: "14px",
+                padding: "12px 14px",
+                fontSize: "14px",
+                boxSizing: "border-box",
+              }}
+            />
+
+            <input
+              value={authPassword}
+              onChange={(event) => setAuthPassword(event.target.value)}
+              placeholder="Password"
+              type="password"
+              style={{
+                width: "100%",
+                border: "1px solid #d8dee8",
+                borderRadius: "14px",
+                padding: "12px 14px",
+                fontSize: "14px",
+                boxSizing: "border-box",
+              }}
+            />
+          </div>
+
+          <div
+            style={{
+              display: "flex",
+              gap: "12px",
+              flexWrap: "wrap",
+              marginTop: "14px",
+            }}
+          >
+            <button type="button" onClick={onSignIn} disabled={isAuthLoading}>
+              Sign in
+            </button>
+
+            <button type="button" onClick={onSignUp} disabled={isAuthLoading}>
+              Sign up
+            </button>
+          </div>
+        </>
+      )}
+
+      {authMessage && (
+        <p style={{ color: "#64748b", marginTop: "14px" }}>{authMessage}</p>
+      )}
+    </section>
+  );
+}
+
+export default App;
