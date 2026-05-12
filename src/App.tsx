@@ -2,7 +2,13 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type { User } from "@supabase/supabase-js";
 import { supabase } from "./supabaseClient";
 
-type Page = "home" | "sentence" | "email" | "discussion" | "records";
+type Page =
+  | "home"
+  | "sentence"
+  | "email"
+  | "discussion"
+  | "records"
+  | "record-detail";
 
 type Part =
   | {
@@ -490,6 +496,9 @@ function App() {
   const [records, setRecords] = useState<PracticeRecord[]>([]);
   const [isLoadingRecords, setIsLoadingRecords] = useState(false);
   const [recordMessage, setRecordMessage] = useState(""); 
+  const [selectedRecord, setSelectedRecord] = useState<PracticeRecord | null>(
+  null
+);
   const [showPointsModal, setShowPointsModal] = useState(false);
 
 
@@ -1347,9 +1356,21 @@ async function loadPracticeRecords() {
             isLoading={isLoadingRecords}
             message={recordMessage}
             setPage={setPage}
+            onOpenRecord={(record) => {
+              setSelectedRecord(record);
+              setPage("record-detail");
+            }}
           />
         )}
-
+        {page === "record-detail" && selectedRecord && (
+          <PracticeRecordDetailPage
+            record={selectedRecord}
+            onClose={() => {
+              setSelectedRecord(null);
+              setPage("records");
+            }}
+          />
+        )}
 
       </div>
        {showPointsModal && (
@@ -2363,12 +2384,20 @@ function PracticeRecordsPage({
   isLoading,
   message,
   setPage,
+  onOpenRecord,
 }: {
   records: PracticeRecord[];
   isLoading: boolean;
   message: string;
   setPage: (page: Page) => void;
+  onOpenRecord: (record: PracticeRecord) => void;
 }) {
+  function formatPracticeType(type: string) {
+    if (type === "email") return "Email Writing";
+    if (type === "discussion") return "Academic Discussion";
+    return type;
+  }
+
   return (
     <>
       <button
@@ -2391,6 +2420,10 @@ function PracticeRecordsPage({
         Practice Records
       </h2>
 
+      <p style={{ color: "#64748b", marginBottom: "24px" }}>
+        点击任意记录查看题目、答案和详细反馈。
+      </p>
+
       {isLoading && <p style={{ color: "#64748b" }}>Loading records...</p>}
       {message && <p style={{ color: "#be123c" }}>{message}</p>}
 
@@ -2398,62 +2431,45 @@ function PracticeRecordsPage({
         <p style={{ color: "#64748b" }}>No practice records yet.</p>
       )}
 
-      <div style={{ display: "grid", gap: "18px" }}>
+      <div style={{ display: "grid", gap: "12px" }}>
         {records.map((record) => (
-          <div
+          <button
             key={record.id}
+            type="button"
+            onClick={() => onOpenRecord(record)}
             style={{
+              width: "100%",
               border: "1px solid #e2e8f0",
               borderRadius: "18px",
-              padding: "20px",
               background: "#f8fafc",
+              padding: "18px 20px",
+              cursor: "pointer",
+              textAlign: "left",
             }}
           >
-            <div style={{ color: "#64748b", marginBottom: "8px" }}>
-              {new Date(record.created_at).toLocaleString()} ·{" "}
-              {record.practice_type} · {record.points_spent} points spent
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1.4fr 1.6fr 0.8fr auto",
+                gap: "14px",
+                alignItems: "center",
+              }}
+            >
+              <strong>{formatPracticeType(record.practice_type)}</strong>
+
+              <span style={{ color: "#64748b" }}>
+                {new Date(record.created_at).toLocaleString()}
+              </span>
+
+              <span style={{ fontWeight: 800, color: "#312e81" }}>
+                {record.score}
+              </span>
+
+              <span style={{ color: "#64748b", fontWeight: 700 }}>
+                查看详情 →
+              </span>
             </div>
-
-            <h3 style={{ marginTop: 0 }}>Score: {record.score}</h3>
-
-            <strong>Question</strong>
-            <pre
-              style={{
-                whiteSpace: "pre-wrap",
-                background: "white",
-                padding: "14px",
-                borderRadius: "14px",
-                lineHeight: 1.7,
-                overflowX: "auto",
-              }}
-            >
-              {JSON.stringify(record.prompt, null, 2)}
-            </pre>
-
-            <strong>Your Answer</strong>
-            <pre
-              style={{
-                whiteSpace: "pre-wrap",
-                background: "white",
-                padding: "14px",
-                borderRadius: "14px",
-                lineHeight: 1.7,
-              }}
-            >
-              {record.answer}
-            </pre>
-
-            <strong>Feedback</strong>
-            <FeedbackBox
-              score={record.feedback.score}
-              strengths={record.feedback.strengths || []}
-              problems={record.feedback.problems || []}
-              grammarCorrections={record.feedback.grammarCorrections || []}
-              actionPlan={record.feedback.actionPlan || []}
-              improvedVersion={record.feedback.improvedVersion || ""}
-              sampleAnswer={record.feedback.sampleAnswer || ""}
-            />
-          </div>
+          </button>
         ))}
       </div>
     </>
@@ -2600,6 +2616,202 @@ function PointsModal({ onClose }: { onClose: () => void }) {
         </div>
       </div>
     </div>
+  );
+}
+
+function PracticeRecordDetailPage({
+  record,
+  onClose,
+}: {
+  record: PracticeRecord;
+  onClose: () => void;
+}) {
+  function formatPracticeType(type: string) {
+    if (type === "email") return "Email Writing";
+    if (type === "discussion") return "Academic Discussion";
+    return type;
+  }
+
+  function renderPrompt() {
+    if (record.practice_type === "email") {
+      const prompt = record.prompt as EmailPrompt;
+
+      return (
+        <div style={{ lineHeight: 1.8 }}>
+          <p>{prompt.scenario}</p>
+
+          <div
+            style={{
+              padding: "16px",
+              borderRadius: "14px",
+              background: "white",
+              border: "1px solid #e2e8f0",
+            }}
+          >
+            <strong>{prompt.task}</strong>
+
+            {Array.isArray(prompt.requirements) && (
+              <ul>
+                {prompt.requirements.map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
+              </ul>
+            )}
+
+            <p style={{ color: "#64748b", marginBottom: 0 }}>
+              {prompt.suggestedLength}
+            </p>
+          </div>
+        </div>
+      );
+    }
+
+    if (record.practice_type === "discussion") {
+      const prompt = record.prompt as DiscussionPrompt;
+
+      return (
+        <div style={{ display: "grid", gap: "14px", lineHeight: 1.8 }}>
+          <div
+            style={{
+              padding: "16px",
+              borderRadius: "14px",
+              background: "white",
+              border: "1px solid #e2e8f0",
+            }}
+          >
+            <strong>Professor</strong>
+            <p style={{ marginBottom: 0 }}>{prompt.professor}</p>
+          </div>
+
+          <div
+            style={{
+              padding: "16px",
+              borderRadius: "14px",
+              background: "white",
+              border: "1px solid #e2e8f0",
+            }}
+          >
+            <strong>{prompt.studentOneName}</strong>
+            <p style={{ marginBottom: 0 }}>{prompt.studentOnePost}</p>
+          </div>
+
+          <div
+            style={{
+              padding: "16px",
+              borderRadius: "14px",
+              background: "white",
+              border: "1px solid #e2e8f0",
+            }}
+          >
+            <strong>{prompt.studentTwoName}</strong>
+            <p style={{ marginBottom: 0 }}>{prompt.studentTwoPost}</p>
+          </div>
+
+          <div
+            style={{
+              padding: "16px",
+              borderRadius: "14px",
+              background: "#eef2ff",
+              color: "#312e81",
+            }}
+          >
+            <strong>Question</strong>
+            <p>{prompt.question}</p>
+            <p style={{ marginBottom: 0 }}>{prompt.suggestedLength}</p>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <pre
+        style={{
+          whiteSpace: "pre-wrap",
+          background: "white",
+          padding: "14px",
+          borderRadius: "14px",
+          lineHeight: 1.7,
+          overflowX: "auto",
+          border: "1px solid #e2e8f0",
+        }}
+      >
+        {JSON.stringify(record.prompt, null, 2)}
+      </pre>
+    );
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={onClose}
+        style={{
+          padding: "10px 16px",
+          border: "1px solid #cbd5e1",
+          borderRadius: "12px",
+          background: "white",
+          fontWeight: 700,
+          cursor: "pointer",
+          marginBottom: "24px",
+        }}
+      >
+        关闭
+      </button>
+
+      <div
+        style={{
+          padding: "22px",
+          borderRadius: "20px",
+          background: "#f8fafc",
+          border: "1px solid #e2e8f0",
+          marginBottom: "24px",
+        }}
+      >
+        <h2 style={{ marginTop: 0, marginBottom: "10px" }}>
+          {formatPracticeType(record.practice_type)}
+        </h2>
+
+        <div style={{ color: "#64748b", lineHeight: 1.8 }}>
+          <div>时间：{new Date(record.created_at).toLocaleString()}</div>
+          <div>评分：{record.score}</div>
+          <div>消耗积分：{record.points_spent} points</div>
+        </div>
+      </div>
+
+      <section style={{ marginBottom: "24px" }}>
+        <h3>Question</h3>
+        {renderPrompt()}
+      </section>
+
+      <section style={{ marginBottom: "24px" }}>
+        <h3>Your Answer</h3>
+        <pre
+          style={{
+            whiteSpace: "pre-wrap",
+            background: "white",
+            padding: "16px",
+            borderRadius: "14px",
+            lineHeight: 1.8,
+            border: "1px solid #e2e8f0",
+          }}
+        >
+          {record.answer}
+        </pre>
+      </section>
+
+      <section>
+        <h3>Feedback</h3>
+        <FeedbackBox
+          score={record.feedback.score}
+          strengths={record.feedback.strengths || []}
+          problems={record.feedback.problems || []}
+          grammarCorrections={record.feedback.grammarCorrections || []}
+          actionPlan={record.feedback.actionPlan || []}
+          improvedVersion={record.feedback.improvedVersion || ""}
+          sampleAnswer={record.feedback.sampleAnswer || ""}
+        />
+      </section>
+    </>
   );
 }
 
