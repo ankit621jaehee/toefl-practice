@@ -490,6 +490,8 @@ function App() {
   const [records, setRecords] = useState<PracticeRecord[]>([]);
   const [isLoadingRecords, setIsLoadingRecords] = useState(false);
   const [recordMessage, setRecordMessage] = useState(""); 
+  const [showPointsModal, setShowPointsModal] = useState(false);
+
 
   const [page, setPage] = useState<Page>("home");
 
@@ -1063,6 +1065,7 @@ async function loadPracticeRecords() {
               onSignIn={handleSignIn}
               onSignOut={handleSignOut}
               onRedeemCode={handleRedeemCode}
+              onShowPointsModal={() => setShowPointsModal(true)}
               onViewRecords={async () => {
                 setPage("records");
                 await loadPracticeRecords();
@@ -1349,6 +1352,11 @@ async function loadPracticeRecords() {
 
 
       </div>
+       {showPointsModal && (
+
+        <PointsModal onClose={() => setShowPointsModal(false)} />
+
+      )}
     </div>
   );
 }
@@ -2150,6 +2158,7 @@ function AuthPanel({
   onSignOut,
   onRedeemCode,
   onViewRecords,
+  onShowPointsModal,
 }: {
   user: User | null;
   points: number;
@@ -2168,6 +2177,7 @@ function AuthPanel({
   onSignOut: () => void;
   onRedeemCode: () => void;
   onViewRecords:()=> void;
+  onShowPointsModal: () => void;
 }) {
   return (
     <section
@@ -2197,7 +2207,26 @@ function AuthPanel({
         <>
           <h2 style={{ marginTop: 0 }}>Welcome back</h2>
           <p style={{ color: "#64748b" }}>Signed in as {user.email}</p>
-          <p style={{ color: "#64748b" }}>Current points: {points}</p>
+          <p style={{ color: "#64748b", fontWeight: 700 }}>
+            Current points: {points}
+          </p>
+          <div
+            style={{
+              display: "flex",
+              gap: "12px",
+              flexWrap: "wrap",
+              marginTop: "12px",
+              marginBottom: "16px",
+            }}
+          >
+            <button type="button" onClick={onShowPointsModal}>
+              Get Points
+            </button>
+          </div>
+
+
+
+
 
           <div
             style={{
@@ -2428,6 +2457,149 @@ function PracticeRecordsPage({
         ))}
       </div>
     </>
+  );
+}
+
+function PointsModal({ onClose }: { onClose: () => void }) {
+  const packages = [
+    {
+      name: "体验套餐",
+      points: 20,
+      description: "适合轻量体验 Email / Discussion 批改功能。",
+    },
+    {
+      name: "练习套餐",
+      points: 60,
+      description: "适合一段时间内稳定进行写作练习。",
+    },
+    {
+      name: "强化套餐",
+      points: 150,
+      description: "适合高频练习和集中备考阶段使用。",
+    },
+  ];
+
+  return (
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(15, 23, 42, 0.45)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: "24px",
+        zIndex: 999,
+      }}
+      onClick={onClose}
+    >
+      <div
+        style={{
+          width: "100%",
+          maxWidth: "620px",
+          background: "white",
+          borderRadius: "24px",
+          padding: "30px",
+          boxShadow: "0 20px 60px rgba(15, 23, 42, 0.25)",
+        }}
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            gap: "16px",
+            alignItems: "center",
+            marginBottom: "14px",
+          }}
+        >
+          <h2 style={{ margin: 0 }}>获取 Points</h2>
+
+          <button
+            type="button"
+            onClick={onClose}
+            style={{
+              border: "1px solid #cbd5e1",
+              background: "white",
+              borderRadius: "999px",
+              width: "36px",
+              height: "36px",
+              cursor: "pointer",
+              fontWeight: 800,
+            }}
+          >
+            ×
+          </button>
+        </div>
+
+        <p style={{ color: "#64748b", lineHeight: 1.8, marginBottom: "22px" }}>
+          请联系客服进行选购。客服会根据你选择的 points 套餐提供兑换码。
+        </p>
+
+        <div style={{ display: "grid", gap: "12px", marginBottom: "24px" }}>
+          {packages.map((item) => (
+            <div
+              key={item.name}
+              style={{
+                padding: "18px",
+                border: "1px solid #e2e8f0",
+                borderRadius: "18px",
+                background: "#f8fafc",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  gap: "12px",
+                  alignItems: "center",
+                  marginBottom: "8px",
+                }}
+              >
+                <strong style={{ fontSize: "17px" }}>{item.name}</strong>
+                <strong>{item.points} points</strong>
+              </div>
+
+              <p style={{ color: "#64748b", margin: 0, lineHeight: 1.7 }}>
+                {item.description}
+              </p>
+            </div>
+          ))}
+        </div>
+
+        <div
+          style={{
+            textAlign: "center",
+            padding: "22px",
+            borderRadius: "20px",
+            background: "#eef2ff",
+          }}
+        >
+          <img
+            src="/customer-service-qr.png"
+            alt="客服二维码"
+            style={{
+              width: "180px",
+              height: "180px",
+              objectFit: "cover",
+              borderRadius: "16px",
+              border: "1px solid #c7d2fe",
+              background: "white",
+            }}
+          />
+
+          <p
+            style={{
+              color: "#312e81",
+              fontWeight: 700,
+              marginBottom: 0,
+            }}
+          >
+            扫码联系客服
+          </p>
+        </div>
+      </div>
+    </div>
   );
 }
 
