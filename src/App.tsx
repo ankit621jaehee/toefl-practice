@@ -102,7 +102,7 @@ type MockResult = {
 type MockRecord = {
   id: string;
   sentence_questions: MockSentenceQuestion[];
-  sentence_answers: Record<string, string>;
+  sentence_answers: Record<string, string[]>;
   sentence_score: number;
 
   email_prompt: EmailPrompt;
@@ -582,7 +582,7 @@ function App() {
   const [recordMessage, setRecordMessage] = useState(""); 
   const [mockTestData, setMockTestData] = useState<MockTestData | null>(null);
   const [mockSentenceAnswers, setMockSentenceAnswers] = useState<
-    Record<string, string>
+    Record<string, string[]>
   >({});
   const [mockEmailAnswer, setMockEmailAnswer] = useState("");
   const [mockDiscussionAnswer, setMockDiscussionAnswer] = useState("");
@@ -909,7 +909,7 @@ async function submitMockTestWithAPI({
   discussionAnswer,
 }: {
   sentenceQuestions: MockSentenceQuestion[];
-  sentenceAnswers: Record<string, string>;
+  sentenceAnswers: Record<string, string[]>;
   emailPrompt: EmailPrompt;
   emailAnswer: string;
   discussionPrompt: DiscussionPrompt;
@@ -3172,9 +3172,9 @@ function MockTestPage({
   onCancel,
 }: {
   data: MockTestData;
-  sentenceAnswers: Record<string, string>;
+  sentenceAnswers: Record<string, string[]>;
   setSentenceAnswers: React.Dispatch<
-    React.SetStateAction<Record<string, string>>
+    React.SetStateAction<Record<string, string[]>>
   >;
   emailAnswer: string;
   setEmailAnswer: (value: string) => void;
@@ -3204,10 +3204,95 @@ function MockTestPage({
     cursor: "pointer",
   };
 
-  function updateSentenceAnswer(questionId: string, value: string) {
+  const [mockPart, setMockPart] = useState<"sentence" | "email" | "discussion">(
+  "sentence"
+);
+  const [currentSentenceIndex, setCurrentSentenceIndex] = useState(0);
+  const [timeLeft, setTimeLeft] = useState(6 * 60);
+  
+  useEffect(() => {
+    if (isSubmitting) return;
+
+    const timer = window.setInterval(() => {
+      setTimeLeft((previous) => {
+        if (previous <= 1) {
+          window.clearInterval(timer);
+          if (mockPart === "sentence") {
+            setMockPart("email");
+            setCurrentSentenceIndex(0);
+            return 7 * 60;
+          }
+          if (mockPart === "email") {
+            setMockPart("discussion");
+            return 10 * 60;
+          }
+          if (mockPart === "discussion") {
+            onSubmit();
+            return 0;
+          }
+        }
+
+        return previous - 1;
+      });
+    }, 1000);
+
+    return () => window.clearInterval(timer);
+  }, [mockPart, isSubmitting, onSubmit]);
+
+
+  function formatTime(seconds: number) {
+    const minutes = Math.floor(seconds / 60);
+    const restSeconds = seconds % 60;
+    return `${minutes}:${String(restSeconds).padStart(2, "0")}`;
+  }
+
+  function goToEmailPart() {
+    setMockPart("email");
+    setTimeLeft(7 * 60);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function goToDiscussionPart() {
+    setMockPart("discussion");
+    setTimeLeft(10 * 60);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function goToNextSentence() {
+    if (currentSentenceIndex < data.sentenceQuestions.length - 1) {
+      setCurrentSentenceIndex((previous) => previous + 1);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      return;
+    }
+
+    goToEmailPart();
+  }
+
+  function addSentenceChunk(questionId: string, chunk: string) {
+    setSentenceAnswers((previous) => {
+      const currentChunks = previous[questionId] || [];
+
+      return {
+        ...previous,
+        [questionId]: [...currentChunks, chunk],
+      };
+    });
+  }
+  function removeLastSentenceChunk(questionId: string) {
+    setSentenceAnswers((previous) => {
+      const currentChunks = previous[questionId] || [];
+
+      return {
+        ...previous,
+        [questionId]: currentChunks.slice(0, -1),
+      };
+    });
+  }
+
+  function clearSentenceAnswer(questionId: string) {
     setSentenceAnswers((previous) => ({
       ...previous,
-      [questionId]: value,
+      [questionId]: [],
     }));
   }
 
@@ -3237,68 +3322,200 @@ function MockTestPage({
         返回首页
       </button>
 
-      <div style={cardStyle}>
+      <div
+        style={{
+          ...cardStyle,
+          position: "sticky",
+          top: "12px",
+          zIndex: 20,
+        }}
+      >
         <h1 style={{ marginTop: 0 }}>Full Mock Test</h1>
 
         <p style={{ color: "#64748b", lineHeight: 1.8 }}>
-          完整完成 10 道 Build a Sentence、1 篇 Email Writing 和 1 篇 Academic
-          Discussion。提交后将扣除 10 points，并生成 6 分制总分、知识点分析和备考建议。
+          完整模考分为三个部分：Build a Sentence 6分钟、Email Writing
+          7分钟、Academic Discussion 10分钟。时间到后会自动进入下一部分。
         </p>
+
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            gap: "16px",
+            flexWrap: "wrap",
+            alignItems: "center",
+          }}
+        >
+          <strong style={{ color: "#312e81" }}>
+            Current Part:{" "}
+            {mockPart === "sentence"
+              ? "Part 1 Build a Sentence"
+              : mockPart === "email"
+                ? "Part 2 Email Writing"
+                : "Part 3 Academic Discussion"}
+          </strong>
+
+          <strong
+            style={{
+              fontSize: "26px",
+              color: timeLeft <= 60 ? "#be123c" : "#111827",
+            }}
+          >
+            {formatTime(timeLeft)}
+          </strong>
+        </div>
 
         <p style={{ color: "#475569", fontWeight: 800 }}>
           Submit Mock Test：-10 points
         </p>
       </div>
 
-      <section style={cardStyle}>
-        <h2 style={{ marginTop: 0 }}>Part 1 Build a Sentence</h2>
+      {mockPart === "sentence" && (
 
-        <p style={{ color: "#64748b", lineHeight: 1.7 }}>
-          根据 Speaker A 的语境，用给出的词块组成自然的 Speaker B 回答。共 10
-          题，每题 0.5 分，满分 5 分。
-        </p>
-
-        <div style={{ display: "grid", gap: "18px" }}>
-          {data.sentenceQuestions.map((question, index) => (
-            <div
-              key={question.id}
+  <section style={cardStyle}>
+    <h2 style={{ marginTop: 0 }}>Part 1 Build a Sentence</h2>
+    <p style={{ color: "#64748b", lineHeight: 1.7 }}>
+      根据 Speaker A 的语境，用给出的词块组成自然的 Speaker B 回答。共 10
+      题，每题 0.5 分，满分 5 分。本部分限时 6 分钟。
+    </p>
+    {(() => {
+      const question = data.sentenceQuestions[currentSentenceIndex];
+      const selectedChunks = sentenceAnswers[question.id] || [];
+      return (
+        <div
+          style={{
+            padding: "18px",
+            border: "1px solid #e2e8f0",
+            borderRadius: "16px",
+            background: "#f8fafc",
+          }}
+        >
+          <strong>
+            Question {currentSentenceIndex + 1} / {data.sentenceQuestions.length}
+          </strong>
+          <p style={{ lineHeight: 1.7 }}>
+            <strong>Speaker A:</strong> {question.speakerA}
+          </p>
+          <div
+            style={{
+              minHeight: "52px",
+              padding: "12px",
+              borderRadius: "14px",
+              border: "1px dashed #cbd5e1",
+              background: "white",
+              display: "flex",
+              gap: "8px",
+              flexWrap: "wrap",
+              alignItems: "center",
+              marginBottom: "14px",
+            }}
+          >
+            {selectedChunks.length > 0 ? (
+              selectedChunks.map((chunk, chunkIndex) => (
+                <span
+                  key={`${chunk}-${chunkIndex}`}
+                  style={{
+                    padding: "8px 10px",
+                    borderRadius: "999px",
+                    background: "#eef2ff",
+                    color: "#312e81",
+                    fontWeight: 700,
+                  }}
+                >
+                  {chunk}
+                </span>
+              ))
+            ) : (
+              <span style={{ color: "#94a3b8" }}>
+                Click chunks below to build Speaker B&apos;s sentence.
+              </span>
+            )}
+          </div>
+          <div
+            style={{
+              display: "flex",
+              gap: "8px",
+              flexWrap: "wrap",
+              marginBottom: "14px",
+            }}
+          >
+            {question.chunks.map((chunk, chunkIndex) => {
+              const usedCount = selectedChunks.filter(
+                (item) => item === chunk
+              ).length;
+              const chunkTotalCount = question.chunks.filter(
+                (item) => item === chunk
+              ).length;
+              const isDisabled = usedCount >= chunkTotalCount;
+              return (
+                <button
+                  key={`${chunk}-${chunkIndex}`}
+                  type="button"
+                  onClick={() => addSentenceChunk(question.id, chunk)}
+                  disabled={isDisabled}
+                  style={{
+                    padding: "8px 12px",
+                    borderRadius: "999px",
+                    border: "1px solid #cbd5e1",
+                    background: isDisabled ? "#e2e8f0" : "white",
+                    color: isDisabled ? "#94a3b8" : "#111827",
+                    cursor: isDisabled ? "not-allowed" : "pointer",
+                    fontWeight: 700,
+                  }}
+                >
+                  {chunk}
+                </button>
+              );
+            })}
+          </div>
+          <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
+            <button
+              type="button"
+              onClick={() => removeLastSentenceChunk(question.id)}
               style={{
-                padding: "18px",
-                border: "1px solid #e2e8f0",
-                borderRadius: "16px",
-                background: "#f8fafc",
+                padding: "8px 12px",
+                borderRadius: "10px",
+                border: "1px solid #cbd5e1",
+                background: "white",
+                cursor: "pointer",
+                fontWeight: 700,
               }}
             >
-              <strong>Question {index + 1}</strong>
-
-              <p style={{ lineHeight: 1.7 }}>
-                <strong>Speaker A:</strong> {question.speakerA}
-              </p>
-
-              <p style={{ color: "#64748b", lineHeight: 1.7 }}>
-                Chunks: {question.chunks.join(" / ")}
-              </p>
-
-              <input
-                value={sentenceAnswers[question.id] || ""}
-                onChange={(event) =>
-                  updateSentenceAnswer(question.id, event.target.value)
-                }
-                placeholder="Type the complete Speaker B sentence here..."
-                style={{
-                  width: "100%",
-                  padding: "12px 14px",
-                  borderRadius: "12px",
-                  border: "1px solid #cbd5e1",
-                  fontSize: "15px",
-                  boxSizing: "border-box",
-                }}
-              />
-            </div>
-          ))}
+              Undo
+            </button>
+            <button
+              type="button"
+              onClick={() => clearSentenceAnswer(question.id)}
+              style={{
+                padding: "8px 12px",
+                borderRadius: "10px",
+                border: "1px solid #cbd5e1",
+                background: "white",
+                cursor: "pointer",
+                fontWeight: 700,
+              }}
+            >
+              Clear
+            </button>
+            <button
+              type="button"
+              onClick={goToNextSentence}
+              style={{
+                ...primaryButtonStyle,
+                background: "#111827",
+              }}
+            >
+              {currentSentenceIndex < data.sentenceQuestions.length - 1
+                ? "Next Question"
+                : "Next: Email Writing"}
+            </button>
+          </div>
         </div>
-      </section>
-
+      );
+    })()}
+  </section>
+)}
+    {mockPart === "email" && ( 
       <section style={cardStyle}>
         <h2 style={{ marginTop: 0 }}>Part 2 Write an Email</h2>
 
@@ -3347,8 +3564,32 @@ function MockTestPage({
         <p style={{ color: "#64748b", fontWeight: 700 }}>
           Word Count: {emailWordCount}
         </p>
-      </section>
+      <button
 
+      type="button"
+
+      onClick={goToDiscussionPart}
+
+      style={{
+
+        ...primaryButtonStyle,
+
+        background: "#111827",
+
+        marginTop: "12px",
+
+      }}
+
+    >
+
+      Next: Academic Discussion
+
+    </button>
+
+  </section>
+
+)}
+    {mockPart === "discussion" && (
       <section style={cardStyle}>
         <h2 style={{ marginTop: 0 }}>Part 3 Academic Discussion</h2>
 
@@ -3429,12 +3670,12 @@ function MockTestPage({
         <p style={{ color: "#64748b", fontWeight: 700 }}>
           Word Count: {discussionWordCount}
         </p>
-      </section>
-
+        </section>
+      )}
       {message && (
         <p style={{ color: "#be123c", fontWeight: 700 }}>{message}</p>
       )}
-
+    {mockPart === "discussion" && (
       <button
         type="button"
         onClick={onSubmit}
@@ -3450,6 +3691,7 @@ function MockTestPage({
       >
         {isSubmitting ? "正在评分并生成报告..." : "提交完整模考（-10 points）"}
       </button>
+    )}
     </>
   );
 }
@@ -3863,7 +4105,8 @@ function MockRecordDetailPage({
 
         <div style={{ display: "grid", gap: "14px" }}>
           {record.sentence_questions.map((question, index) => {
-            const userAnswer = record.sentence_answers[question.id] || "";
+            const userChunks = record.sentence_answers[question.id] || [];
+            const userAnswer = Array.isArray(userChunks) ? userChunks.join(" ") : "";
             const isCorrect =
               normalizeText(userAnswer) === normalizeText(question.speakerB);
 

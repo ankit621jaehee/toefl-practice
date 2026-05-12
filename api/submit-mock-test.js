@@ -122,10 +122,11 @@ function calculateSentenceScore(sentenceQuestions, sentenceAnswers) {
   let correctCount = 0;
 
   sentenceQuestions.forEach((question) => {
-    const userAnswer = sentenceAnswers?.[question.id] || "";
+    const userChunks = sentenceAnswers?.[question.id] || [];
+    const userAnswer = Array.isArray(userChunks) ? userChunks.join(" ") : "";
 
     if (normalizeText(userAnswer) === normalizeText(question.speakerB)) {
-      correctCount += 1;
+        correctCount += 1;
     }
   });
 
