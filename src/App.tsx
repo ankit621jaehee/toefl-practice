@@ -8,7 +8,11 @@ type Page =
   | "email"
   | "discussion"
   | "records"
-  | "record-detail";
+  | "record-detail"
+  | "mock"
+  | "mock-result"
+  | "mock-records"
+  | "mock-record-detail";
 
 type Part =
   | {
@@ -68,6 +72,64 @@ type WritingFeedback = {
   improvedVersion: string;
   sampleAnswer: string;
 };
+type MockSentenceQuestion = {
+  id: string;
+  speakerA: string;
+  speakerB: string;
+  chunks: string[];
+};
+
+type MockTestData = {
+  sentenceQuestions: MockSentenceQuestion[];
+  emailPrompt: EmailPrompt;
+  discussionPrompt: DiscussionPrompt;
+};
+
+type MockResult = {
+  recordId?: string;
+  sentenceScore: number;
+  emailScore: string;
+  discussionScore: string;
+  finalScore: number;
+  emailFeedback: WritingFeedback;
+  discussionFeedback: WritingFeedback;
+  knowledgeAnalysis: string[];
+  studyAdvice: string[];
+  cost?: number;
+  balance?: number;
+};
+
+type MockRecord = {
+  id: string;
+  sentence_questions: MockSentenceQuestion[];
+  sentence_answers: Record<string, string>;
+  sentence_score: number;
+
+  email_prompt: EmailPrompt;
+  email_answer: string;
+  email_feedback: WritingFeedback;
+  email_score: string;
+
+  discussion_prompt: DiscussionPrompt;
+  discussion_answer: string;
+  discussion_feedback: WritingFeedback;
+  discussion_score: string;
+
+  final_score: number;
+  knowledge_analysis: string[];
+  study_advice: string[];
+
+  points_spent: number;
+  created_at: string;
+};
+
+
+
+
+
+
+
+
 type PracticeRecord = {
   id: string;
   practice_type: string;
@@ -393,6 +455,28 @@ async function generateAcademicDiscussionWithAPI(level: string, topic: string) {
   return (await response.json()) as DiscussionPrompt;
 }
 
+async function startMockTestWithAPI(level = "medium", topic = "general") {
+  const response = await fetch("/api/start-mock-test", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      level,
+      topic,
+    }),
+  });
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(data.error || "Failed to start mock test");
+  }
+
+  return data as MockTestData;
+}
+
+
 async function scoreEmailWritingWithAPI(prompt: unknown, answer: string) {
   const {
     data: { session },
@@ -496,6 +580,21 @@ function App() {
   const [records, setRecords] = useState<PracticeRecord[]>([]);
   const [isLoadingRecords, setIsLoadingRecords] = useState(false);
   const [recordMessage, setRecordMessage] = useState(""); 
+  const [mockTestData, setMockTestData] = useState<MockTestData | null>(null);
+  const [mockSentenceAnswers, setMockSentenceAnswers] = useState<
+    Record<string, string>
+  >({});
+  const [mockEmailAnswer, setMockEmailAnswer] = useState("");
+  const [mockDiscussionAnswer, setMockDiscussionAnswer] = useState("");
+  const [mockResult, setMockResult] = useState<MockResult | null>(null);
+  const [isStartingMock, setIsStartingMock] = useState(false);
+  const [isSubmittingMock, setIsSubmittingMock] = useState(false);
+  const [mockMessage, setMockMessage] = useState("");
+  const [mockRecords, setMockRecords] = useState<MockRecord[]>([]);
+  const [isLoadingMockRecords, setIsLoadingMockRecords] = useState(false);
+  const [mockRecordMessage, setMockRecordMessage] = useState("");
+  const [selectedMockRecord, setSelectedMockRecord] =
+  useState<MockRecord | null>(null);
   const [selectedRecord, setSelectedRecord] = useState<PracticeRecord | null>(
   null
 );
@@ -689,6 +788,164 @@ async function loadPracticeRecords() {
 
   setRecords((data || []) as PracticeRecord[]);
   setIsLoadingRecords(false);
+}
+
+async function loadMockRecords() {
+  if (!user) {
+    setMockRecordMessage("Please sign in first.");
+    return;
+  }
+
+  setIsLoadingMockRecords(true);
+  setMockRecordMessage("");
+
+  const { data, error } = await supabase
+    .from("mock_records")
+    .select(
+      "id, sentence_questions, sentence_answers, sentence_score, email_prompt, email_answer, email_feedback, email_score, discussion_prompt, discussion_answer, discussion_feedback, discussion_score, final_score, knowledge_analysis, study_advice, points_spent, created_at"
+    )
+    .eq("user_id", user.id)
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    setMockRecordMessage(error.message);
+    setIsLoadingMockRecords(false);
+    return;
+  }
+
+  setMockRecords((data || []) as MockRecord[]);
+  setIsLoadingMockRecords(false);
+}
+
+
+
+async function handleStartMockTest() {
+  if (!user) {
+    setMockMessage("Please sign in before starting a mock test.");
+    return;
+  }
+
+  setIsStartingMock(true);
+  setMockMessage("");
+  setMockResult(null);
+  setMockTestData(null);
+  setMockSentenceAnswers({});
+  setMockEmailAnswer("");
+  setMockDiscussionAnswer("");
+
+  try {
+    const data = await startMockTestWithAPI("medium", "general campus and daily life");
+
+    setMockTestData(data);
+    setPage("mock");
+  } catch (error) {
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Failed to start mock test.";
+
+    setMockMessage(message);
+  } finally {
+    setIsStartingMock(false);
+  }
+}
+
+async function handleSubmitMockTest() {
+  if (!mockTestData) {
+    setMockMessage("Mock test data is missing.");
+    return;
+  }
+
+  if (!user) {
+    setMockMessage("Please sign in before submitting a mock test.");
+    return;
+  }
+
+  if (!mockEmailAnswer.trim() || !mockDiscussionAnswer.trim()) {
+    setMockMessage("Please complete both writing tasks before submitting.");
+    return;
+  }
+
+  setIsSubmittingMock(true);
+  setMockMessage("");
+
+  try {
+    const result = await submitMockTestWithAPI({
+      sentenceQuestions: mockTestData.sentenceQuestions,
+      sentenceAnswers: mockSentenceAnswers,
+      emailPrompt: mockTestData.emailPrompt,
+      emailAnswer: mockEmailAnswer,
+      discussionPrompt: mockTestData.discussionPrompt,
+      discussionAnswer: mockDiscussionAnswer,
+    });
+
+    setMockResult(result);
+
+    if (typeof result.balance === "number") {
+      setPoints(result.balance);
+    } else if (user) {
+      await loadPoints(user.id);
+    }
+
+    setPage("mock-result");
+  } catch (error) {
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Failed to submit mock test.";
+
+    setMockMessage(message);
+  } finally {
+    setIsSubmittingMock(false);
+  }
+}
+
+async function submitMockTestWithAPI({
+  sentenceQuestions,
+  sentenceAnswers,
+  emailPrompt,
+  emailAnswer,
+  discussionPrompt,
+  discussionAnswer,
+}: {
+  sentenceQuestions: MockSentenceQuestion[];
+  sentenceAnswers: Record<string, string>;
+  emailPrompt: EmailPrompt;
+  emailAnswer: string;
+  discussionPrompt: DiscussionPrompt;
+  discussionAnswer: string;
+}) {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+
+  if (!session?.access_token) {
+    throw new Error("Please sign in before submitting a mock test.");
+  }
+
+  const response = await fetch("/api/submit-mock-test", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${session.access_token}`,
+    },
+    body: JSON.stringify({
+      sentenceQuestions,
+      sentenceAnswers,
+      emailPrompt,
+      emailAnswer,
+      discussionPrompt,
+      discussionAnswer,
+    }),
+  });
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(data.error || "Failed to submit mock test");
+  }
+
+  return data as MockResult;
 }
 
   const [questions, setQuestions] = useState<Question[]>(fallbackQuestions);
@@ -1079,6 +1336,10 @@ async function loadPracticeRecords() {
                 setPage("records");
                 await loadPracticeRecords();
               }}
+              onViewMockRecords={async () => {
+                await loadMockRecords();
+                setPage("mock-records");
+              }}
             />
 
 
@@ -1166,6 +1427,31 @@ async function loadPracticeRecords() {
                   {isGeneratingDiscussionPrompt ? "正在生成..." : "进入学术讨论"}
                 </button>
               </div>
+              <div style={cardStyle}>
+                <h2 style={{ marginTop: 0 }}>Full Mock Test</h2>
+                <p style={{ color: "#64748b", lineHeight: 1.7 }}>
+                  完整完成 Build a Sentence、Email Writing 和 Academic Discussion，最后获得新 TOEFL 6 分制总分、知识点分析和备考建议。
+                </p>
+                <p style={{ color: "#475569", fontWeight: 700 }}>
+                  完整模考消耗：10 points
+                </p>
+                <button
+                  onClick={handleStartMockTest}
+                  disabled={isStartingMock}
+                  style={{
+                    ...primaryButtonStyle,
+                    background: isStartingMock ? "#cbd5e1" : "#111827",
+                    cursor: isStartingMock ? "not-allowed" : "pointer",
+                  }}
+                >
+                  {isStartingMock ? "正在生成模考..." : "开始完整模考"}
+                  </button>
+                  {mockMessage && (
+                    <p style={{ color: "#be123c", fontWeight: 700, marginBottom: 0 }}>
+                      {mockMessage}
+                    </p>
+                  )}
+                </div>
             </div>
           </>
         )}
@@ -1349,6 +1635,56 @@ async function loadPracticeRecords() {
             setPage={setPage}
           />
         )}
+
+        {page === "mock" && mockTestData && (
+          <MockTestPage
+            data={mockTestData}
+            sentenceAnswers={mockSentenceAnswers}
+            setSentenceAnswers={setMockSentenceAnswers}
+            emailAnswer={mockEmailAnswer}
+            setEmailAnswer={setMockEmailAnswer}
+            discussionAnswer={mockDiscussionAnswer}
+            setDiscussionAnswer={setMockDiscussionAnswer}
+            isSubmitting={isSubmittingMock}
+            message={mockMessage}
+            onSubmit={handleSubmitMockTest}
+            onCancel={() => setPage("home")}
+          />
+        )}
+        {page === "mock-result" && mockResult && (
+          <MockResultPage
+            result={mockResult}
+            onBackHome={() => setPage("home")}
+            onViewRecords={async () => {
+              await loadMockRecords();
+              setPage("mock-records");
+            }}
+          />
+        )}
+
+        {page === "mock-records" && (
+          <MockRecordsPage
+            records={mockRecords}
+            isLoading={isLoadingMockRecords}
+            message={mockRecordMessage}
+            onBackHome={() => setPage("home")}
+            onOpenRecord={(record) => {
+              setSelectedMockRecord(record);
+              setPage("mock-record-detail");
+            }}
+          />
+        )}
+
+        {page === "mock-record-detail" && selectedMockRecord && (
+          <MockRecordDetailPage
+            record={selectedMockRecord}
+            onClose={() => {
+              setSelectedMockRecord(null);
+              setPage("mock-records");
+            }}
+          />
+        )}
+
 
         {page === "records" && (
           <PracticeRecordsPage
@@ -2180,6 +2516,7 @@ function AuthPanel({
   onRedeemCode,
   onViewRecords,
   onShowPointsModal,
+  onViewMockRecords,
 }: {
   user: User | null;
   points: number;
@@ -2199,6 +2536,7 @@ function AuthPanel({
   onRedeemCode: () => void;
   onViewRecords:()=> void;
   onShowPointsModal: () => void;
+  onViewMockRecords: () => void;
 }) {
   return (
     <section
@@ -2296,6 +2634,11 @@ function AuthPanel({
               marginTop: "16px",
             }}
           >
+
+            <button type="button" onClick={onViewMockRecords}>
+              View Mock Records
+            </button>
+
             <button type="button" onClick={onViewRecords}>
               View Practice Records
             </button>
@@ -2809,6 +3152,893 @@ function PracticeRecordDetailPage({
           actionPlan={record.feedback.actionPlan || []}
           improvedVersion={record.feedback.improvedVersion || ""}
           sampleAnswer={record.feedback.sampleAnswer || ""}
+        />
+      </section>
+    </>
+  );
+}
+
+function MockTestPage({
+  data,
+  sentenceAnswers,
+  setSentenceAnswers,
+  emailAnswer,
+  setEmailAnswer,
+  discussionAnswer,
+  setDiscussionAnswer,
+  isSubmitting,
+  message,
+  onSubmit,
+  onCancel,
+}: {
+  data: MockTestData;
+  sentenceAnswers: Record<string, string>;
+  setSentenceAnswers: React.Dispatch<
+    React.SetStateAction<Record<string, string>>
+  >;
+  emailAnswer: string;
+  setEmailAnswer: (value: string) => void;
+  discussionAnswer: string;
+  setDiscussionAnswer: (value: string) => void;
+  isSubmitting: boolean;
+  message: string;
+  onSubmit: () => void;
+  onCancel: () => void;
+}) {
+  const cardStyle = {
+    background: "white",
+    border: "1px solid #e2e8f0",
+    borderRadius: "20px",
+    padding: "24px",
+    marginBottom: "24px",
+    boxShadow: "0 10px 30px rgba(15, 23, 42, 0.06)",
+  };
+
+  const primaryButtonStyle = {
+    border: "none",
+    borderRadius: "14px",
+    color: "white",
+    fontWeight: 800,
+    fontSize: "15px",
+    padding: "12px 18px",
+    cursor: "pointer",
+  };
+
+  function updateSentenceAnswer(questionId: string, value: string) {
+    setSentenceAnswers((previous) => ({
+      ...previous,
+      [questionId]: value,
+    }));
+  }
+
+  const emailWordCount = emailAnswer.trim()
+    ? emailAnswer.trim().split(/\s+/).length
+    : 0;
+
+  const discussionWordCount = discussionAnswer.trim()
+    ? discussionAnswer.trim().split(/\s+/).length
+    : 0;
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={onCancel}
+        style={{
+          padding: "10px 16px",
+          border: "1px solid #cbd5e1",
+          borderRadius: "12px",
+          background: "white",
+          fontWeight: 700,
+          cursor: "pointer",
+          marginBottom: "24px",
+        }}
+      >
+        返回首页
+      </button>
+
+      <div style={cardStyle}>
+        <h1 style={{ marginTop: 0 }}>Full Mock Test</h1>
+
+        <p style={{ color: "#64748b", lineHeight: 1.8 }}>
+          完整完成 10 道 Build a Sentence、1 篇 Email Writing 和 1 篇 Academic
+          Discussion。提交后将扣除 10 points，并生成 6 分制总分、知识点分析和备考建议。
+        </p>
+
+        <p style={{ color: "#475569", fontWeight: 800 }}>
+          Submit Mock Test：-10 points
+        </p>
+      </div>
+
+      <section style={cardStyle}>
+        <h2 style={{ marginTop: 0 }}>Part 1 Build a Sentence</h2>
+
+        <p style={{ color: "#64748b", lineHeight: 1.7 }}>
+          根据 Speaker A 的语境，用给出的词块组成自然的 Speaker B 回答。共 10
+          题，每题 0.5 分，满分 5 分。
+        </p>
+
+        <div style={{ display: "grid", gap: "18px" }}>
+          {data.sentenceQuestions.map((question, index) => (
+            <div
+              key={question.id}
+              style={{
+                padding: "18px",
+                border: "1px solid #e2e8f0",
+                borderRadius: "16px",
+                background: "#f8fafc",
+              }}
+            >
+              <strong>Question {index + 1}</strong>
+
+              <p style={{ lineHeight: 1.7 }}>
+                <strong>Speaker A:</strong> {question.speakerA}
+              </p>
+
+              <p style={{ color: "#64748b", lineHeight: 1.7 }}>
+                Chunks: {question.chunks.join(" / ")}
+              </p>
+
+              <input
+                value={sentenceAnswers[question.id] || ""}
+                onChange={(event) =>
+                  updateSentenceAnswer(question.id, event.target.value)
+                }
+                placeholder="Type the complete Speaker B sentence here..."
+                style={{
+                  width: "100%",
+                  padding: "12px 14px",
+                  borderRadius: "12px",
+                  border: "1px solid #cbd5e1",
+                  fontSize: "15px",
+                  boxSizing: "border-box",
+                }}
+              />
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section style={cardStyle}>
+        <h2 style={{ marginTop: 0 }}>Part 2 Write an Email</h2>
+
+        <p style={{ color: "#64748b", lineHeight: 1.8 }}>
+          {data.emailPrompt.scenario}
+        </p>
+
+        <div
+          style={{
+            padding: "16px",
+            borderRadius: "14px",
+            background: "#f8fafc",
+            border: "1px solid #e2e8f0",
+            marginBottom: "16px",
+          }}
+        >
+          <strong>{data.emailPrompt.task}</strong>
+
+          <ul style={{ lineHeight: 1.8 }}>
+            {data.emailPrompt.requirements.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
+
+          <p style={{ color: "#64748b", marginBottom: 0 }}>
+            {data.emailPrompt.suggestedLength}
+          </p>
+        </div>
+
+        <textarea
+          value={emailAnswer}
+          onChange={(event) => setEmailAnswer(event.target.value)}
+          placeholder="Write your email here..."
+          style={{
+            width: "100%",
+            minHeight: "220px",
+            padding: "16px",
+            borderRadius: "16px",
+            border: "1px solid #cbd5e1",
+            fontSize: "15px",
+            lineHeight: 1.7,
+            boxSizing: "border-box",
+          }}
+        />
+
+        <p style={{ color: "#64748b", fontWeight: 700 }}>
+          Word Count: {emailWordCount}
+        </p>
+      </section>
+
+      <section style={cardStyle}>
+        <h2 style={{ marginTop: 0 }}>Part 3 Academic Discussion</h2>
+
+        <div style={{ display: "grid", gap: "14px", lineHeight: 1.8 }}>
+          <div
+            style={{
+              padding: "16px",
+              borderRadius: "14px",
+              background: "#f8fafc",
+              border: "1px solid #e2e8f0",
+            }}
+          >
+            <strong>Professor</strong>
+            <p style={{ marginBottom: 0 }}>{data.discussionPrompt.professor}</p>
+          </div>
+
+          <div
+            style={{
+              padding: "16px",
+              borderRadius: "14px",
+              background: "#f8fafc",
+              border: "1px solid #e2e8f0",
+            }}
+          >
+            <strong>{data.discussionPrompt.studentOneName}</strong>
+            <p style={{ marginBottom: 0 }}>
+              {data.discussionPrompt.studentOnePost}
+            </p>
+          </div>
+
+          <div
+            style={{
+              padding: "16px",
+              borderRadius: "14px",
+              background: "#f8fafc",
+              border: "1px solid #e2e8f0",
+            }}
+          >
+            <strong>{data.discussionPrompt.studentTwoName}</strong>
+            <p style={{ marginBottom: 0 }}>
+              {data.discussionPrompt.studentTwoPost}
+            </p>
+          </div>
+
+          <div
+            style={{
+              padding: "16px",
+              borderRadius: "14px",
+              background: "#eef2ff",
+              color: "#312e81",
+            }}
+          >
+            <strong>Question</strong>
+            <p>{data.discussionPrompt.question}</p>
+            <p style={{ marginBottom: 0 }}>
+              {data.discussionPrompt.suggestedLength}
+            </p>
+          </div>
+        </div>
+
+        <textarea
+          value={discussionAnswer}
+          onChange={(event) => setDiscussionAnswer(event.target.value)}
+          placeholder="Write your discussion response here..."
+          style={{
+            width: "100%",
+            minHeight: "240px",
+            padding: "16px",
+            borderRadius: "16px",
+            border: "1px solid #cbd5e1",
+            fontSize: "15px",
+            lineHeight: 1.7,
+            boxSizing: "border-box",
+            marginTop: "16px",
+          }}
+        />
+
+        <p style={{ color: "#64748b", fontWeight: 700 }}>
+          Word Count: {discussionWordCount}
+        </p>
+      </section>
+
+      {message && (
+        <p style={{ color: "#be123c", fontWeight: 700 }}>{message}</p>
+      )}
+
+      <button
+        type="button"
+        onClick={onSubmit}
+        disabled={isSubmitting}
+        style={{
+          ...primaryButtonStyle,
+          width: "100%",
+          padding: "16px",
+          background: isSubmitting ? "#cbd5e1" : "#111827",
+          cursor: isSubmitting ? "not-allowed" : "pointer",
+          marginTop: "10px",
+        }}
+      >
+        {isSubmitting ? "正在评分并生成报告..." : "提交完整模考（-10 points）"}
+      </button>
+    </>
+  );
+}
+
+function MockResultPage({
+  result,
+  onBackHome,
+  onViewRecords,
+}: {
+  result: MockResult;
+  onBackHome: () => void;
+  onViewRecords: () => void;
+}) {
+  const cardStyle = {
+    background: "white",
+    border: "1px solid #e2e8f0",
+    borderRadius: "20px",
+    padding: "24px",
+    marginBottom: "24px",
+    boxShadow: "0 10px 30px rgba(15, 23, 42, 0.06)",
+  };
+
+  const secondaryButtonStyle = {
+    padding: "12px 18px",
+    border: "1px solid #cbd5e1",
+    borderRadius: "14px",
+    background: "white",
+    fontWeight: 800,
+    cursor: "pointer",
+  };
+
+  const primaryButtonStyle = {
+    padding: "12px 18px",
+    border: "none",
+    borderRadius: "14px",
+    background: "#111827",
+    color: "white",
+    fontWeight: 800,
+    cursor: "pointer",
+  };
+
+  return (
+    <>
+      <div
+        style={{
+          ...cardStyle,
+          background: "linear-gradient(135deg, #eef2ff, #ffffff)",
+        }}
+      >
+        <h1 style={{ marginTop: 0 }}>Mock Test Result</h1>
+
+        <p
+          style={{
+            fontSize: "42px",
+            fontWeight: 900,
+            color: "#312e81",
+            margin: "14px 0",
+          }}
+        >
+          {result.finalScore.toFixed(1)} / 6.0
+        </p>
+
+        <p style={{ color: "#64748b", lineHeight: 1.8 }}>
+          这是根据 Build a Sentence 25%、Email Writing 35%、Academic Discussion
+          40% 折算出的新 TOEFL 6 分制模考总分。
+        </p>
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+            gap: "14px",
+            marginTop: "20px",
+          }}
+        >
+          <div
+            style={{
+              padding: "16px",
+              borderRadius: "16px",
+              background: "white",
+              border: "1px solid #e2e8f0",
+            }}
+          >
+            <strong>Build a Sentence</strong>
+            <p style={{ fontSize: "24px", fontWeight: 900 }}>
+              {result.sentenceScore.toFixed(1)} / 5.0
+            </p>
+            <p style={{ color: "#64748b", marginBottom: 0 }}>Weight: 25%</p>
+          </div>
+
+          <div
+            style={{
+              padding: "16px",
+              borderRadius: "16px",
+              background: "white",
+              border: "1px solid #e2e8f0",
+            }}
+          >
+            <strong>Email Writing</strong>
+            <p style={{ fontSize: "24px", fontWeight: 900 }}>
+              {result.emailScore}
+            </p>
+            <p style={{ color: "#64748b", marginBottom: 0 }}>Weight: 35%</p>
+          </div>
+
+          <div
+            style={{
+              padding: "16px",
+              borderRadius: "16px",
+              background: "white",
+              border: "1px solid #e2e8f0",
+            }}
+          >
+            <strong>Academic Discussion</strong>
+            <p style={{ fontSize: "24px", fontWeight: 900 }}>
+              {result.discussionScore}
+            </p>
+            <p style={{ color: "#64748b", marginBottom: 0 }}>Weight: 40%</p>
+          </div>
+        </div>
+
+        <p style={{ color: "#475569", fontWeight: 700 }}>
+          Points spent: {result.cost ?? 10}
+        </p>
+      </div>
+
+      <section style={cardStyle}>
+        <h2 style={{ marginTop: 0 }}>Knowledge Analysis</h2>
+
+        {result.knowledgeAnalysis.length > 0 ? (
+          <ul style={{ lineHeight: 1.8 }}>
+            {result.knowledgeAnalysis.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
+        ) : (
+          <p style={{ color: "#64748b" }}>No knowledge analysis available.</p>
+        )}
+      </section>
+
+      <section style={cardStyle}>
+        <h2 style={{ marginTop: 0 }}>Study Advice</h2>
+
+        {result.studyAdvice.length > 0 ? (
+          <ul style={{ lineHeight: 1.8 }}>
+            {result.studyAdvice.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
+        ) : (
+          <p style={{ color: "#64748b" }}>No study advice available.</p>
+        )}
+      </section>
+
+      <section style={cardStyle}>
+        <h2 style={{ marginTop: 0 }}>Email Writing Feedback</h2>
+
+        <FeedbackBox
+          score={result.emailFeedback.score}
+          strengths={result.emailFeedback.strengths || []}
+          problems={result.emailFeedback.problems || []}
+          grammarCorrections={result.emailFeedback.grammarCorrections || []}
+          actionPlan={result.emailFeedback.actionPlan || []}
+          improvedVersion={result.emailFeedback.improvedVersion || ""}
+          sampleAnswer={result.emailFeedback.sampleAnswer || ""}
+        />
+      </section>
+
+      <section style={cardStyle}>
+        <h2 style={{ marginTop: 0 }}>Academic Discussion Feedback</h2>
+
+        <FeedbackBox
+          score={result.discussionFeedback.score}
+          strengths={result.discussionFeedback.strengths || []}
+          problems={result.discussionFeedback.problems || []}
+          grammarCorrections={result.discussionFeedback.grammarCorrections || []}
+          actionPlan={result.discussionFeedback.actionPlan || []}
+          improvedVersion={result.discussionFeedback.improvedVersion || ""}
+          sampleAnswer={result.discussionFeedback.sampleAnswer || ""}
+        />
+      </section>
+
+      <div style={{ display: "flex", gap: "12px", flexWrap: "wrap" }}>
+        <button type="button" onClick={onBackHome} style={secondaryButtonStyle}>
+          返回首页
+        </button>
+
+        <button type="button" onClick={onViewRecords} style={primaryButtonStyle}>
+          查看模考记录
+        </button>
+      </div>
+    </>
+  );
+}
+
+function MockRecordsPage({
+  records,
+  isLoading,
+  message,
+  onBackHome,
+  onOpenRecord,
+}: {
+  records: MockRecord[];
+  isLoading: boolean;
+  message: string;
+  onBackHome: () => void;
+  onOpenRecord: (record: MockRecord) => void;
+}) {
+  const cardStyle = {
+    background: "white",
+    border: "1px solid #e2e8f0",
+    borderRadius: "20px",
+    padding: "24px",
+    marginBottom: "24px",
+    boxShadow: "0 10px 30px rgba(15, 23, 42, 0.06)",
+  };
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={onBackHome}
+        style={{
+          padding: "10px 16px",
+          border: "1px solid #cbd5e1",
+          borderRadius: "12px",
+          background: "white",
+          fontWeight: 700,
+          cursor: "pointer",
+          marginBottom: "24px",
+        }}
+      >
+        返回首页
+      </button>
+
+      <div style={cardStyle}>
+        <h1 style={{ marginTop: 0 }}>Mock Records</h1>
+        <p style={{ color: "#64748b", lineHeight: 1.8 }}>
+          这里会单独显示完整模考记录。点击任意记录可以查看题目、答案、反馈、知识点分析和备考建议。
+        </p>
+      </div>
+
+      {isLoading && <p style={{ color: "#64748b" }}>Loading mock records...</p>}
+
+      {message && <p style={{ color: "#be123c", fontWeight: 700 }}>{message}</p>}
+
+      {!isLoading && records.length === 0 && (
+        <p style={{ color: "#64748b" }}>No mock records yet.</p>
+      )}
+
+      <div style={{ display: "grid", gap: "12px" }}>
+        {records.map((record) => (
+          <button
+            key={record.id}
+            type="button"
+            onClick={() => onOpenRecord(record)}
+            style={{
+              width: "100%",
+              border: "1px solid #e2e8f0",
+              borderRadius: "18px",
+              background: "#f8fafc",
+              padding: "18px 20px",
+              cursor: "pointer",
+              textAlign: "left",
+            }}
+          >
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1.4fr 1fr 1fr 1fr auto",
+                gap: "14px",
+                alignItems: "center",
+              }}
+            >
+              <span style={{ color: "#64748b" }}>
+                {new Date(record.created_at).toLocaleString()}
+              </span>
+
+              <strong style={{ color: "#312e81" }}>
+                Final {Number(record.final_score).toFixed(1)} / 6.0
+              </strong>
+
+              <span>Sentence {Number(record.sentence_score).toFixed(1)} / 5.0</span>
+
+              <span>Email {record.email_score}</span>
+
+              <span style={{ color: "#64748b", fontWeight: 700 }}>
+                查看详情 →
+              </span>
+            </div>
+
+            <div
+              style={{
+                marginTop: "10px",
+                color: "#64748b",
+                fontSize: "14px",
+              }}
+            >
+              Discussion {record.discussion_score} · Points spent:{" "}
+              {record.points_spent}
+            </div>
+          </button>
+        ))}
+      </div>
+    </>
+  );
+}
+
+function MockRecordDetailPage({
+  record,
+  onClose,
+}: {
+  record: MockRecord;
+  onClose: () => void;
+}) {
+  const cardStyle = {
+    background: "white",
+    border: "1px solid #e2e8f0",
+    borderRadius: "20px",
+    padding: "24px",
+    marginBottom: "24px",
+    boxShadow: "0 10px 30px rgba(15, 23, 42, 0.06)",
+  };
+
+  function normalizeText(text: string) {
+    return String(text || "")
+      .trim()
+      .toLowerCase()
+      .replace(/[“”]/g, '"')
+      .replace(/[‘’]/g, "'")
+      .replace(/[.,!?;:]/g, "")
+      .replace(/\s+/g, " ");
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={onClose}
+        style={{
+          padding: "10px 16px",
+          border: "1px solid #cbd5e1",
+          borderRadius: "12px",
+          background: "white",
+          fontWeight: 700,
+          cursor: "pointer",
+          marginBottom: "24px",
+        }}
+      >
+        关闭
+      </button>
+
+      <div
+        style={{
+          ...cardStyle,
+          background: "linear-gradient(135deg, #eef2ff, #ffffff)",
+        }}
+      >
+        <h1 style={{ marginTop: 0 }}>Mock Test Detail</h1>
+
+        <p
+          style={{
+            fontSize: "42px",
+            fontWeight: 900,
+            color: "#312e81",
+            margin: "14px 0",
+          }}
+        >
+          {Number(record.final_score).toFixed(1)} / 6.0
+        </p>
+
+        <div style={{ color: "#64748b", lineHeight: 1.8 }}>
+          <div>时间：{new Date(record.created_at).toLocaleString()}</div>
+          <div>Build a Sentence：{Number(record.sentence_score).toFixed(1)} / 5.0</div>
+          <div>Email Writing：{record.email_score}</div>
+          <div>Academic Discussion：{record.discussion_score}</div>
+          <div>消耗积分：{record.points_spent} points</div>
+        </div>
+      </div>
+
+      <section style={cardStyle}>
+        <h2 style={{ marginTop: 0 }}>Knowledge Analysis</h2>
+
+        {record.knowledge_analysis.length > 0 ? (
+          <ul style={{ lineHeight: 1.8 }}>
+            {record.knowledge_analysis.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
+        ) : (
+          <p style={{ color: "#64748b" }}>No knowledge analysis available.</p>
+        )}
+      </section>
+
+      <section style={cardStyle}>
+        <h2 style={{ marginTop: 0 }}>Study Advice</h2>
+
+        {record.study_advice.length > 0 ? (
+          <ul style={{ lineHeight: 1.8 }}>
+            {record.study_advice.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
+        ) : (
+          <p style={{ color: "#64748b" }}>No study advice available.</p>
+        )}
+      </section>
+
+      <section style={cardStyle}>
+        <h2 style={{ marginTop: 0 }}>Part 1 Build a Sentence</h2>
+
+        <div style={{ display: "grid", gap: "14px" }}>
+          {record.sentence_questions.map((question, index) => {
+            const userAnswer = record.sentence_answers[question.id] || "";
+            const isCorrect =
+              normalizeText(userAnswer) === normalizeText(question.speakerB);
+
+            return (
+              <div
+                key={question.id}
+                style={{
+                  padding: "16px",
+                  borderRadius: "16px",
+                  background: "#f8fafc",
+                  border: `1px solid ${isCorrect ? "#bbf7d0" : "#fecdd3"}`,
+                }}
+              >
+                <strong>
+                  Question {index + 1} · {isCorrect ? "Correct" : "Incorrect"}
+                </strong>
+
+                <p style={{ lineHeight: 1.7 }}>
+                  <strong>Speaker A:</strong> {question.speakerA}
+                </p>
+
+                <p style={{ lineHeight: 1.7 }}>
+                  <strong>Your answer:</strong>{" "}
+                  {userAnswer || <span style={{ color: "#be123c" }}>No answer</span>}
+                </p>
+
+                <p style={{ lineHeight: 1.7 }}>
+                  <strong>Correct answer:</strong> {question.speakerB}
+                </p>
+
+                <p style={{ color: "#64748b", marginBottom: 0 }}>
+                  Chunks: {question.chunks.join(" / ")}
+                </p>
+              </div>
+            );
+          })}
+        </div>
+      </section>
+
+      <section style={cardStyle}>
+        <h2 style={{ marginTop: 0 }}>Part 2 Email Writing</h2>
+
+        <p style={{ color: "#64748b", lineHeight: 1.8 }}>
+          {record.email_prompt.scenario}
+        </p>
+
+        <div
+          style={{
+            padding: "16px",
+            borderRadius: "14px",
+            background: "#f8fafc",
+            border: "1px solid #e2e8f0",
+            marginBottom: "16px",
+          }}
+        >
+          <strong>{record.email_prompt.task}</strong>
+          <ul style={{ lineHeight: 1.8 }}>
+            {record.email_prompt.requirements.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
+          <p style={{ color: "#64748b", marginBottom: 0 }}>
+            {record.email_prompt.suggestedLength}
+          </p>
+        </div>
+
+        <h3>Your Answer</h3>
+        <pre
+          style={{
+            whiteSpace: "pre-wrap",
+            background: "#f8fafc",
+            padding: "16px",
+            borderRadius: "14px",
+            lineHeight: 1.8,
+            border: "1px solid #e2e8f0",
+          }}
+        >
+          {record.email_answer}
+        </pre>
+
+        <h3>Feedback</h3>
+        <FeedbackBox
+          score={record.email_feedback.score}
+          strengths={record.email_feedback.strengths || []}
+          problems={record.email_feedback.problems || []}
+          grammarCorrections={record.email_feedback.grammarCorrections || []}
+          actionPlan={record.email_feedback.actionPlan || []}
+          improvedVersion={record.email_feedback.improvedVersion || ""}
+          sampleAnswer={record.email_feedback.sampleAnswer || ""}
+        />
+      </section>
+
+      <section style={cardStyle}>
+        <h2 style={{ marginTop: 0 }}>Part 3 Academic Discussion</h2>
+
+        <div style={{ display: "grid", gap: "14px", lineHeight: 1.8 }}>
+          <div
+            style={{
+              padding: "16px",
+              borderRadius: "14px",
+              background: "#f8fafc",
+              border: "1px solid #e2e8f0",
+            }}
+          >
+            <strong>Professor</strong>
+            <p style={{ marginBottom: 0 }}>{record.discussion_prompt.professor}</p>
+          </div>
+
+          <div
+            style={{
+              padding: "16px",
+              borderRadius: "14px",
+              background: "#f8fafc",
+              border: "1px solid #e2e8f0",
+            }}
+          >
+            <strong>{record.discussion_prompt.studentOneName}</strong>
+            <p style={{ marginBottom: 0 }}>
+              {record.discussion_prompt.studentOnePost}
+            </p>
+          </div>
+
+          <div
+            style={{
+              padding: "16px",
+              borderRadius: "14px",
+              background: "#f8fafc",
+              border: "1px solid #e2e8f0",
+            }}
+          >
+            <strong>{record.discussion_prompt.studentTwoName}</strong>
+            <p style={{ marginBottom: 0 }}>
+              {record.discussion_prompt.studentTwoPost}
+            </p>
+          </div>
+
+          <div
+            style={{
+              padding: "16px",
+              borderRadius: "14px",
+              background: "#eef2ff",
+              color: "#312e81",
+            }}
+          >
+            <strong>Question</strong>
+            <p>{record.discussion_prompt.question}</p>
+            <p style={{ marginBottom: 0 }}>
+              {record.discussion_prompt.suggestedLength}
+            </p>
+          </div>
+        </div>
+
+        <h3>Your Answer</h3>
+        <pre
+          style={{
+            whiteSpace: "pre-wrap",
+            background: "#f8fafc",
+            padding: "16px",
+            borderRadius: "14px",
+            lineHeight: 1.8,
+            border: "1px solid #e2e8f0",
+          }}
+        >
+          {record.discussion_answer}
+        </pre>
+
+        <h3>Feedback</h3>
+        <FeedbackBox
+          score={record.discussion_feedback.score}
+          strengths={record.discussion_feedback.strengths || []}
+          problems={record.discussion_feedback.problems || []}
+          grammarCorrections={record.discussion_feedback.grammarCorrections || []}
+          actionPlan={record.discussion_feedback.actionPlan || []}
+          improvedVersion={record.discussion_feedback.improvedVersion || ""}
+          sampleAnswer={record.discussion_feedback.sampleAnswer || ""}
         />
       </section>
     </>
