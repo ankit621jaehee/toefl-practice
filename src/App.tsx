@@ -50,30 +50,20 @@ type DiscussionPrompt = {
 };
 
 type WritingFeedback = {
-
   score: string;
-
   strengths: string[];
-
   problems: string[];
-
   grammarCorrections: {
-
     original: string;
-
     corrected: string;
-
     explanation: string;
-
   }[];
-
   actionPlan: string[];
-
   improvedVersion: string;
-
   sampleAnswer: string;
-
 };
+const EMAIL_SCORING_COST = 3;
+const DISCUSSION_SCORING_COST = 3;
 
 const sampleEmailPrompt: EmailPrompt = {
   title: "Email Writing Practice",
@@ -1078,7 +1068,9 @@ async function handleRedeemCode() {
                   练习 TOEFL 邮件写作。进入后自动随机生成邮件写作题，并提供 AI
                   评分。
                 </p>
-
+                <p style={{ color: "#475569", fontWeight: 700 }}>
+                  AI 批改消耗：{EMAIL_SCORING_COST} points
+                </p>
                 <button
                   onClick={startEmailPractice}
                   disabled={isGeneratingEmailPrompt}
@@ -1098,7 +1090,9 @@ async function handleRedeemCode() {
                   练习 TOEFL 学术讨论写作。进入后自动随机生成讨论题，并提供 AI
                   评分。
                 </p>
-
+                <p style={{ color: "#475569", fontWeight: 700 }}>
+                  AI 批改消耗：{DISCUSSION_SCORING_COST} points
+                </p>
 
                 <button
                   onClick={startDiscussionPractice}
@@ -1153,6 +1147,7 @@ async function handleRedeemCode() {
         {page === "email" && (
           <WritingPracticePage
             title={currentEmailPrompt.title}
+            submitCost={EMAIL_SCORING_COST}
             isGenerating={isGeneratingEmailPrompt}
             onGenerateNew={generateNewEmailPrompt}
             promptBlock={
@@ -1207,6 +1202,7 @@ async function handleRedeemCode() {
         {page === "discussion" && (
           <WritingPracticePage
             title={currentDiscussionPrompt.title}
+            submitCost={DISCUSSION_SCORING_COST}
             isGenerating={isGeneratingDiscussionPrompt}
             onGenerateNew={generateNewDiscussionPrompt}
             promptBlock={
@@ -1789,6 +1785,7 @@ function SentencePractice({
 
 function WritingPracticePage({
   title,
+  submitCost,
   isGenerating,
   onGenerateNew,
   promptBlock,
@@ -1803,6 +1800,7 @@ function WritingPracticePage({
   setPage,
 }: {
   title: string;
+  submitCost: number;
   isGenerating: boolean;
   onGenerateNew: () => void;
   promptBlock: ReactNode;
@@ -1905,9 +1903,14 @@ function WritingPracticePage({
           marginBottom: "24px",
         }}
       >
-        <span style={{ color: "#64748b", fontWeight: 700 }}>
-          Word Count: {wordCount}
-        </span>
+        <div>
+           <span style={{ color: "#64748b", fontWeight: 700 }}>
+            Word Count: {wordCount}
+          </span>
+          <div style={{ color: "#64748b", fontSize: "14px", marginTop: "6px" }}>
+            AI scoring costs {submitCost} points.
+          </div>
+        </div>
 
         <button
           onClick={onSubmit}
@@ -1928,7 +1931,7 @@ function WritingPracticePage({
                 : "pointer",
           }}
         >
-          {isScoring ? "正在评分..." : "提交并查看反馈"}
+          {isScoring ? "正在评分..." : `提交并查看反馈（-${submitCost} points）`}
         </button>
       </div>
 
