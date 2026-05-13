@@ -139,6 +139,24 @@ type PracticeRecord = {
 };
 const EMAIL_SCORING_COST = 3;
 const DISCUSSION_SCORING_COST = 3;
+const announcements = [
+  {
+    id: 1,
+    tag: "优惠",
+    title: "新用户体验兑换码",
+    content: "输入兑换码 toefl 可获得 10 points，用于体验写作批改或完整模考。",
+    date: "2026-05-13",
+  },
+  {
+    id: 2,
+    tag: "功能更新",
+    title: "Full Mock Test 已上线",
+    content:
+      "现在可以完成 Build a Sentence、Email Writing 和 Academic Discussion 三部分完整模考，并获得 6 分制总分、知识点分析和备考建议。",
+    date: "2026-05-13",
+  },
+];
+
 
 const sampleEmailPrompt: EmailPrompt = {
   title: "Email Writing Practice",
@@ -1390,7 +1408,7 @@ async function submitMockTestWithAPI({
                 setPage("mock-records");
               }}
             />
-
+            <AnnouncementBoard />
 
             <div
               style={{
@@ -5015,6 +5033,99 @@ function MockRecordDetailPage({
         />
       </section>
     </>
+  );
+}
+
+function AnnouncementBoard() {
+  return (
+    <section
+      style={{
+        background: "linear-gradient(135deg, #eef2ff, #ffffff)",
+        border: "1px solid #c7d2fe",
+        borderRadius: "22px",
+        padding: "24px",
+        marginBottom: "28px",
+        boxShadow: "0 10px 30px rgba(15, 23, 42, 0.06)",
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          gap: "16px",
+          alignItems: "center",
+          flexWrap: "wrap",
+          marginBottom: "18px",
+        }}
+      >
+        <div>
+          <h2 style={{ margin: 0 }}>Announcements</h2>
+          <p style={{ color: "#64748b", marginBottom: 0 }}>
+            最新活动、优惠兑换码和功能更新会放在这里。
+          </p>
+        </div>
+
+        <span
+          style={{
+            padding: "8px 12px",
+            borderRadius: "999px",
+            background: "#312e81",
+            color: "white",
+            fontWeight: 800,
+            fontSize: "14px",
+          }}
+        >
+          Latest
+        </span>
+      </div>
+
+      <div style={{ display: "grid", gap: "14px" }}>
+        {announcements.map((item) => (
+          <article
+            key={item.id}
+            style={{
+              background: "white",
+              border: "1px solid #e2e8f0",
+              borderRadius: "18px",
+              padding: "18px",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                gap: "10px",
+                alignItems: "center",
+                flexWrap: "wrap",
+                marginBottom: "8px",
+              }}
+            >
+              <span
+                style={{
+                  padding: "5px 10px",
+                  borderRadius: "999px",
+                  background: "#eef2ff",
+                  color: "#312e81",
+                  fontWeight: 800,
+                  fontSize: "13px",
+                }}
+              >
+                {item.tag}
+              </span>
+
+              <span style={{ color: "#94a3b8", fontSize: "14px" }}>
+                {item.date}
+              </span>
+            </div>
+
+            <h3 style={{ marginTop: 0, marginBottom: "8px" }}>{item.title}</h3>
+
+            <p style={{ color: "#475569", lineHeight: 1.8, marginBottom: 0 }}>
+              {item.content}
+            </p>
+          </article>
+        ))}
+      </div>
+    </section>
   );
 }
 
