@@ -2844,7 +2844,7 @@ function PointsModal({ onClose }: { onClose: () => void }) {
     {
       name: "体验套餐",
       points: 20,
-      description: "适合轻量体验 Email / Discussion 批改功能。",
+      description: "适合轻量体验 Build A Sentence / Email / Discussion 功能。",
     },
     {
       name: "练习套餐",
@@ -2854,7 +2854,7 @@ function PointsModal({ onClose }: { onClose: () => void }) {
     {
       name: "强化套餐",
       points: 150,
-      description: "适合高频练习和集中备考阶段使用。",
+      description: "适合高频练习，在集中备考阶段使用。",
     },
   ];
 
