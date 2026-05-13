@@ -2894,16 +2894,22 @@ function PointsModal({ onClose }: { onClose: () => void }) {
     {
       name: "体验套餐",
       points: 20,
+      price: "¥39.9",
+      discount: '',
       description: "适合轻量体验 Build A Sentence / Email / Discussion 功能。",
     },
     {
       name: "练习套餐",
       points: 60,
+      price: "¥109.9",
+      discount: '优惠10%',
       description: "适合一段时间内稳定进行写作练习。",
     },
     {
       name: "强化套餐",
       points: 150,
+      price: "¥249",
+      discount: '优惠15%',
       description: "适合高频练习，在集中备考阶段使用。",
     },
   ];
@@ -2970,23 +2976,66 @@ function PointsModal({ onClose }: { onClose: () => void }) {
             <div
               key={item.name}
               style={{
+                position: "relative",
                 padding: "18px",
                 border: "1px solid #e2e8f0",
                 borderRadius: "18px",
                 background: "#f8fafc",
+                overflow: "hidden",
               }}
             >
+              {item.discount && (
+                <div
+                  style={{
+                    position: "absolute",
+                    top: "12px",
+                    right: "12px",
+                    padding: "5px 10px",
+                    borderRadius: "999px",
+                    background: "#dc2626",
+                    color: "white",
+                    fontSize: "12px",
+                    fontWeight: 800,
+                  }}
+                >
+                  {item.discount}
+                 </div>
+              )}
+
               <div
                 style={{
                   display: "flex",
                   justifyContent: "space-between",
                   gap: "12px",
-                  alignItems: "center",
+                  alignItems: "flex-start",
                   marginBottom: "8px",
+                  paddingRight: item.discount ? "86px" : 0,
                 }}
               >
-                <strong style={{ fontSize: "17px" }}>{item.name}</strong>
-                <strong>{item.points} points</strong>
+                <div>
+                  <strong style={{ fontSize: "17px" }}>{item.name}</strong>
+
+                  <div
+                    style={{
+                      color: "#64748b",
+                      fontSize: "14px",
+                      marginTop: "6px",
+                      fontWeight: 700,
+                    }}
+                  >
+                    {item.points} points
+                  </div>
+                </div>
+
+                <strong
+                  style={{
+                    fontSize: "22px",
+                    color: "#111827",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {item.price}
+                </strong>
               </div>
 
               <p style={{ color: "#64748b", margin: 0, lineHeight: 1.7 }}>
