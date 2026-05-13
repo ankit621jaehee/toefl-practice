@@ -1,5 +1,6 @@
 import { GoogleGenAI } from "@google/genai";
 import { createClient } from "@supabase/supabase-js";
+import { generateContentWithModelFallback } from "./gemini-helper.js";
 
 const MOCK_TEST_COST = 10;
 
@@ -269,14 +270,15 @@ Return this exact JSON structure:
 }
 `;
 
-  const response = await ai.models.generateContent({
-    model: "gemini-2.5-flash-lite",
+  const { response, modelUsed } = await generateContentWithModelFallback(ai, {
     contents: scoringPrompt,
     config: {
       responseMimeType: "application/json",
       temperature: 0.1,
     },
   });
+
+console.log("Email scoring model used:", modelUsed);
 
   const text = response.text || "";
   if (!text.trim()) throw new Error("Gemini returned empty email scoring response");
@@ -379,14 +381,14 @@ Return this exact JSON structure:
 }
 `;
 
-  const response = await ai.models.generateContent({
-    model: "gemini-2.5-flash-lite",
+  const { response, modelUsed } = await generateContentWithModelFallback(ai, {
     contents: scoringPrompt,
     config: {
       responseMimeType: "application/json",
       temperature: 0.1,
     },
   });
+  console.log("Discussion scoring model used:", modelUsed);
 
   const text = response.text || "";
   if (!text.trim()) {
@@ -487,14 +489,14 @@ Return this exact JSON structure:
 }
 `;
 
-  const response = await ai.models.generateContent({
-    model: "gemini-2.5-flash-lite",
+  const { response, modelUsed } = await generateContentWithModelFallback(ai, {
     contents: prompt,
     config: {
       responseMimeType: "application/json",
       temperature: 0.2,
     },
   });
+  console.log("Mock analysis model used:", modelUsed);
 
   const text = response.text || "";
   if (!text.trim()) {

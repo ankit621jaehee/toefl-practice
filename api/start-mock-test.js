@@ -1,5 +1,7 @@
 import { GoogleGenAI } from "@google/genai";
 
+import { generateContentWithModelFallback } from "./gemini-helper.js";
+
 function getEndPunctuation(sentence) {
   const match = String(sentence || "").trim().match(/[.!?]$/);
   return match ? match[0] : ".";
@@ -359,14 +361,14 @@ Return this exact JSON structure:
 }
 `;
 
-    const response = await ai.models.generateContent({
-      model: "gemini-2.0-flash",
+    const { response, modelUsed } = await generateContentWithModelFallback(ai, {
       contents: prompt,
       config: {
         responseMimeType: "application/json",
         temperature: 0.8,
       },
     });
+    console.log("Start mock test model used:", modelUsed);
 
     const text = response.text || "";
     if (!text.trim()) throw new Error("Gemini returned empty response");
