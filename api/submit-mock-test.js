@@ -117,22 +117,58 @@ function normalizeText(text) {
     .replace(/\s+/g, " ");
 }
 
+function getCorrectChunks(question) {
+  if (Array.isArray(question.parts)) {
+    return question.parts
+      .filter((part) => part.type === "blank")
+      .map((part) => String(part.answer || "").trim())
+      .filter(Boolean);
+  }
+
+  if (Array.isArray(question.chunks)) {
+    return question.chunks
+      .map((chunk) => String(chunk || "").trim())
+      .filter(Boolean);
+  }
+
+  return [];
+}
+
 function calculateSentenceScore(sentenceQuestions, sentenceAnswers) {
   if (!Array.isArray(sentenceQuestions)) return 0;
 
   let correctCount = 0;
 
   sentenceQuestions.forEach((question) => {
-    const userChunks = sentenceAnswers?.[question.id] || [];
-    const userAnswer = Array.isArray(userChunks) ? userChunks.join(" ") : "";
+    const userChunks =
+      sentenceAnswers?.[String(question.id)] || sentenceAnswers?.[question.id] || [];
 
-    if (normalizeText(userAnswer) === normalizeText(question.speakerB)) {
-        correctCount += 1;
+    if (!Array.isArray(userChunks) || userChunks.length === 0) {
+      return;
+    }
+
+    const correctChunks = getCorrectChunks(question);
+
+    if (correctChunks.length === 0) {
+      return;
+    }
+
+    if (userChunks.length !== correctChunks.length) {
+      return;
+    }
+
+    const isCorrect = correctChunks.every((correctChunk, index) => {
+      return normalizeText(userChunks[index]) === normalizeText(correctChunk);
+    });
+
+    if (isCorrect) {
+      correctCount += 1;
     }
   });
 
   return correctCount * 0.5;
 }
+
 
 function calculateFinalScore(sentenceScore, emailScoreNumber, discussionScoreNumber) {
   const finalScore =
