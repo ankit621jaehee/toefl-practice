@@ -1,5 +1,5 @@
 import { GoogleGenAI } from "@google/genai";
-
+import { createClient } from "@supabase/supabase-js";
 import { generateContentWithModelFallback } from "./gemini-helper.js";
 
 function getEndPunctuation(sentence) {
@@ -250,6 +250,74 @@ function safeJsonParse(text) {
   }
 }
 
+const MOCK_TEST_COST = 10;
+
+function createAdminClient() {
+  const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!supabaseUrl) {
+    throw new Error("Missing SUPABASE_URL");
+  }
+
+  if (!serviceRoleKey) {
+    throw new Error("Missing SUPABASE_SERVICE_ROLE_KEY");
+  }
+
+  return createClient(supabaseUrl, serviceRoleKey);
+}
+
+function getBearerToken(req) {
+  const authHeader = req.headers.authorization || "";
+
+  if (!authHeader.startsWith("Bearer ")) {
+    return "";
+  }
+
+  return authHeader.replace("Bearer ", "").trim();
+}
+
+async function getUserFromToken(supabaseAdmin, token) {
+  if (!token) return null;
+
+  const {
+    data: { user },
+    error,
+  } = await supabaseAdmin.auth.getUser(token);
+
+  if (error || !user) return null;
+
+  return user;
+}
+
+async function getUserProfile(supabaseAdmin, userId) {
+  const { data, error } = await supabaseAdmin
+    .from("profiles")
+    .select("points")
+    .eq("id", userId)
+    .single();
+
+  if (error || !data) {
+    throw new Error("User profile not found.");
+  }
+
+  return data;
+}
+
+async function deductPoints(supabaseAdmin, userId, currentPoints, cost) {
+  const newBalance = currentPoints - cost;
+
+  const { error } = await supabaseAdmin
+    .from("profiles")
+    .update({ points: newBalance })
+    .eq("id", userId);
+
+  if (error) throw error;
+
+  return newBalance;
+}
+
+
 function normalizeEmailPrompt(value) {
   return {
     title: String(value?.title || "Email Writing").trim(),
@@ -288,6 +356,34 @@ export default async function handler(req, res) {
     if (!process.env.GEMINI_API_KEY) {
       throw new Error("Missing GEMINI_API_KEY environment variable");
     }
+
+    const supabaseAdmin = createAdminClient();
+    const token = getBearerToken(req);
+    const user = await getUserFromToken(supabaseAdmin, token);
+
+    if (!user) {
+      return res.status(401).json({
+        error: "Please sign in before starting a mock test.",
+      });
+    }
+
+    const profile = await getUserProfile(supabaseAdmin, user.id);
+
+    if (profile.points < MOCK_TEST_COST) {
+      return res.status(402).json({
+        error: `Not enough points. Full Mock Test costs ${MOCK_TEST_COST} points.`,
+        balance: profile.points,
+        cost: MOCK_TEST_COST,
+      });
+    }
+
+    const newBalance = await deductPoints(
+      supabaseAdmin,
+      user.id,
+      profile.points,
+      MOCK_TEST_COST
+    );
+
 
     const { level = "Medium", topic = "Mixed" } = req.body || {};
     const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
@@ -406,7 +502,12 @@ Return this exact JSON structure:
       sentenceQuestions,
       emailPrompt,
       discussionPrompt,
+      cost: MOCK_TEST_COST,
+      balance: newBalance,
     });
+
+
+
   } catch (error) {
     console.error("Start mock test error:", error);
 

@@ -78,6 +78,8 @@ type MockTestData = {
   sentenceQuestions: MockSentenceQuestion[];
   emailPrompt: EmailPrompt;
   discussionPrompt: DiscussionPrompt;
+  cost?: number;
+  balance?: number;
 };
 
 type MockResult = {
@@ -451,15 +453,38 @@ async function generateAcademicDiscussionWithAPI(level: string, topic: string) {
 }
 
 async function startMockTestWithAPI(level = "medium", topic = "general") {
+  const {
+
+    data: { session },
+
+  } = await supabase.auth.getSession();
+
+  if (!session?.access_token) {
+
+    throw new Error("Please sign in before starting a mock test.");
+
+  }
+
   const response = await fetch("/api/start-mock-test", {
+
     method: "POST",
+
     headers: {
+
       "Content-Type": "application/json",
+
+      Authorization: `Bearer ${session.access_token}`,
+
     },
+
     body: JSON.stringify({
+
       level,
+
       topic,
+
     }),
+
   });
 
   const data = await response.json();
@@ -844,6 +869,13 @@ async function handleStartMockTest() {
     setMockTestData(data);
     setMockSentenceSlots(createInitialSlots(data.sentenceQuestions));
     setMockSentenceBanks(createBankOrders(data.sentenceQuestions));
+
+    if (typeof data.balance === "number") {   
+      setPoints(data.balance);
+    } else if (user) {
+      await loadPoints(user.id);
+    }
+
     setPage("mock");
 
 

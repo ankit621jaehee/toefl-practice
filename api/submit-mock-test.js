@@ -570,15 +570,6 @@ export default async function handler(req, res) {
       });
     }
 
-    const profile = await getUserProfile(supabaseAdmin, user.id);
-
-    if (profile.points < MOCK_TEST_COST) {
-      return res.status(402).json({
-        error: `Not enough points. Full Mock Test costs ${MOCK_TEST_COST} points.`,
-        balance: profile.points,
-        cost: MOCK_TEST_COST,
-      });
-    }
 
     const {
       sentenceQuestions,
@@ -658,12 +649,6 @@ export default async function handler(req, res) {
       ];
     }
 
-    const newBalance = await deductPoints(
-      supabaseAdmin,
-      user.id,
-      profile.points,
-      MOCK_TEST_COST
-    );
 
     const { data: savedRecord, error: saveError } = await supabaseAdmin
       .from("mock_records")
@@ -708,8 +693,9 @@ export default async function handler(req, res) {
       knowledgeAnalysis,
       studyAdvice,
       cost: MOCK_TEST_COST,
-      balance: newBalance,
     });
+
+
   } catch (error) {
     console.error("Submit mock test error:", error);
 
