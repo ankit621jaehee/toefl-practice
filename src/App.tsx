@@ -144,7 +144,7 @@ const announcements = [
     id: 1,
     tag: "优惠",
     title: "新用户体验兑换码",
-    content: "输入兑换码 toefl 可获得 10 points，用于体验写作批改或完整模考。",
+    content: "输入兑换码 TOEFL 可获得 10 points，用于体验写作批改或完整模考。",
     date: "2026-05-13",
   },
   {
@@ -2962,7 +2962,7 @@ function PointsModal({ onClose }: { onClose: () => void }) {
         </div>
 
         <p style={{ color: "#64748b", lineHeight: 1.8, marginBottom: "22px" }}>
-          请联系客服进行选购。客服会根据你选择的 points 套餐提供兑换码。
+          请联系客服获取。
         </p>
 
         <div style={{ display: "grid", gap: "12px", marginBottom: "24px" }}>
@@ -3024,7 +3024,7 @@ function PointsModal({ onClose }: { onClose: () => void }) {
               marginBottom: 0,
             }}
           >
-            扫码联系客服
+            请扫码联系客服
           </p>
         </div>
       </div>
