@@ -72,12 +72,7 @@ type WritingFeedback = {
   improvedVersion: string;
   sampleAnswer: string;
 };
-type MockSentenceQuestion = {
-  id: string;
-  speakerA: string;
-  speakerB: string;
-  chunks: string[];
-};
+type MockSentenceQuestion = Question;
 
 type MockTestData = {
   sentenceQuestions: MockSentenceQuestion[];
@@ -581,9 +576,17 @@ function App() {
   const [isLoadingRecords, setIsLoadingRecords] = useState(false);
   const [recordMessage, setRecordMessage] = useState(""); 
   const [mockTestData, setMockTestData] = useState<MockTestData | null>(null);
-  const [mockSentenceAnswers, setMockSentenceAnswers] = useState<
-    Record<string, string[]>
+
+
+  const [mockSentenceSlots, setMockSentenceSlots] = useState<
+    Record<number, (Chunk | null)[]>
   >({});
+  const [mockSentenceBanks, setMockSentenceBanks] = useState<
+    Record<number, Chunk[]>
+  >({});
+  const [mockDragged, setMockDragged] = useState<Chunk | null>(null); 
+
+
   const [mockEmailAnswer, setMockEmailAnswer] = useState("");
   const [mockDiscussionAnswer, setMockDiscussionAnswer] = useState("");
   const [mockResult, setMockResult] = useState<MockResult | null>(null);
@@ -829,7 +832,9 @@ async function handleStartMockTest() {
   setMockMessage("");
   setMockResult(null);
   setMockTestData(null);
-  setMockSentenceAnswers({});
+  setMockSentenceSlots({});
+  setMockSentenceBanks({});
+  setMockDragged(null);
   setMockEmailAnswer("");
   setMockDiscussionAnswer("");
 
@@ -837,7 +842,11 @@ async function handleStartMockTest() {
     const data = await startMockTestWithAPI("medium", "general campus and daily life");
 
     setMockTestData(data);
+    setMockSentenceSlots(createInitialSlots(data.sentenceQuestions));
+    setMockSentenceBanks(createBankOrders(data.sentenceQuestions));
     setPage("mock");
+
+
   } catch (error) {
     const message =
       error instanceof Error
@@ -870,9 +879,17 @@ async function handleSubmitMockTest() {
   setMockMessage("");
 
   try {
+    const sentenceAnswers = Object.fromEntries(
+      mockTestData.sentenceQuestions.map((question) => [
+        String(question.id),
+        (mockSentenceSlots[question.id] || [])
+          .filter((slot): slot is Chunk => slot !== null)
+          .map((slot) => slot.text),
+      ])
+    );
     const result = await submitMockTestWithAPI({
       sentenceQuestions: mockTestData.sentenceQuestions,
-      sentenceAnswers: mockSentenceAnswers,
+      sentenceAnswers,
       emailPrompt: mockTestData.emailPrompt,
       emailAnswer: mockEmailAnswer,
       discussionPrompt: mockTestData.discussionPrompt,
@@ -1639,8 +1656,11 @@ async function submitMockTestWithAPI({
         {page === "mock" && mockTestData && (
           <MockTestPage
             data={mockTestData}
-            sentenceAnswers={mockSentenceAnswers}
-            setSentenceAnswers={setMockSentenceAnswers}
+            sentenceSlots={mockSentenceSlots}
+            setSentenceSlots={setMockSentenceSlots}
+            sentenceBanks={mockSentenceBanks}
+            dragged={mockDragged}
+            setDragged={setMockDragged}
             emailAnswer={mockEmailAnswer}
             setEmailAnswer={setMockEmailAnswer}
             discussionAnswer={mockDiscussionAnswer}
@@ -3159,542 +3179,1220 @@ function PracticeRecordDetailPage({
 }
 
 function MockTestPage({
+
   data,
-  sentenceAnswers,
-  setSentenceAnswers,
+
+  sentenceSlots,
+
+  setSentenceSlots,
+
+  sentenceBanks,
+
+  dragged,
+
+  setDragged,
+
   emailAnswer,
+
   setEmailAnswer,
+
   discussionAnswer,
+
   setDiscussionAnswer,
+
   isSubmitting,
+
   message,
+
   onSubmit,
+
   onCancel,
+
 }: {
+
   data: MockTestData;
-  sentenceAnswers: Record<string, string[]>;
-  setSentenceAnswers: React.Dispatch<
-    React.SetStateAction<Record<string, string[]>>
-  >;
+
+  sentenceSlots: Record<number, (Chunk | null)[]>;
+
+  setSentenceSlots: (
+
+    value:
+
+      | Record<number, (Chunk | null)[]>
+
+      | ((
+
+          previous: Record<number, (Chunk | null)[]>
+
+        ) => Record<number, (Chunk | null)[]>)
+
+  ) => void;
+
+  sentenceBanks: Record<number, Chunk[]>;
+
+  dragged: Chunk | null;
+
+  setDragged: (chunk: Chunk | null) => void;
+
   emailAnswer: string;
+
   setEmailAnswer: (value: string) => void;
+
   discussionAnswer: string;
+
   setDiscussionAnswer: (value: string) => void;
+
   isSubmitting: boolean;
+
   message: string;
+
   onSubmit: () => void;
+
   onCancel: () => void;
+
 }) {
+
   const cardStyle = {
+
     background: "white",
+
     border: "1px solid #e2e8f0",
+
     borderRadius: "20px",
+
     padding: "24px",
+
     marginBottom: "24px",
+
     boxShadow: "0 10px 30px rgba(15, 23, 42, 0.06)",
+
   };
 
   const primaryButtonStyle = {
+
     border: "none",
+
     borderRadius: "14px",
+
     color: "white",
+
     fontWeight: 800,
+
     fontSize: "15px",
+
     padding: "12px 18px",
+
     cursor: "pointer",
+
+  };
+
+  const secondaryButtonStyle = {
+
+    padding: "12px 20px",
+
+    border: "1px solid #cbd5e1",
+
+    borderRadius: "12px",
+
+    background: "white",
+
+    fontWeight: 700,
+
+    cursor: "pointer",
+
   };
 
   const [mockPart, setMockPart] = useState<"sentence" | "email" | "discussion">(
-  "sentence"
-);
+
+    "sentence"
+
+  );
+
   const [currentSentenceIndex, setCurrentSentenceIndex] = useState(0);
+
   const [timeLeft, setTimeLeft] = useState(6 * 60);
-  
+
   useEffect(() => {
+
     if (isSubmitting) return;
 
     const timer = window.setInterval(() => {
+
       setTimeLeft((previous) => {
+
         if (previous <= 1) {
+
           window.clearInterval(timer);
+
           if (mockPart === "sentence") {
+
             setMockPart("email");
+
             setCurrentSentenceIndex(0);
+
+            window.scrollTo({ top: 0, behavior: "smooth" });
+
             return 7 * 60;
+
           }
+
           if (mockPart === "email") {
+
             setMockPart("discussion");
+
+            window.scrollTo({ top: 0, behavior: "smooth" });
+
             return 10 * 60;
+
           }
+
           if (mockPart === "discussion") {
+
             onSubmit();
+
             return 0;
+
           }
+
         }
 
         return previous - 1;
+
       });
+
     }, 1000);
 
     return () => window.clearInterval(timer);
+
   }, [mockPart, isSubmitting, onSubmit]);
 
-
   function formatTime(seconds: number) {
+
     const minutes = Math.floor(seconds / 60);
+
     const restSeconds = seconds % 60;
+
     return `${minutes}:${String(restSeconds).padStart(2, "0")}`;
+
   }
 
   function goToEmailPart() {
+
     setMockPart("email");
+
     setTimeLeft(7 * 60);
+
     window.scrollTo({ top: 0, behavior: "smooth" });
+
   }
 
   function goToDiscussionPart() {
+
     setMockPart("discussion");
+
     setTimeLeft(10 * 60);
+
     window.scrollTo({ top: 0, behavior: "smooth" });
+
   }
 
   function goToNextSentence() {
+
     if (currentSentenceIndex < data.sentenceQuestions.length - 1) {
+
       setCurrentSentenceIndex((previous) => previous + 1);
+
       window.scrollTo({ top: 0, behavior: "smooth" });
+
       return;
+
     }
 
     goToEmailPart();
+
   }
 
-  function addSentenceChunk(questionId: string, chunk: string) {
-    setSentenceAnswers((previous) => {
-      const currentChunks = previous[questionId] || [];
+  function updateQuestionSlots(questionId: number, newSlots: (Chunk | null)[]) {
 
-      return {
-        ...previous,
-        [questionId]: [...currentChunks, chunk],
-      };
-    });
-  }
-  function removeLastSentenceChunk(questionId: string) {
-    setSentenceAnswers((previous) => {
-      const currentChunks = previous[questionId] || [];
+    setSentenceSlots((previous) => ({
 
-      return {
-        ...previous,
-        [questionId]: currentChunks.slice(0, -1),
-      };
-    });
-  }
-
-  function clearSentenceAnswer(questionId: string) {
-    setSentenceAnswers((previous) => ({
       ...previous,
-      [questionId]: [],
+
+      [questionId]: newSlots,
+
     }));
+
+  }
+
+  function placeChunk(question: Question, chunk: Chunk, slotIndex: number) {
+
+    const currentSlots = sentenceSlots[question.id] || makeEmptySlots(question);
+
+    const newSlots = [...currentSlots];
+
+    const oldSlotIndex = newSlots.findIndex((slot) => slot?.id === chunk.id);
+
+    if (oldSlotIndex !== -1) {
+
+      newSlots[oldSlotIndex] = null;
+
+    }
+
+    newSlots[slotIndex] = chunk;
+
+    updateQuestionSlots(question.id, newSlots);
+
+  }
+
+  function removeChunk(question: Question, slotIndex: number) {
+
+    const currentSlots = sentenceSlots[question.id] || makeEmptySlots(question);
+
+    const newSlots = [...currentSlots];
+
+    newSlots[slotIndex] = null;
+
+    updateQuestionSlots(question.id, newSlots);
+
+  }
+
+  function resetCurrentQuestion(question: Question) {
+
+    updateQuestionSlots(question.id, makeEmptySlots(question));
+
+  }
+
+  function getAvailableBank(question: Question) {
+
+    const currentSlots = sentenceSlots[question.id] || makeEmptySlots(question);
+
+    const usedIds = currentSlots
+
+      .filter((slot): slot is Chunk => slot !== null)
+
+      .map((slot) => slot.id);
+
+    return (sentenceBanks[question.id] || []).filter(
+
+      (chunk) => !usedIds.includes(chunk.id)
+
+    );
+
   }
 
   const emailWordCount = emailAnswer.trim()
+
     ? emailAnswer.trim().split(/\s+/).length
+
     : 0;
 
   const discussionWordCount = discussionAnswer.trim()
+
     ? discussionAnswer.trim().split(/\s+/).length
+
     : 0;
 
+  const currentQuestion = data.sentenceQuestions[currentSentenceIndex];
+
   return (
+
     <>
+
       <button
+
         type="button"
+
         onClick={onCancel}
+
         style={{
+
           padding: "10px 16px",
+
           border: "1px solid #cbd5e1",
+
           borderRadius: "12px",
+
           background: "white",
+
           fontWeight: 700,
+
           cursor: "pointer",
+
           marginBottom: "24px",
+
         }}
+
       >
+
         返回首页
+
       </button>
 
       <div
+
         style={{
+
           ...cardStyle,
+
           position: "sticky",
+
           top: "12px",
+
           zIndex: 20,
+
         }}
+
       >
+
         <h1 style={{ marginTop: 0 }}>Full Mock Test</h1>
 
         <p style={{ color: "#64748b", lineHeight: 1.8 }}>
+
           完整模考分为三个部分：Build a Sentence 6分钟、Email Writing
+
           7分钟、Academic Discussion 10分钟。时间到后会自动进入下一部分。
+
         </p>
 
         <div
+
           style={{
+
             display: "flex",
+
             justifyContent: "space-between",
+
             gap: "16px",
+
             flexWrap: "wrap",
+
             alignItems: "center",
+
           }}
+
         >
+
           <strong style={{ color: "#312e81" }}>
+
             Current Part:{" "}
+
             {mockPart === "sentence"
+
               ? "Part 1 Build a Sentence"
+
               : mockPart === "email"
+
                 ? "Part 2 Email Writing"
+
                 : "Part 3 Academic Discussion"}
+
           </strong>
 
           <strong
+
             style={{
+
               fontSize: "26px",
+
               color: timeLeft <= 60 ? "#be123c" : "#111827",
+
             }}
+
           >
+
             {formatTime(timeLeft)}
+
           </strong>
+
         </div>
 
         <p style={{ color: "#475569", fontWeight: 800 }}>
+
           Submit Mock Test：-10 points
+
         </p>
+
       </div>
 
-      {mockPart === "sentence" && (
+      {mockPart === "sentence" && currentQuestion && (
 
-  <section style={cardStyle}>
-    <h2 style={{ marginTop: 0 }}>Part 1 Build a Sentence</h2>
-    <p style={{ color: "#64748b", lineHeight: 1.7 }}>
-      根据 Speaker A 的语境，用给出的词块组成自然的 Speaker B 回答。共 10
-      题，每题 0.5 分，满分 5 分。本部分限时 6 分钟。
-    </p>
-    {(() => {
-      const question = data.sentenceQuestions[currentSentenceIndex];
-      const selectedChunks = sentenceAnswers[question.id] || [];
-      return (
-        <div
-          style={{
-            padding: "18px",
-            border: "1px solid #e2e8f0",
-            borderRadius: "16px",
-            background: "#f8fafc",
-          }}
-        >
-          <strong>
-            Question {currentSentenceIndex + 1} / {data.sentenceQuestions.length}
-          </strong>
-          <p style={{ lineHeight: 1.7 }}>
-            <strong>Speaker A:</strong> {question.speakerA}
+        <section style={cardStyle}>
+
+          <h2 style={{ marginTop: 0 }}>Part 1 Build a Sentence</h2>
+
+          <p style={{ color: "#64748b", lineHeight: 1.7 }}>
+
+            A/B 对话补全。把词块拖到 B 句横线上，或点击词块自动填入第一个空格。
+
+            共 10 题，每题 0.5 分，错一空即为 0。本部分限时 6 分钟。
+
           </p>
+
           <div
+
             style={{
-              minHeight: "52px",
-              padding: "12px",
-              borderRadius: "14px",
-              border: "1px dashed #cbd5e1",
-              background: "white",
+
               display: "flex",
-              gap: "8px",
-              flexWrap: "wrap",
-              alignItems: "center",
-              marginBottom: "14px",
+
+              justifyContent: "space-between",
+
+              gap: "16px",
+
+              marginBottom: "24px",
+
+              padding: "16px 20px",
+
+              background: "#f1f5f9",
+
+              borderRadius: "16px",
+
+              fontWeight: 700,
+
             }}
+
           >
-            {selectedChunks.length > 0 ? (
-              selectedChunks.map((chunk, chunkIndex) => (
-                <span
-                  key={`${chunk}-${chunkIndex}`}
-                  style={{
-                    padding: "8px 10px",
-                    borderRadius: "999px",
-                    background: "#eef2ff",
-                    color: "#312e81",
-                    fontWeight: 700,
-                  }}
-                >
-                  {chunk}
-                </span>
-              ))
-            ) : (
-              <span style={{ color: "#94a3b8" }}>
-                Click chunks below to build Speaker B&apos;s sentence.
-              </span>
-            )}
+
+            <span>
+
+              Question {currentSentenceIndex + 1} /{" "}
+
+              {data.sentenceQuestions.length}
+
+            </span>
+
+            <span>
+
+              已完成：
+
+              {
+
+                data.sentenceQuestions.filter((item) =>
+
+                  isQuestionComplete(sentenceSlots[item.id] || [])
+
+                ).length
+
+              }{" "}
+
+              / {data.sentenceQuestions.length}
+
+            </span>
+
           </div>
-          <div
-            style={{
-              display: "flex",
-              gap: "8px",
-              flexWrap: "wrap",
-              marginBottom: "14px",
-            }}
-          >
-            {question.chunks.map((chunk, chunkIndex) => {
-              const usedCount = selectedChunks.filter(
-                (item) => item === chunk
-              ).length;
-              const chunkTotalCount = question.chunks.filter(
-                (item) => item === chunk
-              ).length;
-              const isDisabled = usedCount >= chunkTotalCount;
+
+          <div style={{ display: "flex", gap: "8px", marginBottom: "28px" }}>
+
+            {data.sentenceQuestions.map((question, index) => {
+
+              const slots = sentenceSlots[question.id] || [];
+
+              const complete = isQuestionComplete(slots);
+
+              let background = "white";
+
+              let color = "#334155";
+
+              let borderColor = "#cbd5e1";
+
+              if (index === currentSentenceIndex) {
+
+                background = "#111827";
+
+                color = "white";
+
+                borderColor = "#111827";
+
+              } else if (complete) {
+
+                background = "#eef2ff";
+
+                color = "#312e81";
+
+                borderColor = "#c7d2fe";
+
+              }
+
               return (
+
                 <button
-                  key={`${chunk}-${chunkIndex}`}
+
+                  key={question.id}
+
                   type="button"
-                  onClick={() => addSentenceChunk(question.id, chunk)}
-                  disabled={isDisabled}
+
+                  onClick={() => setCurrentSentenceIndex(index)}
+
                   style={{
-                    padding: "8px 12px",
-                    borderRadius: "999px",
-                    border: "1px solid #cbd5e1",
-                    background: isDisabled ? "#e2e8f0" : "white",
-                    color: isDisabled ? "#94a3b8" : "#111827",
-                    cursor: isDisabled ? "not-allowed" : "pointer",
-                    fontWeight: 700,
+
+                    width: "42px",
+
+                    height: "42px",
+
+                    borderRadius: "12px",
+
+                    border: `1px solid ${borderColor}`,
+
+                    background,
+
+                    color,
+
+                    fontWeight: 800,
+
+                    cursor: "pointer",
+
                   }}
+
                 >
-                  {chunk}
+
+                  {index + 1}
+
                 </button>
+
               );
+
             })}
-          </div>
-          <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
-            <button
-              type="button"
-              onClick={() => removeLastSentenceChunk(question.id)}
-              style={{
-                padding: "8px 12px",
-                borderRadius: "10px",
-                border: "1px solid #cbd5e1",
-                background: "white",
-                cursor: "pointer",
-                fontWeight: 700,
-              }}
-            >
-              Undo
-            </button>
-            <button
-              type="button"
-              onClick={() => clearSentenceAnswer(question.id)}
-              style={{
-                padding: "8px 12px",
-                borderRadius: "10px",
-                border: "1px solid #cbd5e1",
-                background: "white",
-                cursor: "pointer",
-                fontWeight: 700,
-              }}
-            >
-              Clear
-            </button>
-            <button
-              type="button"
-              onClick={goToNextSentence}
-              style={{
-                ...primaryButtonStyle,
-                background: "#111827",
-              }}
-            >
-              {currentSentenceIndex < data.sentenceQuestions.length - 1
-                ? "Next Question"
-                : "Next: Email Writing"}
-            </button>
-          </div>
-        </div>
-      );
-    })()}
-  </section>
-)}
-    {mockPart === "email" && ( 
-      <section style={cardStyle}>
-        <h2 style={{ marginTop: 0 }}>Part 2 Write an Email</h2>
 
-        <p style={{ color: "#64748b", lineHeight: 1.8 }}>
-          {data.emailPrompt.scenario}
-        </p>
-
-        <div
-          style={{
-            padding: "16px",
-            borderRadius: "14px",
-            background: "#f8fafc",
-            border: "1px solid #e2e8f0",
-            marginBottom: "16px",
-          }}
-        >
-          <strong>{data.emailPrompt.task}</strong>
-
-          <ul style={{ lineHeight: 1.8 }}>
-            {data.emailPrompt.requirements.map((item) => (
-              <li key={item}>{item}</li>
-            ))}
-          </ul>
-
-          <p style={{ color: "#64748b", marginBottom: 0 }}>
-            {data.emailPrompt.suggestedLength}
-          </p>
-        </div>
-
-        <textarea
-          value={emailAnswer}
-          onChange={(event) => setEmailAnswer(event.target.value)}
-          placeholder="Write your email here..."
-          style={{
-            width: "100%",
-            minHeight: "220px",
-            padding: "16px",
-            borderRadius: "16px",
-            border: "1px solid #cbd5e1",
-            fontSize: "15px",
-            lineHeight: 1.7,
-            boxSizing: "border-box",
-          }}
-        />
-
-        <p style={{ color: "#64748b", fontWeight: 700 }}>
-          Word Count: {emailWordCount}
-        </p>
-      <button
-
-      type="button"
-
-      onClick={goToDiscussionPart}
-
-      style={{
-
-        ...primaryButtonStyle,
-
-        background: "#111827",
-
-        marginTop: "12px",
-
-      }}
-
-    >
-
-      Next: Academic Discussion
-
-    </button>
-
-  </section>
-
-)}
-    {mockPart === "discussion" && (
-      <section style={cardStyle}>
-        <h2 style={{ marginTop: 0 }}>Part 3 Academic Discussion</h2>
-
-        <div style={{ display: "grid", gap: "14px", lineHeight: 1.8 }}>
-          <div
-            style={{
-              padding: "16px",
-              borderRadius: "14px",
-              background: "#f8fafc",
-              border: "1px solid #e2e8f0",
-            }}
-          >
-            <strong>Professor</strong>
-            <p style={{ marginBottom: 0 }}>{data.discussionPrompt.professor}</p>
           </div>
 
-          <div
-            style={{
-              padding: "16px",
-              borderRadius: "14px",
-              background: "#f8fafc",
-              border: "1px solid #e2e8f0",
-            }}
-          >
-            <strong>{data.discussionPrompt.studentOneName}</strong>
-            <p style={{ marginBottom: 0 }}>
-              {data.discussionPrompt.studentOnePost}
-            </p>
-          </div>
+          {(() => {
 
-          <div
-            style={{
-              padding: "16px",
-              borderRadius: "14px",
-              background: "#f8fafc",
-              border: "1px solid #e2e8f0",
-            }}
-          >
-            <strong>{data.discussionPrompt.studentTwoName}</strong>
-            <p style={{ marginBottom: 0 }}>
-              {data.discussionPrompt.studentTwoPost}
-            </p>
-          </div>
+            const question = currentQuestion;
 
-          <div
-            style={{
-              padding: "16px",
-              borderRadius: "14px",
-              background: "#eef2ff",
-              color: "#312e81",
-            }}
-          >
-            <strong>Question</strong>
-            <p>{data.discussionPrompt.question}</p>
-            <p style={{ marginBottom: 0 }}>
-              {data.discussionPrompt.suggestedLength}
-            </p>
-          </div>
-        </div>
+            const currentSlots =
 
-        <textarea
-          value={discussionAnswer}
-          onChange={(event) => setDiscussionAnswer(event.target.value)}
-          placeholder="Write your discussion response here..."
-          style={{
-            width: "100%",
-            minHeight: "240px",
-            padding: "16px",
-            borderRadius: "16px",
-            border: "1px solid #cbd5e1",
-            fontSize: "15px",
-            lineHeight: 1.7,
-            boxSizing: "border-box",
-            marginTop: "16px",
-          }}
-        />
+              sentenceSlots[question.id] || makeEmptySlots(question);
 
-        <p style={{ color: "#64748b", fontWeight: 700 }}>
-          Word Count: {discussionWordCount}
-        </p>
+            const currentBank = getAvailableBank(question);
+
+            return (
+
+              <>
+
+                <div
+
+                  style={{
+
+                    fontSize: "24px",
+
+                    lineHeight: "2.2",
+
+                    fontWeight: 700,
+
+                    marginBottom: "36px",
+
+                  }}
+
+                >
+
+                  <div>
+
+                    {question.contextSpeaker}: {question.contextSentence}
+
+                  </div>
+
+                  <div
+
+                    style={{
+
+                      display: "flex",
+
+                      flexWrap: "wrap",
+
+                      gap: "10px",
+
+                    }}
+
+                  >
+
+                    <span>{question.answerSpeaker}:</span>
+
+                    {(() => {
+
+                      let blankIndex = 0;
+
+                      return question.parts.map((part, partIndex) => {
+
+                        if (part.type === "fixed") {
+
+                          return (
+
+                            <span key={`fixed-${partIndex}`}>{part.text}</span>
+
+                          );
+
+                        }
+
+                        const slotIndex = blankIndex;
+
+                        blankIndex += 1;
+
+                        const slot = currentSlots[slotIndex];
+
+                        return (
+
+                          <button
+
+                            key={`blank-${partIndex}`}
+
+                            type="button"
+
+                            onClick={() => removeChunk(question, slotIndex)}
+
+                            onDragOver={(event) => event.preventDefault()}
+
+                            onDrop={() => {
+
+                              if (dragged) {
+
+                                placeChunk(question, dragged, slotIndex);
+
+                                setDragged(null);
+
+                              }
+
+                            }}
+
+                            style={{
+
+                              minWidth: "120px",
+
+                              minHeight: "42px",
+
+                              border: "2px solid #cbd5e1",
+
+                              borderRadius: "12px",
+
+                              background: slot ? "#eef2ff" : "white",
+
+                              color: "#111827",
+
+                              fontSize: "18px",
+
+                              fontWeight: 700,
+
+                              cursor: "pointer",
+
+                            }}
+
+                          >
+
+                            {slot?.text || ""}
+
+                          </button>
+
+                        );
+
+                      });
+
+                    })()}
+
+                  </div>
+
+                </div>
+
+                <div
+
+                  style={{
+
+                    background: "#f1f5f9",
+
+                    padding: "20px",
+
+                    borderRadius: "18px",
+
+                    marginBottom: "24px",
+
+                  }}
+
+                >
+
+                  <div
+
+                    style={{
+
+                      fontSize: "14px",
+
+                      color: "#64748b",
+
+                      marginBottom: "12px",
+
+                    }}
+
+                  >
+
+                    可选词 / Word Bank
+
+                  </div>
+
+                  <div
+
+                    style={{ display: "flex", flexWrap: "wrap", gap: "10px" }}
+
+                  >
+
+                    {currentBank.map((chunk) => (
+
+                      <button
+
+                        key={chunk.id}
+
+                        type="button"
+
+                        draggable
+
+                        onDragStart={() => setDragged(chunk)}
+
+                        onDragEnd={() => setDragged(null)}
+
+                        onClick={() => {
+
+                          const emptyIndex = currentSlots.findIndex(
+
+                            (slot) => slot === null
+
+                          );
+
+                          if (emptyIndex !== -1) {
+
+                            placeChunk(question, chunk, emptyIndex);
+
+                          }
+
+                        }}
+
+                        style={{
+
+                          padding: "10px 16px",
+
+                          border: "1px solid #cbd5e1",
+
+                          borderRadius: "999px",
+
+                          background: "white",
+
+                          fontSize: "16px",
+
+                          fontWeight: 600,
+
+                          cursor: "grab",
+
+                        }}
+
+                      >
+
+                        {chunk.text}
+
+                      </button>
+
+                    ))}
+
+                    {currentBank.length === 0 && (
+
+                      <span style={{ color: "#64748b" }}>本题词库已清空。</span>
+
+                    )}
+
+                  </div>
+
+                </div>
+
+                <div
+
+                  style={{ display: "flex", flexWrap: "wrap", gap: "12px" }}
+
+                >
+
+                  <button
+
+                    type="button"
+
+                    onClick={() => {
+
+                      if (currentSentenceIndex > 0) {
+
+                        setCurrentSentenceIndex(currentSentenceIndex - 1);
+
+                      }
+
+                    }}
+
+                    disabled={currentSentenceIndex === 0}
+
+                    style={{
+
+                      ...secondaryButtonStyle,
+
+                      cursor:
+
+                        currentSentenceIndex === 0 ? "not-allowed" : "pointer",
+
+                      opacity: currentSentenceIndex === 0 ? 0.5 : 1,
+
+                    }}
+
+                  >
+
+                    上一题
+
+                  </button>
+
+                  <button
+
+                    type="button"
+
+                    onClick={goToNextSentence}
+
+                    style={secondaryButtonStyle}
+
+                  >
+
+                    {currentSentenceIndex < data.sentenceQuestions.length - 1
+
+                      ? "下一题"
+
+                      : "Next: Email Writing"}
+
+                  </button>
+
+                  <button
+
+                    type="button"
+
+                    onClick={() => resetCurrentQuestion(question)}
+
+                    style={secondaryButtonStyle}
+
+                  >
+
+                    清空本题
+
+                  </button>
+
+                </div>
+
+              </>
+
+            );
+
+          })()}
+
         </section>
+
       )}
-      {message && (
-        <p style={{ color: "#be123c", fontWeight: 700 }}>{message}</p>
+
+      {mockPart === "email" && (
+
+        <section style={cardStyle}>
+
+          <h2 style={{ marginTop: 0 }}>Part 2 Write an Email</h2>
+
+          <p style={{ color: "#64748b", lineHeight: 1.8 }}>
+
+            {data.emailPrompt.scenario}
+
+          </p>
+
+          <div
+
+            style={{
+
+              padding: "16px",
+
+              borderRadius: "14px",
+
+              background: "#f8fafc",
+
+              border: "1px solid #e2e8f0",
+
+              marginBottom: "16px",
+
+            }}
+
+          >
+
+            <strong>{data.emailPrompt.task}</strong>
+
+            <ul style={{ lineHeight: 1.8 }}>
+
+              {data.emailPrompt.requirements.map((item) => (
+
+                <li key={item}>{item}</li>
+
+              ))}
+
+            </ul>
+
+            <p style={{ color: "#64748b", marginBottom: 0 }}>
+
+              {data.emailPrompt.suggestedLength}
+
+            </p>
+
+          </div>
+
+          <textarea
+
+            value={emailAnswer}
+
+            onChange={(event) => setEmailAnswer(event.target.value)}
+
+            placeholder="Write your email here..."
+
+            style={{
+
+              width: "100%",
+
+              minHeight: "220px",
+
+              padding: "16px",
+
+              borderRadius: "16px",
+
+              border: "1px solid #cbd5e1",
+
+              fontSize: "15px",
+
+              lineHeight: 1.7,
+
+              boxSizing: "border-box",
+
+            }}
+
+          />
+
+          <p style={{ color: "#64748b", fontWeight: 700 }}>
+
+            Word Count: {emailWordCount}
+
+          </p>
+
+          <button
+
+            type="button"
+
+            onClick={goToDiscussionPart}
+
+            style={{
+
+              ...primaryButtonStyle,
+
+              background: "#111827",
+
+              marginTop: "12px",
+
+            }}
+
+          >
+
+            Next: Academic Discussion
+
+          </button>
+
+        </section>
+
       )}
-    {mockPart === "discussion" && (
-      <button
-        type="button"
-        onClick={onSubmit}
-        disabled={isSubmitting}
-        style={{
-          ...primaryButtonStyle,
-          width: "100%",
-          padding: "16px",
-          background: isSubmitting ? "#cbd5e1" : "#111827",
-          cursor: isSubmitting ? "not-allowed" : "pointer",
-          marginTop: "10px",
-        }}
-      >
-        {isSubmitting ? "正在评分并生成报告..." : "提交完整模考（-10 points）"}
-      </button>
-    )}
+
+      {mockPart === "discussion" && (
+
+        <section style={cardStyle}>
+
+          <h2 style={{ marginTop: 0 }}>Part 3 Academic Discussion</h2>
+
+          <div style={{ display: "grid", gap: "14px", lineHeight: 1.8 }}>
+
+            <div
+
+              style={{
+
+                padding: "16px",
+
+                borderRadius: "14px",
+
+                background: "#f8fafc",
+
+                border: "1px solid #e2e8f0",
+
+              }}
+
+            >
+
+              <strong>Professor</strong>
+
+              <p style={{ marginBottom: 0 }}>
+
+                {data.discussionPrompt.professor}
+
+              </p>
+
+            </div>
+
+            <div
+
+              style={{
+
+                padding: "16px",
+
+                borderRadius: "14px",
+
+                background: "#f8fafc",
+
+                border: "1px solid #e2e8f0",
+
+              }}
+
+            >
+
+              <strong>{data.discussionPrompt.studentOneName}</strong>
+
+              <p style={{ marginBottom: 0 }}>
+
+                {data.discussionPrompt.studentOnePost}
+
+              </p>
+
+            </div>
+
+            <div
+
+              style={{
+
+                padding: "16px",
+
+                borderRadius: "14px",
+
+                background: "#f8fafc",
+
+                border: "1px solid #e2e8f0",
+
+              }}
+
+            >
+
+              <strong>{data.discussionPrompt.studentTwoName}</strong>
+
+              <p style={{ marginBottom: 0 }}>
+
+                {data.discussionPrompt.studentTwoPost}
+
+              </p>
+
+            </div>
+
+            <div
+
+              style={{
+
+                padding: "16px",
+
+                borderRadius: "14px",
+
+                background: "#eef2ff",
+
+                color: "#312e81",
+
+              }}
+
+            >
+
+              <strong>Question</strong>
+
+              <p>{data.discussionPrompt.question}</p>
+
+              <p style={{ marginBottom: 0 }}>
+
+                {data.discussionPrompt.suggestedLength}
+
+              </p>
+
+            </div>
+
+          </div>
+
+          <textarea
+
+            value={discussionAnswer}
+
+            onChange={(event) => setDiscussionAnswer(event.target.value)}
+
+            placeholder="Write your discussion response here..."
+
+            style={{
+
+              width: "100%",
+
+              minHeight: "240px",
+
+              padding: "16px",
+
+              borderRadius: "16px",
+
+              border: "1px solid #cbd5e1",
+
+              fontSize: "15px",
+
+              lineHeight: 1.7,
+
+              boxSizing: "border-box",
+
+              marginTop: "16px",
+
+            }}
+
+          />
+
+          <p style={{ color: "#64748b", fontWeight: 700 }}>
+
+            Word Count: {discussionWordCount}
+
+          </p>
+
+          {message && (
+
+            <p style={{ color: "#be123c", fontWeight: 700 }}>{message}</p>
+
+          )}
+
+          <button
+
+            type="button"
+
+            onClick={onSubmit}
+
+            disabled={isSubmitting}
+
+            style={{
+
+              ...primaryButtonStyle,
+
+              width: "100%",
+
+              padding: "16px",
+
+              background: isSubmitting ? "#cbd5e1" : "#111827",
+
+              cursor: isSubmitting ? "not-allowed" : "pointer",
+
+              marginTop: "10px",
+
+            }}
+
+          >
+
+            {isSubmitting ? "正在评分并生成报告..." : "提交完整模考（-10 points）"}
+
+          </button>
+
+        </section>
+
+      )}
+
     </>
+
   );
+
 }
+
+
 
 function MockResultPage({
   result,
@@ -4108,7 +4806,7 @@ function MockRecordDetailPage({
             const userChunks = record.sentence_answers[question.id] || [];
             const userAnswer = Array.isArray(userChunks) ? userChunks.join(" ") : "";
             const isCorrect =
-              normalizeText(userAnswer) === normalizeText(question.speakerB);
+              normalizeText(userAnswer) === normalizeText(question.target);
 
             return (
               <div
@@ -4125,7 +4823,7 @@ function MockRecordDetailPage({
                 </strong>
 
                 <p style={{ lineHeight: 1.7 }}>
-                  <strong>Speaker A:</strong> {question.speakerA}
+                  <strong>{question.contextSpeaker}:</strong> {question.contextSentence}
                 </p>
 
                 <p style={{ lineHeight: 1.7 }}>
@@ -4134,7 +4832,7 @@ function MockRecordDetailPage({
                 </p>
 
                 <p style={{ lineHeight: 1.7 }}>
-                  <strong>Correct answer:</strong> {question.speakerB}
+                  <strong>Correct answer:</strong> {question.target}
                 </p>
 
                 <p style={{ color: "#64748b", marginBottom: 0 }}>
