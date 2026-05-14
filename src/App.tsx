@@ -656,13 +656,13 @@ function normalizeSentenceText(text: string) {
     .toLowerCase();
 }
 
-function isQuestionCorrect(question: Question, slots: (Chunk | null)[]) {
+function buildFullAnswerFromSlots(question: Question, slots: (Chunk | null)[]) {
   let blankIndex = 0;
 
-  const userFullAnswer = question.parts
+  return question.parts
     .map((part) => {
       if (part.type === "fixed") {
-        return part.text;
+        return part.text || "";
       }
 
       const slot = slots[blankIndex];
@@ -671,11 +671,15 @@ function isQuestionCorrect(question: Question, slots: (Chunk | null)[]) {
       return slot?.text || "";
     })
     .join(" ")
-    .replace(/\s+([?.!,])/g, "$1");
+    .replace(/\s+([?.!,])/g, "$1")
+    .trim();
+}
+
+function isQuestionCorrect(question: Question, slots: (Chunk | null)[]) {
+  const userFullAnswer = buildFullAnswerFromSlots(question, slots);
 
   return normalizeSentenceText(userFullAnswer) === normalizeSentenceText(question.target);
 }
-
 
 
 
@@ -1164,12 +1168,11 @@ async function loadQuestionAttempts() {
 
 
 useEffect(() => {
-
   loadQuestionSets();
-
-  loadQuestionAttempts();
-
 }, []);
+useEffect(() => {
+  loadQuestionAttempts();
+}, [user]);
 
 
 function getPracticedIds(sourceType: "past_exam" | "ets_mock") {
@@ -1433,6 +1436,7 @@ async function handleSubmitMockTest() {
 
     setMockResult(result);
     await saveQuestionAttempt(result);
+    await loadQuestionAttempts();
 
     if (typeof result.balance === "number") {
       setPoints(result.balance);
@@ -5522,9 +5526,16 @@ function MockRecordDetailPage({
         <div style={{ display: "grid", gap: "14px" }}>
           {record.sentence_questions.map((question, index) => {
             const userChunks = record.sentence_answers[question.id] || [];
-            const userAnswer = Array.isArray(userChunks) ? userChunks.join(" ") : "";
+            const slots = Array.isArray(userChunks)
+              ? userChunks.map((text, index) => ({ 
+                  id: `result-${question.id}-${index}`,
+                  text,
+                }))
+              : [];
+
+            const userAnswer = buildFullAnswerFromSlots(question, slots);
             const isCorrect =
-              normalizeText(userAnswer) === normalizeText(question.target);
+              normalizeSentenceText(userAnswer) === normalizeText(question.target);
 
             return (
               <div
