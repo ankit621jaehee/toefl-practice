@@ -686,6 +686,12 @@ function App() {
   const [questionAttempts, setQuestionAttempts] = useState<QuestionAttempt[]>([]);
   const [isLoadingQuestionSets, setIsLoadingQuestionSets] = useState(false);
   const [questionSetMessage, setQuestionSetMessage] = useState("");
+  const [activeQuestionSetId, setActiveQuestionSetId] = useState("");
+  const [activeQuestionSourceType, setActiveQuestionSourceType] = useState<
+    "past_exam" | "ets_mock" | ""
+  >("");
+
+
 
   useEffect(() => {
 
@@ -835,12 +841,12 @@ function setPage(nextPage: Page) {
   const path = window.location.pathname;
 
   if (path.startsWith("/past-exam/")) {
-    const id = path.replace("/past-exam/", "");
+    const id = path.replace("/past-exam/", "").split('/')[0];
     setSelectedPastExamId(id);
   }
 
   if (path.startsWith("/ets-mock-practice/")) {
-    const id = path.replace("/ets-mock-practice/", "");
+    const id = path.replace("/ets-mock-practice/", "").split('/')[0];
     setSelectedEtsMockId(id);
   }
 }, []);
@@ -1177,7 +1183,65 @@ async function loadMockRecords() {
   setIsLoadingMockRecords(false);
 }
 
+function buildMockTestDataFromQuestionSet(questionSet: QuestionSet) {
+  const tasks = Array.isArray(questionSet.content.tasks)
+    ? questionSet.content.tasks
+    : [];
 
+  const sentenceTask = tasks.find((task) => task.type === "sentence");
+  const emailTask = tasks.find((task) => task.type === "email");
+  const discussionTask = tasks.find((task) => task.type === "discussion");
+
+  if (!sentenceTask || sentenceTask.type !== "sentence") {
+    throw new Error("This mock test does not contain Build a Sentence tasks.");
+  }
+
+  if (!emailTask || emailTask.type !== "email") {
+    throw new Error("This mock test does not contain an Email Writing task.");
+  }
+
+  if (!discussionTask || discussionTask.type !== "discussion") {
+    throw new Error("This mock test does not contain an Academic Discussion task.");
+  }
+
+  return {
+    sentenceQuestions: sentenceTask.questions,
+    emailPrompt: emailTask.prompt,
+    discussionPrompt: discussionTask.prompt,
+  } as MockTestData;
+}
+
+function handleStartEtsMockPractice(questionSet: QuestionSet | null) {
+  if (!questionSet) {
+    setQuestionSetMessage("This mock test is not available yet.");
+    return;
+  }
+
+  try {
+    const data = buildMockTestDataFromQuestionSet(questionSet);
+
+    setActiveQuestionSetId(questionSet.id);
+    setActiveQuestionSourceType("ets_mock");
+    setMockMessage("");
+    setMockResult(null);
+    setMockTestData(data);
+    setMockSentenceSlots(createInitialSlots(data.sentenceQuestions));
+    setMockSentenceBanks(createBankOrders(data.sentenceQuestions));
+    setMockDragged(null);
+    setMockEmailAnswer("");
+    setMockDiscussionAnswer("");
+
+    setPageState("mock");
+    window.history.pushState({}, "", `/ets-mock-practice/${questionSet.id}/practice`);
+  } catch (error) {
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Failed to start this mock practice.";
+
+    setQuestionSetMessage(message);
+  }
+}
 
 async function handleStartMockTest() {
   if (!user) {
@@ -1223,6 +1287,34 @@ async function handleStartMockTest() {
   }
 }
 
+async function saveQuestionAttempt(result: MockResult) {
+  if (!user) return;
+  if (!activeQuestionSetId || !activeQuestionSourceType) return;
+
+  const { error } = await supabase.from("question_attempts").insert({
+    user_id: user.id,
+    question_set_id: activeQuestionSetId,
+    source_type: activeQuestionSourceType,
+    status: "completed",
+    score: result.finalScore,
+    result: {
+      recordId: result.recordId,
+      sentenceScore: result.sentenceScore,
+      emailScore: result.emailScore,
+      discussionScore: result.discussionScore,
+      finalScore: result.finalScore,
+      knowledgeAnalysis: result.knowledgeAnalysis,
+      studyAdvice: result.studyAdvice,
+    },
+  });
+
+  if (error) {
+    console.error("Failed to save question attempt:", error);
+  }
+}
+
+
+
 async function handleSubmitMockTest() {
   if (!mockTestData) {
     setMockMessage("Mock test data is missing.");
@@ -1261,6 +1353,7 @@ async function handleSubmitMockTest() {
     });
 
     setMockResult(result);
+    await saveQuestionAttempt(result);
 
     if (typeof result.balance === "number") {
       setPoints(result.balance);
@@ -2165,6 +2258,10 @@ async function submitMockTestWithAPI({
           <EtsMockDetailPage
             mockId={selectedEtsMockId}
             mockSet={getEtsMockSetById(selectedEtsMockId)}
+            message={questionSetMessage}
+            onStart={() => {
+              handleStartEtsMockPractice(getEtsMockSetById(selectedEtsMockId));
+            }}
             onBack={() => {
               setPageState("ets-mock-practice");
               window.history.pushState({}, "", "/ets-mock-practice");
@@ -6041,10 +6138,14 @@ function PastExamDetailPage({
 function EtsMockDetailPage({
   mockId,
   mockSet,
+  message,
+  onStart,
   onBack,
 }: {
   mockId: string;
   mockSet: QuestionSet | null;
+  message: string;
+  onStart: () => void;
   onBack: () => void;
 }) {
 
@@ -6088,6 +6189,28 @@ function EtsMockDetailPage({
         <p style={{ color: "#64748b", lineHeight: 1.8 }}>
           Mock Number：{mockSet?.mock_number || mockId}
         </p>
+        {message && (
+          <p style={{ color: "#be123c", fontWeight: 700 }}>
+          {message}
+        </p>
+      )}
+
+      <button
+        type="button"
+        onClick={onStart}
+        style={{
+          padding: "12px 18px",
+          border: "none",
+          borderRadius: "14px",
+          background: "#111827",
+          color: "white",
+          fontWeight: 800,
+          cursor: "pointer",
+          marginTop: "12px",
+        }}
+      >
+        开始完整练习
+      </button>
       </section>
 
       <section
