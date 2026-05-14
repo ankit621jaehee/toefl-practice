@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { User } from "@supabase/supabase-js";
 import { supabase } from "./supabaseClient";
 
@@ -1201,11 +1201,24 @@ function buildMockTestDataFromQuestionSet(questionSet: QuestionSet) {
   }
 
   if (!discussionTask || discussionTask.type !== "discussion") {
-    throw new Error("This mock test does not contain an Academic Discussion task.");
+    throw new Error(
+      "This mock test does not contain an Academic Discussion task."
+    );
   }
 
+  const sentenceQuestions = sentenceTask.questions.map((question, index) => ({
+    ...question,
+    id: typeof question.id === "number" ? question.id : index + 1,
+    level: "medium",
+    topic: "ets mock",
+    relationType: "question-answer",
+    explanation:
+      question.explanation ||
+      "This question tests sentence structure and logical connection.",
+  }));
+
   return {
-    sentenceQuestions: sentenceTask.questions,
+    sentenceQuestions,
     emailPrompt: emailTask.prompt,
     discussionPrompt: discussionTask.prompt,
   } as MockTestData;
@@ -3937,26 +3950,60 @@ function MockTestPage({
   const [currentSentenceIndex, setCurrentSentenceIndex] = useState(0);
 
   const [timeLeft, setTimeLeft] = useState(6 * 60);
+  const onSubmitRef = useRef(onSubmit);
 
+  useEffect(() => {
+    onSubmitRef.current = onSubmit;
+  }, [onSubmit]);
+
+  useEffect(() => {
+    if (isSubmitting) return;
+
+    const timer = window.setInterval(() => {
+      setTimeLeft((previous) => {
+        if (previous <= 1) {
+          window.clearInterval(timer);
+
+          if (mockPart === "sentence") {
+            setMockPart("email");
+            setCurrentSentenceIndex(0);
+            window.scrollTo({ top: 0, behavior: "smooth" });
+            return 7 * 60;
+          }
+
+          if (mockPart === "email") {
+            setMockPart("discussion");
+            window.scrollTo({ top: 0, behavior: "smooth" });
+            return 10 * 60;
+          } 
+
+          if (mockPart === "discussion") {
+            onSubmitRef.current();
+            return 0;
+          }
+        }
+
+        return previous - 1;
+      });
+    }, 1000);
+
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, [mockPart, isSubmitting]);
 
   function formatTime(seconds: number) {
 
     const minutes = Math.floor(seconds / 60);
-
     const restSeconds = seconds % 60;
-
     return `${minutes}:${String(restSeconds).padStart(2, "0")}`;
-
   }
 
   function goToEmailPart() {
 
     setMockPart("email");
-
     setTimeLeft(7 * 60);
-
     window.scrollTo({ top: 0, behavior: "smooth" });
-
   }
 
   function goToDiscussionPart() {
