@@ -1373,10 +1373,6 @@ async function handleSubmitMockTest() {
     return;
   }
 
-  if (!mockEmailAnswer.trim() || !mockDiscussionAnswer.trim()) {
-    setMockMessage("Please complete both writing tasks before submitting.");
-    return;
-  }
 
   setIsSubmittingMock(true);
   setMockMessage("");
@@ -4037,6 +4033,21 @@ function MockTestPage({
     return `${minutes}:${String(restSeconds).padStart(2, "0")}`;
   }
 
+  function handleManualSubmit() {
+    if (isSubmitting) return;
+
+    if (timeLeft > 0) {
+      const confirmed = window.confirm(
+        "Time is not over yet. Are you sure you want to submit now?"
+      );
+
+      if (!confirmed) return;
+    }
+
+    onSubmit();
+  }
+
+
   function goToEmailPart() {
 
     setMockPart("email");
@@ -5014,7 +5025,7 @@ function MockTestPage({
 
             type="button"
 
-            onClick={onSubmit}
+            onClick={handleManualSubmit}
 
             disabled={isSubmitting}
 
