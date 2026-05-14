@@ -883,27 +883,22 @@ function setPage(nextPage: Page) {
   };
 }, []);
 
-  useEffect(() => {
-
-  if (
-
-    page === "past-exam" ||
-
-    page === "past-exam-detail" ||
-
-    page === "ets-mock-practice" ||
-
-    page === "ets-mock-detail"
-
-  ) {
-
-    loadQuestionSets();
-
-    loadQuestionAttempts();
-
+const onBackHome = () => {
+  if (activeQuestionSourceType === "ets_mock") {
+    setPageState("ets-mock-practice");
+    window.history.pushState({}, "", "/ets-mock-practice");
+    return;
   }
 
-}, [page, user]);
+  if (activeQuestionSourceType === "past_exam") {
+    setPageState("past-exam");
+    window.history.pushState({}, "", "/past-exam");
+    return;
+  }
+
+  setPageState("mock");
+  window.history.pushState({}, "", "/mock");
+};
 
 
 
@@ -1138,6 +1133,16 @@ async function loadQuestionAttempts() {
 
 }
 
+
+useEffect(() => {
+
+  loadQuestionSets();
+
+  loadQuestionAttempts();
+
+}, []);
+
+
 function getPracticedIds(sourceType: "past_exam" | "ets_mock") {
 
   return questionAttempts
@@ -1296,6 +1301,8 @@ async function handleStartMockTest() {
     return;
   }
 
+  setActiveQuestionSetId("");
+  setActiveQuestionSourceType("");
   setIsStartingMock(true);
   setMockMessage("");
   setMockResult(null);
@@ -2201,12 +2208,25 @@ async function submitMockTestWithAPI({
             onCancel={() => setPage("home")}
           />
         )}
+
         {page === "mock-result" && mockResult && (
           <MockResultPage
             result={mockResult}
-            onBackHome={() => setPage("home")}
-            onViewRecords={async () => {
-              await loadMockRecords();
+            onBackHome={() => {
+              if (activeQuestionSourceType === "ets_mock") {
+                setPageState("ets-mock-practice");
+                window.history.pushState({}, "", "/ets-mock-practice");
+                return;
+              }
+
+              if (activeQuestionSourceType === "past_exam") {
+                setPageState("past-exam");
+                window.history.pushState({}, "", "/past-exam");
+                return;
+              }
+              setPage('home');
+            }}
+            onViewRecords={() => {
               setPage("mock-records");
             }}
           />
@@ -2289,7 +2309,7 @@ async function submitMockTestWithAPI({
             practicedIds={getPracticedIds("ets_mock")}
             isLoading={isLoadingQuestionSets}
             message={questionSetMessage}
-            onBackHome={() => setPage("home")}
+            onBackHome={onBackHome}
             onStart={(id) => {
               setSelectedEtsMockId(id);
               setPageState("ets-mock-detail");
