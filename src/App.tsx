@@ -12,7 +12,9 @@ type Page =
   | "mock"
   | "mock-result"
   | "mock-records"
-  | "mock-record-detail";
+  | "mock-record-detail"
+  | "past-exam"
+  | "ets-mock-practice";
 
 type Part =
   | {
@@ -1519,7 +1521,37 @@ async function submitMockTestWithAPI({
                     </p>
                   )}
                 </div>
+                <div style={cardStyle}>
+                  <h2 style={{ marginTop: 0 }}>TOEFL Past Exam</h2>
+
+                  <p style={{ color: "#64748b", lineHeight: 1.7 }}>
+                    练习 TOEFL 改革真题，适合用于熟悉真实考试题型。
+                  </p>
+
+                  <button
+                    onClick={() => setPage("past-exam")}
+                    style={primaryButtonStyle}
+                  >
+                    进入改革真题
+                  </button>
+                </div>
+
+                <div style={cardStyle}>
+                  <h2 style={{ marginTop: 0 }}>ETS Mock Practice</h2>
+
+                  <p style={{ color: "#64748b", lineHeight: 1.7 }}>
+                    使用 ETS 官方20套模拟题进行写作练习。
+                  </p>
+
+                  <button
+                    onClick={() => setPage("ets-mock-practice")}
+                    style={primaryButtonStyle}
+                  >
+                    进入模拟真题
+                  </button>
+                </div>
             </div>
+
           </>
         )}
 
@@ -1754,6 +1786,49 @@ async function submitMockTestWithAPI({
             }}
           />
         )}
+
+        {page === "past-exam" && (
+          <SimpleInfoPage
+            title="TOEFL Past Exam"
+            description=" TOEFL 改革真题。"
+            onBackHome={() => setPage("home")}
+          />
+        )}
+
+        {page === "ets-mock-practice" && (
+          <SimpleInfoPage
+            title="ETS Mock Practice"
+            description=" ETS 20套模拟题。"
+            onBackHome={() => setPage("home")}
+          />
+        )}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
         {page === "records" && (
@@ -5177,5 +5252,56 @@ function AnnouncementBoard() {
     </section>
   );
 }
+
+function SimpleInfoPage({
+  title,
+  description,
+  onBackHome,
+}: {
+  title: string;
+  description: string;
+  onBackHome: () => void;
+}) {
+  return (
+    <>
+      <button
+        type="button"
+        onClick={onBackHome}
+        style={{
+          padding: "10px 16px",
+          border: "1px solid #cbd5e1",
+          borderRadius: "12px",
+          background: "white",
+          fontWeight: 700,
+          cursor: "pointer",
+          marginBottom: "24px",
+        }}
+      >
+        返回首页
+      </button>
+
+      <section
+        style={{
+          background: "white",
+          border: "1px solid #e2e8f0",
+          borderRadius: "20px",
+          padding: "24px",
+          boxShadow: "0 10px 30px rgba(15, 23, 42, 0.06)",
+        }}
+      >
+        <h1 style={{ marginTop: 0 }}>{title}</h1>
+
+        <p style={{ color: "#64748b", lineHeight: 1.8 }}>
+          {description}
+        </p>
+
+        <p style={{ color: "#475569", fontWeight: 700 }}>
+          题库功能即将接入。
+        </p>
+      </section>
+    </>
+  );
+}
+
 
 export default App;
