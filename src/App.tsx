@@ -645,11 +645,40 @@ function isQuestionComplete(slots: (Chunk | null)[]) {
   return slots.every((slot) => slot !== null);
 }
 
-function isQuestionCorrect(question: Question, slots: (Chunk | null)[]) {
-  const answers = getBlankAnswers(question);
 
-  return slots.every((slot, index) => slot?.text === answers[index]);
+
+function normalizeSentenceText(text: string) {
+  return text
+    .replace(/[,.!?;:]+$/g, "")
+    .replace(/^[,.!?;:]+/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
 }
+
+function isQuestionCorrect(question: Question, slots: (Chunk | null)[]) {
+  let blankIndex = 0;
+
+  const userFullAnswer = question.parts
+    .map((part) => {
+      if (part.type === "fixed") {
+        return part.text;
+      }
+
+      const slot = slots[blankIndex];
+      blankIndex += 1;
+
+      return slot?.text || "";
+    })
+    .join(" ")
+    .replace(/\s+([?.!,])/g, "$1");
+
+  return normalizeSentenceText(userFullAnswer) === normalizeSentenceText(question.target);
+}
+
+
+
+
 
 function renderFullAnswer(question: Question) {
   return question.parts
