@@ -1685,7 +1685,7 @@ async function submitMockTestWithAPI({
                   </p>
 
                   <button
-                    onClick={() => window.open("/#/past-exam", "_blank")}
+                    onClick={() => window.open("/past-exam", "_blank")}
                     style={primaryButtonStyle}
                   >
                     进入真题练习
@@ -1700,7 +1700,7 @@ async function submitMockTestWithAPI({
                   </p>
 
                   <button
-                    onClick={() => window.open("/#/ets-mock-practice", "_blank")}
+                    onClick={() => window.open("/ets-mock-practice", "_blank")}
                     style={primaryButtonStyle}
                   >
                     进入模拟真题
