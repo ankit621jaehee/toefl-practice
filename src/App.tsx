@@ -209,11 +209,11 @@ const announcements = [
   },
   {
     id: 2,
-    tag: "功能更新",
-    title: "Full Mock Test 已上线",
+    tag: "题库持续更新中",
+    title: "往届真题 与 ETS模拟题 已上线",
     content:
-      "现在可以完成 Build a Sentence、Email Writing 和 Academic Discussion 三部分完整模考，并获得 6 分制总分、知识点分析和备考建议。",
-    date: "2026-05-13",
+      "每次模拟考试消耗10积分，完成三部分内容后可获得 6 分制总分、知识点分析和备考建议。",
+    date: "2026-05-15",
   },
 ];
 
