@@ -14,7 +14,9 @@ type Page =
   | "mock-records"
   | "mock-record-detail"
   | "past-exam"
-  | "ets-mock-practice";
+  | "past-exam-detail"
+  | "ets-mock-practice"
+  | "ets-mock-detail";
 
 type Part =
   | {
@@ -607,6 +609,29 @@ function countWords(text: string) {
   return text.trim() ? text.trim().split(/\s+/).length : 0;
 }
 
+const pastExamList = [
+  {
+    id: "2026-05-14",
+    date: "2026-05-14",
+    title: "TOEFL Past Exam - 2026/05/14",
+  },
+  {
+    id: "2026-05-13",
+    date: "2026-05-13",
+    title: "TOEFL Past Exam - 2026/05/13",
+  },
+  {
+    id: "2026-05-12",
+    date: "2026-05-12",
+    title: "TOEFL Past Exam - 2026/05/12",
+  },
+];
+
+const etsMockList = Array.from({ length: 20 }, (_, index) => ({
+  id: String(index + 1),
+  title: `Mock Test ${index + 1}`,
+}));
+
 function App() {
   const [user, setUser] = useState<User | null>(null);
   const [authEmail, setAuthEmail] = useState("");
@@ -621,6 +646,8 @@ function App() {
   const [isLoadingRecords, setIsLoadingRecords] = useState(false);
   const [recordMessage, setRecordMessage] = useState(""); 
   const [mockTestData, setMockTestData] = useState<MockTestData | null>(null);
+  const [selectedPastExamId, setSelectedPastExamId] = useState("");
+  const [selectedEtsMockId, setSelectedEtsMockId] = useState("");
 
   useEffect(() => {
 
@@ -702,21 +729,41 @@ function App() {
 
   const [page, setPageState] = useState<Page>(() => {
 
-  const hash = window.location.hash.replace("#/", "");
+  const path = window.location.pathname;
 
-  if (hash === "past-exam") return "past-exam";
+  if (path === "/past-exam") return "past-exam";
 
-  if (hash === "ets-mock-practice") return "ets-mock-practice";
+  if (path.startsWith("/past-exam/")) return "past-exam-detail";
 
-  if (hash === "mock") return "mock";
+  if (path === "/ets-mock-practice") return "ets-mock-practice";
 
-  if (hash === "records") return "records";
+  if (path.startsWith("/ets-mock-practice/")) return "ets-mock-detail";
 
-  if (hash === "mock-records") return "mock-records";
+  if (path === "/records") return "records";
+
+  if (path === "/mock-records") return "mock-records";
 
   return "home";
 
 });
+
+useEffect(() => {
+
+  const handlePopState = () => {
+
+    setPageState(getPageFromPath());
+
+  };
+
+  window.addEventListener("popstate", handlePopState);
+
+  return () => {
+
+    window.removeEventListener("popstate", handlePopState);
+
+  };
+
+}, []);
 
 function setPage(nextPage: Page) {
 
@@ -724,27 +771,41 @@ function setPage(nextPage: Page) {
 
   const pathMap: Partial<Record<Page, string>> = {
 
-    home: "",
+    home: "/",
 
-    "past-exam": "past-exam",
+    records: "/records",
 
-    "ets-mock-practice": "ets-mock-practice",
+    "mock-records": "/mock-records",
 
-    records: "records",
+    "past-exam": "/past-exam",
 
-    "mock-records": "mock-records",
+    "ets-mock-practice": "/ets-mock-practice",
 
   };
 
-  const hashPath = pathMap[nextPage];
+  const nextPath = pathMap[nextPage];
 
-  if (hashPath !== undefined) {
+  if (nextPath) {
 
-    window.location.hash = hashPath ? `/${hashPath}` : "";
+    window.history.pushState({}, "", nextPath);
 
   }
 
 }
+
+ useEffect(() => {
+  const path = window.location.pathname;
+
+  if (path.startsWith("/past-exam/")) {
+    const id = path.replace("/past-exam/", "");
+    setSelectedPastExamId(id);
+  }
+
+  if (path.startsWith("/ets-mock-practice/")) {
+    const id = path.replace("/ets-mock-practice/", "");
+    setSelectedEtsMockId(id);
+  }
+}, []);
 
   useEffect(() => {
   async function loadUser() {
@@ -1898,19 +1959,51 @@ async function submitMockTestWithAPI({
           />
         )}
 
+        {page === "past-exam" && (
+          <PastExamPage
+            items={pastExamList}
+            practicedIds={[]}
+            onBackHome={() => setPage("home")}
+            onStart={(id) => {
+              setSelectedPastExamId(id);
+              setPageState("past-exam-detail");
+              window.history.pushState({}, "", `/past-exam/${id}`);
+            }}
+          />
+        )}
+        
+        {page === "past-exam-detail" && (
+          <PastExamDetailPage
+            examId={selectedPastExamId}
+            onBack={() => {
+              setPageState("past-exam");
+              window.history.pushState({}, "", "/past-exam");
+            }}
+          />
+        )}
 
-
-
-
-
-
-
-
-
-
-
-
-
+        {page === "ets-mock-practice" && (
+          <EtsMockPracticePage
+            items={etsMockList}
+            practicedIds={[]}
+            onBackHome={() => setPage("home")}
+            onStart={(id) => {
+              setSelectedEtsMockId(id);
+              setPageState("ets-mock-detail");
+              window.history.pushState({}, "", `/ets-mock-practice/${id}`);
+            }}
+          />
+        )}
+        
+        {page === "ets-mock-detail" && (
+          <EtsMockDetailPage
+            mockId={selectedEtsMockId}
+            onBack={() => {
+              setPageState("ets-mock-practice");
+              window.history.pushState({}, "", "/ets-mock-practice");
+            }}
+          />
+        )}
 
 
 
@@ -5398,5 +5491,573 @@ function SimpleInfoPage({
   );
 }
 
+function getPageFromPath(): Page {
+  const path = window.location.pathname;
+
+  if (path.includes("/toefl-past-exam")) 
+    return "past-exam";
+  if (path.includes("/ets-mock-practice")) 
+    return "ets-mock-practice";
+  if (path.includes("/build-a-sentence")) 
+    return "sentence";
+  if (path.includes("/email-writing")) 
+    return "email";
+  if (path.includes("/academic-discussion")) 
+    return "discussion";
+  if (path.includes("/full-mock-test")) 
+    return "mock";
+
+  return "home";
+}
+
+function PastExamPage({
+
+  items,
+
+  practicedIds,
+
+  onBackHome,
+
+  onStart,
+
+}: {
+
+  items: { id: string; date: string; title: string }[];
+
+  practicedIds: string[];
+
+  onBackHome: () => void;
+
+  onStart: (id: string) => void;
+
+}) {
+
+  return (
+
+    <>
+
+      <button
+
+        type="button"
+
+        onClick={onBackHome}
+
+        style={{
+
+          padding: "10px 16px",
+
+          border: "1px solid #cbd5e1",
+
+          borderRadius: "12px",
+
+          background: "white",
+
+          fontWeight: 700,
+
+          cursor: "pointer",
+
+          marginBottom: "24px",
+
+        }}
+
+      >
+
+        返回首页
+
+      </button>
+
+      <section
+
+        style={{
+
+          background: "white",
+
+          border: "1px solid #e2e8f0",
+
+          borderRadius: "20px",
+
+          padding: "24px",
+
+          marginBottom: "24px",
+
+          boxShadow: "0 10px 30px rgba(15, 23, 42, 0.06)",
+
+        }}
+
+      >
+
+        <h1 style={{ marginTop: 0 }}>TOEFL Past Exam</h1>
+
+        <p style={{ color: "#64748b", lineHeight: 1.8 }}>
+
+          按日期整理的 TOEFL 过往考试练习。练习记录将保存在本页面下。
+
+        </p>
+
+      </section>
+
+      <div style={{ display: "grid", gap: "12px" }}>
+
+        {items.map((item) => {
+
+          const practiced = practicedIds.includes(item.id);
+
+          return (
+
+            <div
+
+              key={item.id}
+
+              style={{
+
+                display: "grid",
+
+                gridTemplateColumns: "1.2fr 1fr auto",
+
+                gap: "16px",
+
+                alignItems: "center",
+
+                background: "#f8fafc",
+
+                border: "1px solid #e2e8f0",
+
+                borderRadius: "18px",
+
+                padding: "18px 20px",
+
+              }}
+
+            >
+
+              <div>
+
+                <strong>{item.date}</strong>
+
+                <p style={{ color: "#64748b", marginBottom: 0 }}>
+
+                  {item.title}
+
+                </p>
+
+              </div>
+
+              <span
+
+                style={{
+
+                  color: practiced ? "#166534" : "#64748b",
+
+                  fontWeight: 800,
+
+                }}
+
+              >
+
+                {practiced ? "已练习" : "未练习"}
+
+              </span>
+
+              <button
+
+                type="button"
+
+                onClick={() => onStart(item.id)}
+
+                style={{
+
+                  padding: "10px 16px",
+
+                  border: "none",
+
+                  borderRadius: "12px",
+
+                  background: "#111827",
+
+                  color: "white",
+
+                  fontWeight: 800,
+
+                  cursor: "pointer",
+
+                }}
+
+              >
+
+                {practiced ? "再次练习" : "开始练习"}
+
+              </button>
+
+            </div>
+
+          );
+
+        })}
+
+      </div>
+
+    </>
+
+  );
+
+}
+
+function EtsMockPracticePage({
+
+  items,
+
+  practicedIds,
+
+  onBackHome,
+
+  onStart,
+
+}: {
+
+  items: { id: string; title: string }[];
+
+  practicedIds: string[];
+
+  onBackHome: () => void;
+
+  onStart: (id: string) => void;
+
+}) {
+
+  return (
+
+    <>
+
+      <button
+
+        type="button"
+
+        onClick={onBackHome}
+
+        style={{
+
+          padding: "10px 16px",
+
+          border: "1px solid #cbd5e1",
+
+          borderRadius: "12px",
+
+          background: "white",
+
+          fontWeight: 700,
+
+          cursor: "pointer",
+
+          marginBottom: "24px",
+
+        }}
+
+      >
+
+        返回首页
+
+      </button>
+
+      <section
+
+        style={{
+
+          background: "white",
+
+          border: "1px solid #e2e8f0",
+
+          borderRadius: "20px",
+
+          padding: "24px",
+
+          marginBottom: "24px",
+
+          boxShadow: "0 10px 30px rgba(15, 23, 42, 0.06)",
+
+        }}
+
+      >
+
+        <h1 style={{ marginTop: 0 }}>ETS Mock Practice</h1>
+
+        <p style={{ color: "#64748b", lineHeight: 1.8 }}>
+
+          ETS 风格模拟真题练习，共 20 套。练习记录将保存在本页面下。
+
+        </p>
+
+      </section>
+
+      <div style={{ display: "grid", gap: "12px" }}>
+
+        {items.map((item) => {
+
+          const practiced = practicedIds.includes(item.id);
+
+          return (
+
+            <div
+
+              key={item.id}
+
+              style={{
+
+                display: "grid",
+
+                gridTemplateColumns: "1.2fr 1fr auto",
+
+                gap: "16px",
+
+                alignItems: "center",
+
+                background: "#f8fafc",
+
+                border: "1px solid #e2e8f0",
+
+                borderRadius: "18px",
+
+                padding: "18px 20px",
+
+              }}
+
+            >
+
+              <strong>{item.title}</strong>
+
+              <span
+
+                style={{
+
+                  color: practiced ? "#166534" : "#64748b",
+
+                  fontWeight: 800,
+
+                }}
+
+              >
+
+                {practiced ? "已练习" : "未练习"}
+
+              </span>
+
+              <button
+
+                type="button"
+
+                onClick={() => onStart(item.id)}
+
+                style={{
+
+                  padding: "10px 16px",
+
+                  border: "none",
+
+                  borderRadius: "12px",
+
+                  background: "#111827",
+
+                  color: "white",
+
+                  fontWeight: 800,
+
+                  cursor: "pointer",
+
+                }}
+
+              >
+
+                {practiced ? "再次练习" : "开始练习"}
+
+              </button>
+
+            </div>
+
+          );
+
+        })}
+
+      </div>
+
+    </>
+
+  );
+
+}
+
+function PastExamDetailPage({
+
+  examId,
+
+  onBack,
+
+}: {
+
+  examId: string;
+
+  onBack: () => void;
+
+}) {
+
+  return (
+
+    <>
+
+      <button
+
+        type="button"
+
+        onClick={onBack}
+
+        style={{
+
+          padding: "10px 16px",
+
+          border: "1px solid #cbd5e1",
+
+          borderRadius: "12px",
+
+          background: "white",
+
+          fontWeight: 700,
+
+          cursor: "pointer",
+
+          marginBottom: "24px",
+
+        }}
+
+      >
+
+        返回真题列表
+
+      </button>
+
+      <section
+
+        style={{
+
+          background: "white",
+
+          border: "1px solid #e2e8f0",
+
+          borderRadius: "20px",
+
+          padding: "24px",
+
+          boxShadow: "0 10px 30px rgba(15, 23, 42, 0.06)",
+
+        }}
+
+      >
+
+        <h1 style={{ marginTop: 0 }}>TOEFL Past Exam</h1>
+
+        <p style={{ color: "#64748b", lineHeight: 1.8 }}>
+
+          当前真题日期：{examId}
+
+        </p>
+
+        <p style={{ color: "#475569", fontWeight: 700 }}>
+
+          下一步这里会接入真题练习页面。
+
+        </p>
+
+      </section>
+
+    </>
+
+  );
+
+}
+
+function EtsMockDetailPage({
+
+  mockId,
+
+  onBack,
+
+}: {
+
+  mockId: string;
+
+  onBack: () => void;
+
+}) {
+
+  return (
+
+    <>
+
+      <button
+
+        type="button"
+
+        onClick={onBack}
+
+        style={{
+
+          padding: "10px 16px",
+
+          border: "1px solid #cbd5e1",
+
+          borderRadius: "12px",
+
+          background: "white",
+
+          fontWeight: 700,
+
+          cursor: "pointer",
+
+          marginBottom: "24px",
+
+        }}
+
+      >
+
+        返回模拟真题列表
+
+      </button>
+
+      <section
+
+        style={{
+
+          background: "white",
+
+          border: "1px solid #e2e8f0",
+
+          borderRadius: "20px",
+
+          padding: "24px",
+
+          boxShadow: "0 10px 30px rgba(15, 23, 42, 0.06)",
+
+        }}
+
+      >
+
+        <h1 style={{ marginTop: 0 }}>Mock Test {mockId}</h1>
+
+        <p style={{ color: "#64748b", lineHeight: 1.8 }}>
+
+          当前模拟真题：Mock Test {mockId}
+
+        </p>
+
+        <p style={{ color: "#475569", fontWeight: 700 }}>
+
+          下一步这里会接入模拟真题练习页面。
+
+        </p>
+
+      </section>
+
+    </>
+
+  );
+
+}
 
 export default App;
