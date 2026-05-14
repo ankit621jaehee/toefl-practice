@@ -1944,22 +1944,6 @@ async function submitMockTestWithAPI({
         )}
 
         {page === "past-exam" && (
-          <SimpleInfoPage
-            title="TOEFL Past Exam"
-            description=" TOEFL 改革真题。"
-            onBackHome={() => setPage("home")}
-          />
-        )}
-
-        {page === "ets-mock-practice" && (
-          <SimpleInfoPage
-            title="ETS Mock Practice"
-            description=" ETS 20套模拟题。"
-            onBackHome={() => setPage("home")}
-          />
-        )}
-
-        {page === "past-exam" && (
           <PastExamPage
             items={pastExamList}
             practicedIds={[]}
@@ -5441,55 +5425,7 @@ function AnnouncementBoard() {
   );
 }
 
-function SimpleInfoPage({
-  title,
-  description,
-  onBackHome,
-}: {
-  title: string;
-  description: string;
-  onBackHome: () => void;
-}) {
-  return (
-    <>
-      <button
-        type="button"
-        onClick={onBackHome}
-        style={{
-          padding: "10px 16px",
-          border: "1px solid #cbd5e1",
-          borderRadius: "12px",
-          background: "white",
-          fontWeight: 700,
-          cursor: "pointer",
-          marginBottom: "24px",
-        }}
-      >
-        返回首页
-      </button>
 
-      <section
-        style={{
-          background: "white",
-          border: "1px solid #e2e8f0",
-          borderRadius: "20px",
-          padding: "24px",
-          boxShadow: "0 10px 30px rgba(15, 23, 42, 0.06)",
-        }}
-      >
-        <h1 style={{ marginTop: 0 }}>{title}</h1>
-
-        <p style={{ color: "#64748b", lineHeight: 1.8 }}>
-          {description}
-        </p>
-
-        <p style={{ color: "#475569", fontWeight: 700 }}>
-          题库功能即将接入。
-        </p>
-      </section>
-    </>
-  );
-}
 
 function getPageFromPath(): Page {
   const path = window.location.pathname;
@@ -5590,7 +5526,7 @@ function PastExamPage({
 
         <p style={{ color: "#64748b", lineHeight: 1.8 }}>
 
-          按日期整理的 TOEFL 过往考试练习。练习记录将保存在本页面下。
+          toefl改革真题
 
         </p>
 
