@@ -622,6 +622,57 @@ function App() {
   const [recordMessage, setRecordMessage] = useState(""); 
   const [mockTestData, setMockTestData] = useState<MockTestData | null>(null);
 
+  useEffect(() => {
+
+  function handleHashChange() {
+
+    const hash = window.location.hash.replace("#/", "");
+
+    if (hash === "past-exam") {
+
+      setPageState("past-exam");
+
+      return;
+
+    }
+
+    if (hash === "ets-mock-practice") {
+
+      setPageState("ets-mock-practice");
+
+      return;
+
+    }
+
+    if (hash === "records") {
+
+      setPageState("records");
+
+      return;
+
+    }
+
+    if (hash === "mock-records") {
+
+      setPageState("mock-records");
+
+      return;
+
+    }
+
+    setPageState("home");
+
+  }
+
+  window.addEventListener("hashchange", handleHashChange);
+
+  return () => {
+
+    window.removeEventListener("hashchange", handleHashChange);
+
+  };
+
+}, []);
 
   const [mockSentenceSlots, setMockSentenceSlots] = useState<
     Record<number, (Chunk | null)[]>
@@ -649,7 +700,51 @@ function App() {
   const [showPointsModal, setShowPointsModal] = useState(false);
 
 
-  const [page, setPage] = useState<Page>("home");
+  const [page, setPageState] = useState<Page>(() => {
+
+  const hash = window.location.hash.replace("#/", "");
+
+  if (hash === "past-exam") return "past-exam";
+
+  if (hash === "ets-mock-practice") return "ets-mock-practice";
+
+  if (hash === "mock") return "mock";
+
+  if (hash === "records") return "records";
+
+  if (hash === "mock-records") return "mock-records";
+
+  return "home";
+
+});
+
+function setPage(nextPage: Page) {
+
+  setPageState(nextPage);
+
+  const pathMap: Partial<Record<Page, string>> = {
+
+    home: "",
+
+    "past-exam": "past-exam",
+
+    "ets-mock-practice": "ets-mock-practice",
+
+    records: "records",
+
+    "mock-records": "mock-records",
+
+  };
+
+  const hashPath = pathMap[nextPage];
+
+  if (hashPath !== undefined) {
+
+    window.location.hash = hashPath ? `/${hashPath}` : "";
+
+  }
+
+}
 
   useEffect(() => {
   async function loadUser() {
@@ -1529,10 +1624,10 @@ async function submitMockTestWithAPI({
                   </p>
 
                   <button
-                    onClick={() => setPage("past-exam")}
+                    onClick={() => setPage("past-exam")} 
                     style={primaryButtonStyle}
                   >
-                    进入改革真题
+                    进入真题练习
                   </button>
                 </div>
 
