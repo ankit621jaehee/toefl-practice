@@ -124,7 +124,63 @@ type MockRecord = {
   created_at: string;
 };
 
+type QuestionSetTask =
+  | {
+      type: "sentence";
+      title: string;
+      questions: Question[];
+    }
+  | {
+      type: "email";
+      title: string;
+      prompt: EmailPrompt;
+    }
+  | {
+      type: "discussion";
+      title: string;
+      prompt: DiscussionPrompt;
+    };
 
+type QuestionSetContent = {
+  description?: string;
+  tasks?: QuestionSetTask[];
+};
+
+type QuestionSet = {
+
+  id: string;
+
+  source_type: "past_exam" | "ets_mock";
+
+  title: string;
+
+  display_date: string | null;
+
+  mock_number: number | null;
+
+  sort_order: number;
+
+  content: QuestionSetContent;
+
+  created_at: string;
+
+};
+
+type QuestionAttempt = {
+
+  id: string;
+
+  question_set_id: string;
+
+  source_type: "past_exam" | "ets_mock";
+
+  status: "started" | "completed";
+
+  score: number | null;
+
+  created_at: string;
+
+};
 
 
 
@@ -609,29 +665,6 @@ function countWords(text: string) {
   return text.trim() ? text.trim().split(/\s+/).length : 0;
 }
 
-const pastExamList = [
-  {
-    id: "2026-05-14",
-    date: "2026-05-14",
-    title: "TOEFL Past Exam - 2026/05/14",
-  },
-  {
-    id: "2026-05-13",
-    date: "2026-05-13",
-    title: "TOEFL Past Exam - 2026/05/13",
-  },
-  {
-    id: "2026-05-12",
-    date: "2026-05-12",
-    title: "TOEFL Past Exam - 2026/05/12",
-  },
-];
-
-const etsMockList = Array.from({ length: 20 }, (_, index) => ({
-  id: String(index + 1),
-  title: `Mock Test ${index + 1}`,
-}));
-
 function App() {
   const [user, setUser] = useState<User | null>(null);
   const [authEmail, setAuthEmail] = useState("");
@@ -648,6 +681,11 @@ function App() {
   const [mockTestData, setMockTestData] = useState<MockTestData | null>(null);
   const [selectedPastExamId, setSelectedPastExamId] = useState("");
   const [selectedEtsMockId, setSelectedEtsMockId] = useState("");
+  const [pastExamSets, setPastExamSets] = useState<QuestionSet[]>([]);
+  const [etsMockSets, setEtsMockSets] = useState<QuestionSet[]>([]);
+  const [questionAttempts, setQuestionAttempts] = useState<QuestionAttempt[]>([]);
+  const [isLoadingQuestionSets, setIsLoadingQuestionSets] = useState(false);
+  const [questionSetMessage, setQuestionSetMessage] = useState("");
 
   useEffect(() => {
 
@@ -839,6 +877,30 @@ function setPage(nextPage: Page) {
   };
 }, []);
 
+  useEffect(() => {
+
+  if (
+
+    page === "past-exam" ||
+
+    page === "past-exam-detail" ||
+
+    page === "ets-mock-practice" ||
+
+    page === "ets-mock-detail"
+
+  ) {
+
+    loadQuestionSets();
+
+    loadQuestionAttempts();
+
+  }
+
+}, [page, user]);
+
+
+
 async function loadPoints(userId: string) {
   const { data, error } = await supabase
     .from("profiles")
@@ -992,6 +1054,100 @@ async function loadPracticeRecords() {
 
   setRecords((data || []) as PracticeRecord[]);
   setIsLoadingRecords(false);
+}
+
+async function loadQuestionSets() {
+
+  setIsLoadingQuestionSets(true);
+
+  setQuestionSetMessage("");
+
+  const { data, error } = await supabase
+
+    .from("question_sets")
+
+    .select(
+
+      "id, source_type, title, display_date, mock_number, sort_order, content, created_at"
+
+    )
+
+    .eq("status", "published")
+
+    .order("source_type", { ascending: true })
+
+    .order("sort_order", { ascending: true })
+
+    .order("display_date", { ascending: false });
+
+  if (error) {
+
+    setQuestionSetMessage(error.message);
+
+    setIsLoadingQuestionSets(false);
+
+    return;
+
+  }
+
+  const sets = (data || []) as QuestionSet[];
+
+  setPastExamSets(sets.filter((item) => item.source_type === "past_exam"));
+
+  setEtsMockSets(sets.filter((item) => item.source_type === "ets_mock"));
+
+  setIsLoadingQuestionSets(false);
+
+}
+
+async function loadQuestionAttempts() {
+
+  if (!user) {
+
+    setQuestionAttempts([]);
+
+    return;
+
+  }
+
+  const { data, error } = await supabase
+
+    .from("question_attempts")
+
+    .select("id, question_set_id, source_type, status, score, created_at")
+
+    .eq("user_id", user.id)
+
+    .order("created_at", { ascending: false });
+
+  if (error) {
+
+    setQuestionSetMessage(error.message);
+
+    return;
+
+  }
+
+  setQuestionAttempts((data || []) as QuestionAttempt[]);
+
+}
+
+function getPracticedIds(sourceType: "past_exam" | "ets_mock") {
+
+  return questionAttempts
+
+    .filter((attempt) => attempt.source_type === sourceType)
+
+    .map((attempt) => attempt.question_set_id);
+
+}
+
+function getPastExamSetById(id: string) {
+  return pastExamSets.find((item) => item.id === id) || null;
+}
+
+function getEtsMockSetById(id: string) {
+  return etsMockSets.find((item) => item.id === id) || null;
 }
 
 async function loadMockRecords() {
@@ -1944,21 +2100,41 @@ async function submitMockTestWithAPI({
         )}
 
         {page === "past-exam" && (
+
+
+
           <PastExamPage
-            items={pastExamList}
-            practicedIds={[]}
+
+            items={pastExamSets}
+
+            practicedIds={getPracticedIds("past_exam")}
+
+            isLoading={isLoadingQuestionSets}
+
+            message={questionSetMessage}
+
             onBackHome={() => setPage("home")}
+
             onStart={(id) => {
+
               setSelectedPastExamId(id);
+
               setPageState("past-exam-detail");
+
               window.history.pushState({}, "", `/past-exam/${id}`);
+
             }}
+
           />
+
+
+
         )}
         
         {page === "past-exam-detail" && (
           <PastExamDetailPage
             examId={selectedPastExamId}
+            examSet={getPastExamSetById(selectedPastExamId)}
             onBack={() => {
               setPageState("past-exam");
               window.history.pushState({}, "", "/past-exam");
@@ -1967,9 +2143,12 @@ async function submitMockTestWithAPI({
         )}
 
         {page === "ets-mock-practice" && (
+
           <EtsMockPracticePage
-            items={etsMockList}
-            practicedIds={[]}
+            items={etsMockSets}
+            practicedIds={getPracticedIds("ets_mock")}
+            isLoading={isLoadingQuestionSets}
+            message={questionSetMessage}
             onBackHome={() => setPage("home")}
             onStart={(id) => {
               setSelectedEtsMockId(id);
@@ -1977,11 +2156,15 @@ async function submitMockTestWithAPI({
               window.history.pushState({}, "", `/ets-mock-practice/${id}`);
             }}
           />
+
+
+
         )}
         
         {page === "ets-mock-detail" && (
           <EtsMockDetailPage
             mockId={selectedEtsMockId}
+            mockSet={getEtsMockSetById(selectedEtsMockId)}
             onBack={() => {
               setPageState("ets-mock-practice");
               window.history.pushState({}, "", "/ets-mock-practice");
@@ -3658,59 +3841,6 @@ function MockTestPage({
 
   const [timeLeft, setTimeLeft] = useState(6 * 60);
 
-  useEffect(() => {
-
-    if (isSubmitting) return;
-
-    const timer = window.setInterval(() => {
-
-      setTimeLeft((previous) => {
-
-        if (previous <= 1) {
-
-          window.clearInterval(timer);
-
-          if (mockPart === "sentence") {
-
-            setMockPart("email");
-
-            setCurrentSentenceIndex(0);
-
-            window.scrollTo({ top: 0, behavior: "smooth" });
-
-            return 7 * 60;
-
-          }
-
-          if (mockPart === "email") {
-
-            setMockPart("discussion");
-
-            window.scrollTo({ top: 0, behavior: "smooth" });
-
-            return 10 * 60;
-
-          }
-
-          if (mockPart === "discussion") {
-
-            onSubmit();
-
-            return 0;
-
-          }
-
-        }
-
-        return previous - 1;
-
-      });
-
-    }, 1000);
-
-    return () => window.clearInterval(timer);
-
-  }, [mockPart, isSubmitting, onSubmit]);
 
   function formatTime(seconds: number) {
 
@@ -5451,19 +5581,18 @@ function PastExamPage({
   items,
 
   practicedIds,
-
+  isLoading,
+  message,
   onBackHome,
-
   onStart,
 
 }: {
 
-  items: { id: string; date: string; title: string }[];
-
+  items: QuestionSet[];
   practicedIds: string[];
-
+  isLoading: boolean;
+  message: string;
   onBackHome: () => void;
-
   onStart: (id: string) => void;
 
 }) {
@@ -5532,6 +5661,15 @@ function PastExamPage({
 
       </section>
 
+      {isLoading && <p style={{ color: "#64748b" }}>Loading question sets...</p>}
+
+      {message && <p style={{ color: "#be123c", fontWeight: 700 }}>{message}</p>}
+
+      {!isLoading && items.length === 0 && (
+        <p style={{ color: "#64748b" }}>No question sets available yet.</p>
+      )}
+
+
       <div style={{ display: "grid", gap: "12px" }}>
 
         {items.map((item) => {
@@ -5568,7 +5706,7 @@ function PastExamPage({
 
               <div>
 
-                <strong>{item.date}</strong>
+                <strong>{item.display_date || 'No date'}</strong>
 
                 <p style={{ color: "#64748b", marginBottom: 0 }}>
 
@@ -5643,17 +5781,18 @@ function EtsMockPracticePage({
   items,
 
   practicedIds,
-
+  isLoading,
+  message,
   onBackHome,
 
   onStart,
 
 }: {
 
-  items: { id: string; title: string }[];
-
+  items: QuestionSet[];
   practicedIds: string[];
-
+  isLoading: boolean;
+  message: string,
   onBackHome: () => void;
 
   onStart: (id: string) => void;
@@ -5723,6 +5862,16 @@ function EtsMockPracticePage({
         </p>
 
       </section>
+
+        {isLoading && <p style={{ color: "#64748b" }}>Loading question sets...</p>}
+
+        {message && <p style={{ color: "#be123c", fontWeight: 700 }}>{message}</p>}
+
+        {!isLoading && items.length === 0 && (
+
+          <p style={{ color: "#64748b" }}>No mock practice sets available yet.</p>
+
+        )}
 
       <div style={{ display: "grid", gap: "12px" }}>
 
@@ -5821,179 +5970,266 @@ function EtsMockPracticePage({
 }
 
 function PastExamDetailPage({
-
   examId,
-
+  examSet,
   onBack,
-
 }: {
-
   examId: string;
-
+  examSet: QuestionSet | null;
   onBack: () => void;
-
 }) {
 
   return (
-
     <>
-
       <button
-
         type="button"
-
         onClick={onBack}
-
         style={{
-
           padding: "10px 16px",
-
           border: "1px solid #cbd5e1",
-
           borderRadius: "12px",
-
           background: "white",
-
           fontWeight: 700,
-
           cursor: "pointer",
-
           marginBottom: "24px",
-
         }}
-
       >
-
         返回真题列表
-
       </button>
 
       <section
-
         style={{
-
           background: "white",
-
           border: "1px solid #e2e8f0",
-
           borderRadius: "20px",
-
           padding: "24px",
-
+          marginBottom: "24px",
           boxShadow: "0 10px 30px rgba(15, 23, 42, 0.06)",
-
         }}
-
       >
-
-        <h1 style={{ marginTop: 0 }}>TOEFL Past Exam</h1>
+        <h1 style={{ marginTop: 0 }}>
+          {examSet?.title || "TOEFL Past Exam"}
+        </h1>
 
         <p style={{ color: "#64748b", lineHeight: 1.8 }}>
-
-          当前真题日期：{examId}
-
+          当前真题 ID：{examId}
         </p>
 
-        <p style={{ color: "#475569", fontWeight: 700 }}>
-
-          下一步这里会接入真题练习页面。
-
+        <p style={{ color: "#64748b", lineHeight: 1.8 }}>
+          日期：{examSet?.display_date || "No date"}
         </p>
-
       </section>
 
+      <section
+        style={{
+          background: "white",
+          border: "1px solid #e2e8f0",
+          borderRadius: "20px",
+          padding: "24px",
+          boxShadow: "0 10px 30px rgba(15, 23, 42, 0.06)",
+        }}
+      >
+        <h2 style={{ marginTop: 0 }}>Question Content</h2>
+
+        <QuestionSetContentPreview content={examSet?.content || {}} />
+
+      </section>
     </>
-
   );
-
 }
 
 function EtsMockDetailPage({
-
   mockId,
-
+  mockSet,
   onBack,
-
 }: {
-
   mockId: string;
-
+  mockSet: QuestionSet | null;
   onBack: () => void;
-
 }) {
 
+
   return (
-
     <>
-
       <button
-
         type="button"
-
         onClick={onBack}
-
         style={{
-
           padding: "10px 16px",
-
           border: "1px solid #cbd5e1",
-
           borderRadius: "12px",
-
           background: "white",
-
           fontWeight: 700,
-
           cursor: "pointer",
-
           marginBottom: "24px",
-
         }}
-
       >
-
         返回模拟真题列表
-
       </button>
 
       <section
-
         style={{
-
           background: "white",
-
           border: "1px solid #e2e8f0",
-
           borderRadius: "20px",
-
           padding: "24px",
-
+          marginBottom: "24px",
           boxShadow: "0 10px 30px rgba(15, 23, 42, 0.06)",
-
         }}
-
       >
-
-        <h1 style={{ marginTop: 0 }}>Mock Test {mockId}</h1>
+        <h1 style={{ marginTop: 0 }}>
+          {mockSet?.title || `Mock Test ${mockId}`}
+        </h1>
 
         <p style={{ color: "#64748b", lineHeight: 1.8 }}>
-
-          当前模拟真题：Mock Test {mockId}
-
+          当前模拟真题 ID：{mockId}
         </p>
 
-        <p style={{ color: "#475569", fontWeight: 700 }}>
-
-          下一步这里会接入模拟真题练习页面。
-
+        <p style={{ color: "#64748b", lineHeight: 1.8 }}>
+          Mock Number：{mockSet?.mock_number || mockId}
         </p>
-
       </section>
 
+      <section
+        style={{
+          background: "white",
+          border: "1px solid #e2e8f0",
+          borderRadius: "20px",
+          padding: "24px",
+          boxShadow: "0 10px 30px rgba(15, 23, 42, 0.06)",
+        }}
+      >
+        <h2 style={{ marginTop: 0 }}>Question Content</h2>
+
+       <QuestionSetContentPreview content={mockSet?.content || {}} />
+      </section>
     </>
-
   );
+}
 
+function QuestionSetContentPreview({ content }: { content: QuestionSetContent }) {
+  const tasks = Array.isArray(content.tasks) ? content.tasks : [];
+
+  if (tasks.length === 0) {
+    return (
+      <p style={{ color: "#64748b", lineHeight: 1.8 }}>
+        这套题暂时还没有录入具体题目。之后可以在 Supabase 的
+        question_sets.content.tasks 中继续补充。
+      </p>
+    );
+  }
+
+  return (
+    <div style={{ display: "grid", gap: "18px" }}>
+      {tasks.map((task, index) => {
+        if (task.type === "sentence") {
+          return (
+            <section
+              key={`${task.type}-${index}`}
+              style={{
+                padding: "18px",
+                borderRadius: "16px",
+                background: "#f8fafc",
+                border: "1px solid #e2e8f0",
+              }}
+            >
+              <h3 style={{ marginTop: 0 }}>{task.title}</h3>
+
+              <p style={{ color: "#64748b" }}>
+                共 {task.questions.length} 道 Build a Sentence 题。
+              </p>
+
+              <div style={{ display: "grid", gap: "12px" }}>
+                {task.questions.slice(0, 3).map((question, qIndex) => (
+                  <div
+                    key={`${question.target}-${qIndex}`}
+                    style={{
+                      background: "white",
+                      border: "1px solid #e2e8f0",
+                      borderRadius: "14px",
+                      padding: "14px",
+                    }}
+                  >
+                    <strong>Question {qIndex + 1}</strong>
+                    <p style={{ lineHeight: 1.7, marginBottom: "6px" }}>
+                      {question.contextSpeaker}: {question.contextSentence}
+                    </p>
+                    <p style={{ lineHeight: 1.7, margin: 0 }}>
+                      {question.answerSpeaker}: {question.target}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </section>
+          );
+        }
+
+        if (task.type === "email") {
+          return (
+            <section
+              key={`${task.type}-${index}`}
+              style={{
+                padding: "18px",
+                borderRadius: "16px",
+                background: "#f8fafc",
+                border: "1px solid #e2e8f0",
+              }}
+            >
+              <h3 style={{ marginTop: 0 }}>{task.title}</h3>
+
+              <p style={{ color: "#475569", lineHeight: 1.8 }}>
+                {task.prompt.scenario}
+              </p>
+
+              <strong>{task.prompt.task}</strong>
+
+              <ul style={{ lineHeight: 1.8 }}>
+                {task.prompt.requirements.map((item) => (
+                  <li key={item}>{item}</li>
+                ))}
+              </ul>
+            </section>
+          );
+        }
+
+        if (task.type === "discussion") {
+          return (
+            <section
+              key={`${task.type}-${index}`}
+              style={{
+                padding: "18px",
+                borderRadius: "16px",
+                background: "#f8fafc",
+                border: "1px solid #e2e8f0",
+              }}
+            >
+              <h3 style={{ marginTop: 0 }}>{task.title}</h3>
+
+              <p style={{ color: "#475569", lineHeight: 1.8 }}>
+                <strong>Professor:</strong> {task.prompt.professor}
+              </p>
+
+              <p style={{ color: "#475569", lineHeight: 1.8 }}>
+                <strong>{task.prompt.studentOneName}:</strong>{" "}
+                {task.prompt.studentOnePost}
+              </p>
+
+              <p style={{ color: "#475569", lineHeight: 1.8 }}>
+                <strong>{task.prompt.studentTwoName}:</strong>{" "}
+                {task.prompt.studentTwoPost}
+              </p>
+
+              <p style={{ color: "#312e81", fontWeight: 700 }}>
+                {task.prompt.question}
+              </p>
+            </section>
+          );
+        }
+
+        return null;
+      })}
+    </div>
+  );
 }
 
 export default App;
