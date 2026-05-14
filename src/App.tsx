@@ -1224,6 +1224,40 @@ function buildMockTestDataFromQuestionSet(questionSet: QuestionSet) {
   } as MockTestData;
 }
 
+function handleStartPastExamPractice(questionSet: QuestionSet | null) {
+  if (!questionSet) {
+    setQuestionSetMessage("This past exam is not available yet.");
+    return;
+  }
+
+  try {
+    const data = buildMockTestDataFromQuestionSet(questionSet);
+
+    setActiveQuestionSetId(questionSet.id);
+    setActiveQuestionSourceType("past_exam");
+
+    setMockMessage("");
+    setMockResult(null);
+    setMockTestData(data);
+    setMockSentenceSlots(createInitialSlots(data.sentenceQuestions));
+    setMockSentenceBanks(createBankOrders(data.sentenceQuestions));
+    setMockDragged(null);
+    setMockEmailAnswer("");
+    setMockDiscussionAnswer("");
+
+    setPageState("mock");
+    window.history.pushState({}, "", `/past-exam/${questionSet.id}/practice`);
+  } catch (error) {
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Failed to start this past exam practice.";
+
+    setQuestionSetMessage(message);
+  }
+}
+
+
 function handleStartEtsMockPractice(questionSet: QuestionSet | null) {
   if (!questionSet) {
     setQuestionSetMessage("This mock test is not available yet.");
@@ -2241,6 +2275,10 @@ async function submitMockTestWithAPI({
           <PastExamDetailPage
             examId={selectedPastExamId}
             examSet={getPastExamSetById(selectedPastExamId)}
+            message={questionSetMessage}
+            onStart={() => {
+              handleStartPastExamPractice(getPastExamSetById(selectedPastExamId))
+            }}
             onBack={() => {
               setPageState("past-exam");
               window.history.pushState({}, "", "/past-exam");
@@ -6116,10 +6154,14 @@ function EtsMockPracticePage({
 function PastExamDetailPage({
   examId,
   examSet,
+  message,
+  onStart,
   onBack,
 }: {
   examId: string;
   examSet: QuestionSet | null;
+  message: string;
+  onStart: () => void;
   onBack: () => void;
 }) {
 
@@ -6162,6 +6204,32 @@ function PastExamDetailPage({
         <p style={{ color: "#64748b", lineHeight: 1.8 }}>
           日期：{examSet?.display_date || "No date"}
         </p>
+
+        {message && (
+          <p style={{ color: "#be123c", fontWeight: 700 }}>
+        {message}
+      </p>
+    )}
+
+    <button
+      type="button"
+      onClick={onStart}
+      style={{
+        padding: "12px 18px",
+        border: "none",
+        borderRadius: "14px",
+        background: "#111827",
+        color: "white",
+        fontWeight: 800,
+        cursor: "pointer",
+        marginTop: "12px",
+      }}
+    >
+      开始完整练习
+    </button>
+
+
+
       </section>
 
       <section
