@@ -1,11 +1,21 @@
 import {
-  useEffect, 
-  useMemo, 
-  useRef, 
-  useState, 
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
   type ReactNode,
   type CSSProperties,
 } from "react";
+// Import chart components from recharts for ability analysis trends
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+} from "recharts";
 import type { User } from "@supabase/supabase-js";
 import { supabase } from "./supabaseClient";
 
@@ -1936,6 +1946,10 @@ async function submitMockTestWithAPI({
                 await loadMockRecords();
                 setPage("mock-records");
               }}
+              onViewAnalytics={async () => {
+                await loadMockRecords();
+                setPage("analytics");
+              }}
             />
             <AnnouncementBoard />
 
@@ -2075,28 +2089,6 @@ async function submitMockTestWithAPI({
                     style={primaryButtonStyle}
                   >
                     进入模拟真题
-                  </button>
-                </div>
-                {/* 能力分析卡片：展示练习数据分析和薄弱项建议 */}
-                <div style={cardStyle}>
-                  <h2 style={{ marginTop: 0 }}>能力分析</h2>
-                  <p style={{ color: "#64748b", lineHeight: 1.7 }}>
-                    查看你的练习记录并获取薄弱项分析和学习建议。
-                  </p>
-                  <button
-                    onClick={async () => {
-                      // 先加载完整模考记录，然后进入分析页
-                      await loadMockRecords();
-                      setPage("analytics");
-                    }}
-                    disabled={isLoadingMockRecords}
-                    style={{
-                      ...primaryButtonStyle,
-                      background: isLoadingMockRecords ? "#cbd5e1" : "#111827",
-                      cursor: isLoadingMockRecords ? "not-allowed" : "pointer",
-                    }}
-                  >
-                    {isLoadingMockRecords ? "正在加载..." : "查看能力分析"}
                   </button>
                 </div>
             </div>
@@ -3285,6 +3277,7 @@ function AuthPanel({
   onViewRecords,
   onShowPointsModal,
   onViewMockRecords,
+  onViewAnalytics,
 }: {
   user: User | null;
   points: number;
@@ -3305,6 +3298,7 @@ function AuthPanel({
   onViewRecords:()=> void;
   onShowPointsModal: () => void;
   onViewMockRecords: () => void;
+  onViewAnalytics: () => void;
 }) {
   return (
     <section
@@ -3337,6 +3331,43 @@ function AuthPanel({
           <p style={{ color: "#64748b", fontWeight: 700 }}>
             Current points: {points}
           </p>
+          {/* Ability analysis section - show after points balance */}
+          <div
+            style={{
+              marginTop: "16px",
+              marginBottom: "16px",
+              padding: "16px",
+              border: "1px solid #d8dee8",
+              borderRadius: "14px",
+              background: "#f5f5f7",
+            }}
+          >
+            <h3 style={{ marginTop: 0, marginBottom: "8px" }}>能力分析</h3>
+            <p
+              style={{
+                color: "#64748b",
+                lineHeight: 1.6,
+                marginBottom: "12px",
+              }}
+            >
+              查看你的练习记录并获取薄弱项分析和学习建议。
+            </p>
+            <button
+              type="button"
+              onClick={onViewAnalytics}
+              style={{
+                padding: "8px 14px",
+                border: "none",
+                borderRadius: "12px",
+                background: "#111827",
+                color: "white",
+                fontWeight: 700,
+                cursor: "pointer",
+              }}
+            >
+              查看能力分析
+            </button>
+          </div>
           {/*
             Define a pair of simple button styles for the account panel.
             The "accountButtonStyle" gives a neutral, rounded appearance with
@@ -5908,6 +5939,39 @@ function AnalyticsPage({
     };
   }, [records]);
 
+  // 构建成绩趋势数据：按时间顺序收集每次完整模考的各项得分
+  const trendData = useMemo(() => {
+    if (!records || records.length === 0) return [] as {
+      name: string;
+      sentence: number;
+      email: number;
+      discussion: number;
+      final: number;
+    }[];
+    return records
+      .map((rec, idx) => {
+        const finalScore =
+          typeof rec.final_score === "number"
+            ? rec.final_score
+            : Number(rec.final_score);
+        const sentenceScore =
+          typeof rec.sentence_score === "number"
+            ? rec.sentence_score
+            : Number(rec.sentence_score);
+        const emailScore = parseFloat(String(rec.email_score)) || 0;
+        const discussionScore = parseFloat(String(rec.discussion_score)) || 0;
+        return {
+          // 使用顺序编号作为横轴标识，从最早到最新
+          name: String(records.length - idx),
+          sentence: isNaN(sentenceScore) ? 0 : sentenceScore,
+          email: isNaN(emailScore) ? 0 : emailScore,
+          discussion: isNaN(discussionScore) ? 0 : discussionScore,
+          final: isNaN(finalScore) ? 0 : finalScore,
+        };
+      })
+      .reverse();
+  }, [records]);
+
   // 样式定义
   const containerStyle = {
     background: "white",
@@ -6013,6 +6077,121 @@ function AnalyticsPage({
                 </p>
               ))}
             </div>
+
+            {/* 成绩趋势折线图：展示每次完整模考的各项分数变化 */}
+            {trendData.length > 0 && (
+              <div style={{ marginTop: "32px" }}>
+                <h2 style={{ marginTop: 0, marginBottom: "12px" }}>成绩趋势</h2>
+                {/* 完整模考总分折线图 */}
+                <div style={{ marginBottom: "24px", width: "100%", height: "220px" }}>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={trendData}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="name" />
+                      <YAxis domain={[0, 6]} />
+                      <Tooltip />
+                      <Line
+                        type="monotone"
+                        dataKey="final"
+                        stroke="#111827"
+                        dot={{ r: 2 }}
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                  <div
+                    style={{
+                      textAlign: "center",
+                      marginTop: "6px",
+                      color: "#475569",
+                      fontSize: "14px",
+                    }}
+                  >
+                    完整模考总分
+                  </div>
+                </div>
+                {/* 造句正确率折线图 */}
+                <div style={{ marginBottom: "24px", width: "100%", height: "220px" }}>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={trendData}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="name" />
+                      <YAxis domain={[0, 5]} />
+                      <Tooltip />
+                      <Line
+                        type="monotone"
+                        dataKey="sentence"
+                        stroke="#6366f1"
+                        dot={{ r: 2 }}
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                  <div
+                    style={{
+                      textAlign: "center",
+                      marginTop: "6px",
+                      color: "#475569",
+                      fontSize: "14px",
+                    }}
+                  >
+                    造句题得分（满分 5）
+                  </div>
+                </div>
+                {/* 邮件写作折线图 */}
+                <div style={{ marginBottom: "24px", width: "100%", height: "220px" }}>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={trendData}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="name" />
+                      <YAxis domain={[0, 5]} />
+                      <Tooltip />
+                      <Line
+                        type="monotone"
+                        dataKey="email"
+                        stroke="#8b5cf6"
+                        dot={{ r: 2 }}
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                  <div
+                    style={{
+                      textAlign: "center",
+                      marginTop: "6px",
+                      color: "#475569",
+                      fontSize: "14px",
+                    }}
+                  >
+                    邮件写作得分（满分 5）
+                  </div>
+                </div>
+                {/* 学术讨论折线图 */}
+                <div style={{ marginBottom: "24px", width: "100%", height: "220px" }}>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={trendData}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="name" />
+                      <YAxis domain={[0, 5]} />
+                      <Tooltip />
+                      <Line
+                        type="monotone"
+                        dataKey="discussion"
+                        stroke="#22d3ee"
+                        dot={{ r: 2 }}
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                  <div
+                    style={{
+                      textAlign: "center",
+                      marginTop: "6px",
+                      color: "#475569",
+                      fontSize: "14px",
+                    }}
+                  >
+                    学术讨论得分（满分 5）
+                  </div>
+                </div>
+              </div>
+            )}
           </>
         )}
       </div>
