@@ -1,4 +1,11 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  useEffect, 
+  useMemo, 
+  useRef, 
+  useState, 
+  type ReactNode,
+  type CSSProperties,
+} from "react";
 import type { User } from "@supabase/supabase-js";
 import { supabase } from "./supabaseClient";
 
@@ -643,7 +650,7 @@ async function scoreAcademicDiscussionWithAPI(prompt: unknown, answer: string) {
 }
 
 function isQuestionComplete(slots: (Chunk | null)[]) {
-  return slots.every((slot) => slot !== null);
+  return slots.every((slot: Chunk | null) => slot !== null);
 }
 
 
@@ -1136,9 +1143,14 @@ async function loadQuestionSets() {
 
   const sets = (data || []) as QuestionSet[];
 
-  setPastExamSets(sets.filter((item) => item.source_type === "past_exam"));
+  // Explicitly type the filter callbacks to avoid implicit any.
+  setPastExamSets(
+    sets.filter((item: QuestionSet) => item.source_type === "past_exam")
+  );
 
-  setEtsMockSets(sets.filter((item) => item.source_type === "ets_mock"));
+  setEtsMockSets(
+    sets.filter((item: QuestionSet) => item.source_type === "ets_mock")
+  );
 
   setIsLoadingQuestionSets(false);
 
@@ -1197,11 +1209,13 @@ function getPracticedIds(sourceType: "past_exam" | "ets_mock") {
 }
 
 function getPastExamSetById(id: string) {
-  return pastExamSets.find((item) => item.id === id) || null;
+  // Provide an explicit type for the callback to avoid implicit any.
+  return pastExamSets.find((item: QuestionSet) => item.id === id) || null;
 }
 
 function getEtsMockSetById(id: string) {
-  return etsMockSets.find((item) => item.id === id) || null;
+  // Provide an explicit type for the callback to avoid implicit any.
+  return etsMockSets.find((item: QuestionSet) => item.id === id) || null;
 }
 
 async function loadMockRecords() {
@@ -1429,11 +1443,12 @@ async function handleSubmitMockTest() {
 
   try {
     const sentenceAnswers = Object.fromEntries(
-      mockTestData.sentenceQuestions.map((question) => [
+      mockTestData.sentenceQuestions.map((question: MockSentenceQuestion) => [
         String(question.id),
         (mockSentenceSlots[question.id] || [])
           .filter((slot): slot is Chunk => slot !== null)
-          .map((slot) => slot.text),
+          // Provide an explicit type for `slot` to avoid implicit-any.
+          .map((slot: Chunk) => slot.text),
       ])
     );
     const result = await submitMockTestWithAPI({
@@ -1563,10 +1578,10 @@ async function submitMockTestWithAPI({
   const currentBank = useMemo(() => {
     const usedIds = currentSlots
       .filter((slot): slot is Chunk => slot !== null)
-      .map((slot) => slot.id);
+      .map((slot: Chunk) => slot.id);
 
     return (bankOrders[currentQuestion.id] || []).filter(
-      (chunk) => !usedIds.includes(chunk.id)
+      (chunk: Chunk) => !usedIds.includes(chunk.id)
     );
   }, [bankOrders, currentQuestion.id, currentSlots]);
 
@@ -1576,12 +1591,13 @@ async function submitMockTestWithAPI({
   // annotations, strict compilation settings will report an
   // implicit-any error.  The reduction itself simply adds two
   // numbers together.
-  const totalScore = Object.values(results).reduce(
+  // Cast `Object.values(results)` to `number[]` so that TypeScript knows we are reducing an array of numbers.
+  const totalScore = (Object.values(results) as number[]).reduce(
     (sum: number, score: number) => sum + score,
     0
   );
 
-  const completedCount = questions.filter((question) =>
+  const completedCount = questions.filter((question: Question) =>
     isQuestionComplete(slotsByQuestion[question.id] || [])
   ).length;
 
@@ -1846,7 +1862,7 @@ async function submitMockTestWithAPI({
     background: "#f8fafc",
   };
 
-  const primaryButtonStyle = {
+  const primaryButtonStyle: CSSProperties = {
     padding: "12px 24px",
     border: "none",
     borderRadius: "12px",
@@ -1854,6 +1870,12 @@ async function submitMockTestWithAPI({
     color: "white",
     fontWeight: 700,
     cursor: "pointer",
+    minHeight: "44px",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    textAlign: "center",
+    whiteSpace: "nowrap",
   };
 
   return (
@@ -2784,14 +2806,14 @@ function SentencePractice({
         </div>
 
         <div style={{ display: "flex", flexWrap: "wrap", gap: "10px" }}>
-          {currentBank.map((chunk) => (
+          {currentBank.map((chunk: Chunk) => (
             <button
               key={chunk.id}
               draggable={!isSubmitted}
               onDragStart={() => setDragged(chunk)}
               onClick={() => {
                 const emptyIndex = currentSlots.findIndex(
-                  (slot) => slot === null
+                  (slot: Chunk | null) => slot === null
                 );
 
                 if (emptyIndex !== -1) {
@@ -3315,84 +3337,145 @@ function AuthPanel({
           <p style={{ color: "#64748b", fontWeight: 700 }}>
             Current points: {points}
           </p>
-          <div
-            style={{
-              display: "flex",
-              gap: "12px",
-              flexWrap: "wrap",
-              marginTop: "12px",
-              marginBottom: "16px",
-            }}
-          >
-            <button type="button" onClick={onShowPointsModal}>
-              Get Points
-            </button>
-          </div>
+          {/*
+            Define a pair of simple button styles for the account panel.
+            The "accountButtonStyle" gives a neutral, rounded appearance with
+            a light background and subtle border, inspired by Apple's
+            minimal aesthetic. "accountPrimaryButtonStyle" inherits from
+            that base style but uses a dark fill and white text for more
+            prominent actions such as redeeming points.  The disabled
+            state is handled inline when used to dim the button.
+          */}
+          {(() => {
+            const accountButtonStyle: CSSProperties = {
+              padding: "10px 16px",
+              border: "1px solid #d8dee8",
+              borderRadius: "14px",
+              background: "#f5f5f7",
+              color: "#111827",
+              fontWeight: 700,
+              cursor: "pointer",
+              fontSize: "14px",
+            };
+            const accountPrimaryButtonStyle: CSSProperties = {
+              ...accountButtonStyle,
+              border: "none",
+              background: "#111827",
+              color: "white",
+            };
+            return (
+              <>
+                {/* Points management */}
+                <div
+                  style={{
+                    display: "flex",
+                    gap: "12px",
+                    flexWrap: "wrap",
+                    marginTop: "12px",
+                    marginBottom: "16px",
+                  }}
+                >
+                  <button
+                    type="button"
+                    onClick={onShowPointsModal}
+                    style={accountButtonStyle}
+                  >
+                    Get Points
+                  </button>
+                </div>
+
+                {/* Redeem code input and action */}
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "minmax(220px, 1fr) auto",
+                    gap: "12px",
+                    marginTop: "16px",
+                    alignItems: "center",
+                  }}
+                >
+                  <input
+                    value={redeemCode}
+                    onChange={(event) => setRedeemCode(event.target.value)}
+                    placeholder="Enter redeem code"
+                    type="text"
+                    style={{
+                      width: "100%",
+                      border: "1px solid #d8dee8",
+                      borderRadius: "14px",
+                      padding: "12px 14px",
+                      fontSize: "14px",
+                      boxSizing: "border-box",
+                      textTransform: "uppercase",
+                    }}
+                  />
+
+                  <button
+                    type="button"
+                    onClick={onRedeemCode}
+                    disabled={isRedeeming}
+                    style={{
+                      ...accountPrimaryButtonStyle,
+                      background: isRedeeming ? "#cbd5e1" : accountPrimaryButtonStyle.background,
+                      cursor: isRedeeming ? "not-allowed" : accountPrimaryButtonStyle.cursor,
+                    }}
+                  >
+                    {isRedeeming ? "Redeeming..." : "Redeem"}
+                  </button>
+                </div>
+
+                {redeemMessage && (
+                  <p style={{ color: "#64748b", marginTop: "12px" }}>{redeemMessage}</p>
+                )}
+
+                {/* Additional actions */}
+                <div
+                  style={{
+                    display: "flex",
+                    gap: "12px",
+                    flexWrap: "wrap",
+                    marginTop: "16px",
+                  }}
+                >
+                  <button
+                    type="button"
+                    onClick={onViewMockRecords}
+                    style={accountButtonStyle}
+                  >
+                    View Mock Records
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={onViewRecords}
+                    style={accountButtonStyle}
+                  >
+                    View Practice Records
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={onSignOut}
+                    style={accountButtonStyle}
+                  >
+                    Sign out
+                  </button>
+                </div>
+              </>
+            );
+          })()}
+          {/* Removed legacy Get Points button duplicate */}
 
 
 
 
 
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "minmax(220px, 1fr) auto",
-              gap: "12px",
-              marginTop: "16px",
-              alignItems: "center",
-            }}
-          >
-            <input
-              value={redeemCode}
-              onChange={(event) => setRedeemCode(event.target.value)}
-              placeholder="Enter redeem code"
-              type="text"
-              style={{
-                width: "100%",
-                border: "1px solid #d8dee8",
-                borderRadius: "14px",
-                padding: "12px 14px",
-                fontSize: "14px",
-                boxSizing: "border-box",
-                textTransform: "uppercase",
-              }}
-            />
-
-            <button type="button" onClick={onRedeemCode} disabled={isRedeeming}>
-              {isRedeeming ? "Redeeming..." : "Redeem"}
-            </button>
-          </div>
-
-          {redeemMessage && (
-            <p style={{ color: "#64748b", marginTop: "12px" }}>
-              {redeemMessage}
-            </p>
-          )}
+          {/* Removed legacy redeem code input and feedback */}
 
 
 
 
-          <div
-            style={{
-              display: "flex",
-              gap: "12px",
-              flexWrap: "wrap",
-              marginTop: "16px",
-            }}
-          >
-
-            <button type="button" onClick={onViewMockRecords}>
-              View Mock Records
-            </button>
-
-            <button type="button" onClick={onViewRecords}>
-              View Practice Records
-            </button>
-            
-            <button type="button" onClick={onSignOut}>
-              Sign out
-            </button>
-          </div>
+          {/* Removed legacy action buttons duplicate */}
         </>
       ) : (
         <>
@@ -4201,7 +4284,9 @@ function MockTestPage({
 
     const newSlots = [...currentSlots];
 
-    const oldSlotIndex = newSlots.findIndex((slot) => slot?.id === chunk.id);
+    const oldSlotIndex = newSlots.findIndex(
+      (slot: Chunk | null) => slot?.id === chunk.id
+    );
 
     if (oldSlotIndex !== -1) {
 
@@ -4238,15 +4323,11 @@ function MockTestPage({
     const currentSlots = sentenceSlots[question.id] || makeEmptySlots(question);
 
     const usedIds = currentSlots
-
       .filter((slot): slot is Chunk => slot !== null)
-
-      .map((slot) => slot.id);
+      .map((slot: Chunk) => slot.id);
 
     return (sentenceBanks[question.id] || []).filter(
-
-      (chunk) => !usedIds.includes(chunk.id)
-
+      (chunk: Chunk) => !usedIds.includes(chunk.id)
     );
 
   }
@@ -4453,7 +4534,7 @@ function MockTestPage({
 
           <div style={{ display: "flex", gap: "8px", marginBottom: "28px" }}>
 
-            {data.sentenceQuestions.map((question, index) => {
+            {data.sentenceQuestions.map((question: MockSentenceQuestion, index: number) => {
 
               const slots = sentenceSlots[question.id] || [];
 
@@ -4701,7 +4782,7 @@ function MockTestPage({
 
                   >
 
-                    {currentBank.map((chunk) => (
+                    {currentBank.map((chunk: Chunk) => (
 
                       <button
 
