@@ -4199,6 +4199,42 @@ function MockTestPage({
 
   };
 
+  // ---------------------------------------------------------------------------
+  // Custom styles and helpers for the full mock test header and actions.  The
+  // original UI used a light card at the top of the page to describe the
+  // different parts of the test.  To better match the inspiration design
+  // provided by the user, we replace that card with a dark header bar and
+  // accompanying action buttons.  The header displays the current part title,
+  // question progress (for the sentence section), the remaining time, and
+  // compact action buttons for pausing or moving on to the next step.  The
+  // styling here deliberately uses strong colour contrast and generous
+  // padding/radius to echo the minimalist, rounded look in the sample exam
+  // screenshots.
+  const headerCardStyle = {
+    background: "#075985",
+    color: "white",
+    borderRadius: "20px",
+    padding: "20px",
+    marginBottom: "24px",
+    position: "sticky" as const,
+    top: "12px",
+    zIndex: 20,
+  };
+
+  const headerButtonStyle = {
+    padding: "8px 16px",
+    borderRadius: "8px",
+    background: "rgba(255, 255, 255, 0.2)",
+    color: "white",
+    fontWeight: 700,
+    border: "none",
+    cursor: "pointer",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+  };
+
+
   const [mockPart, setMockPart] = useState<"sentence" | "email" | "discussion">(
 
     "sentence"
@@ -4305,6 +4341,28 @@ function MockTestPage({
 
   }
 
+  const mockPartTitle =
+    mockPart === "sentence"
+      ? "Build a Sentence"
+      : mockPart === "email"
+        ? "Write an Email"
+        : "Academic Discussion";
+
+  function handleHeaderNext() {
+    if (mockPart === "sentence") {
+      if (currentSentenceIndex < data.sentenceQuestions.length - 1) {
+        goToNextSentence();
+      } else {
+        goToEmailPart();
+      }
+    } else if (mockPart === "email") {
+      goToDiscussionPart();
+    } else {
+      handleManualSubmit();
+    }
+  }
+
+
   function updateQuestionSlots(questionId: number, newSlots: (Chunk | null)[]) {
 
     setSentenceSlots((previous) => ({
@@ -4389,120 +4447,49 @@ function MockTestPage({
 
     <>
 
-      <button
-
-        type="button"
-
-        onClick={onCancel}
-
-        style={{
-
-          padding: "10px 16px",
-
-          border: "1px solid #cbd5e1",
-
-          borderRadius: "12px",
-
-          background: "white",
-
-          fontWeight: 700,
-
-          cursor: "pointer",
-
-          marginBottom: "24px",
-
-        }}
-
-      >
-
-        返回首页
-
-      </button>
-
-      <div
-
-        style={{
-
-          ...cardStyle,
-
-          position: "sticky",
-
-          top: "12px",
-
-          zIndex: 20,
-
-        }}
-
-      >
-
-        <h1 style={{ marginTop: 0 }}>Full Mock Test</h1>
-
-        <p style={{ color: "#64748b", lineHeight: 1.8 }}>
-
-          完整模考分为三个部分：Build a Sentence 6分钟、Email Writing
-
-          7分钟、Academic Discussion 10分钟。时间到后会自动进入下一部分。
-
-        </p>
-
+      {/* Custom header bar matching the exam design */}
+      <div style={headerCardStyle}>
         <div
-
           style={{
-
             display: "flex",
-
             justifyContent: "space-between",
-
-            gap: "16px",
-
-            flexWrap: "wrap",
-
             alignItems: "center",
-
+            gap: "16px",
+            flexWrap: "wrap",
           }}
-
         >
-
-          <strong style={{ color: "#312e81" }}>
-
-            Current Part:{" "}
-
-            {mockPart === "sentence"
-
-              ? "Part 1 Build a Sentence"
-
-              : mockPart === "email"
-
-                ? "Part 2 Email Writing"
-
-                : "Part 3 Academic Discussion"}
-
-          </strong>
-
-          <strong
-
+          <div style={{ flex: 1, minWidth: "200px" }}>
+            <h2 style={{ margin: "0 0 4px 0" }}>{mockPartTitle}</h2>
+            {mockPart === "sentence" && (
+              <div style={{ fontWeight: 600 }}>
+                Question {currentSentenceIndex + 1} of {data.sentenceQuestions.length}
+              </div>
+            )}
+          </div>
+          <div
             style={{
-
-              fontSize: "26px",
-
-              color: timeLeft <= 60 ? "#be123c" : "#111827",
-
+              display: "flex",
+              alignItems: "center",
+              gap: "12px",
             }}
-
           >
-
-            {formatTime(timeLeft)}
-
-          </strong>
-
+            <span
+              style={{
+                fontSize: "20px",
+                fontWeight: 700,
+                color: timeLeft <= 60 ? "#fca5a5" : "white",
+              }}
+            >
+              {formatTime(timeLeft)}
+            </span>
+            <button type="button" onClick={onCancel} style={headerButtonStyle}>
+              Pause Test
+            </button>
+            <button type="button" onClick={handleHeaderNext} style={headerButtonStyle}>
+              {mockPart === "discussion" ? "Submit" : "Next"}
+            </button>
+          </div>
         </div>
-
-        <p style={{ color: "#475569", fontWeight: 800 }}>
-
-          Submit Mock Test：-10 points
-
-        </p>
-
       </div>
 
       {mockPart === "sentence" && currentQuestion && (
