@@ -16,7 +16,8 @@ type Page =
   | "past-exam"
   | "past-exam-detail"
   | "ets-mock-practice"
-  | "ets-mock-detail";
+  | "ets-mock-detail"
+  | "analytics";
 
 type Part =
   | {
@@ -858,6 +859,9 @@ function setPage(nextPage: Page) {
 
     "ets-mock-practice": "/ets-mock-practice",
 
+    // 能力分析页面路径
+    "analytics": "/analytics",
+
   };
 
   const nextPath = pathMap[nextPage];
@@ -900,16 +904,22 @@ function setPage(nextPage: Page) {
 
   const {
     data: { subscription },
-  } = supabase.auth.onAuthStateChange((_event, session) => {
-    const currentUser = session?.user ?? null;
-    setUser(currentUser);
+  } = supabase.auth.onAuthStateChange(
+    // Supabase emits an event name and a session object.  Provide explicit
+    // types here to avoid implicit `any` errors when using strict
+    // TypeScript settings.  We do not currently care about the event
+    // name, so it is prefixed with an underscore to mark it as unused.
+    (_event: string, session: { user: User | null } | null) => {
+      const currentUser: User | null = session?.user ?? null;
+      setUser(currentUser);
 
-    if (currentUser) {
-      loadPoints(currentUser.id);
-    } else {
-      setPoints(0);
+      if (currentUser) {
+        loadPoints(currentUser.id);
+      } else {
+        setPoints(0);
+      }
     }
-  });
+  );
 
   return () => {
     subscription.unsubscribe();
@@ -1179,9 +1189,10 @@ function getPracticedIds(sourceType: "past_exam" | "ets_mock") {
 
   return questionAttempts
 
-    .filter((attempt) => attempt.source_type === sourceType)
+    // Explicitly type `attempt` as `QuestionAttempt` to avoid implicit any.
+    .filter((attempt: QuestionAttempt) => attempt.source_type === sourceType)
 
-    .map((attempt) => attempt.question_set_id);
+    .map((attempt: QuestionAttempt) => attempt.question_set_id);
 
 }
 
@@ -1559,8 +1570,14 @@ async function submitMockTestWithAPI({
     );
   }, [bankOrders, currentQuestion.id, currentSlots]);
 
+  // When reducing over the results object to compute the total score,
+  // provide explicit number types for `sum` and `score` so that
+  // TypeScript does not infer `any` for these parameters.  Without
+  // annotations, strict compilation settings will report an
+  // implicit-any error.  The reduction itself simply adds two
+  // numbers together.
   const totalScore = Object.values(results).reduce(
-    (sum, score) => sum + score,
+    (sum: number, score: number) => sum + score,
     0
   );
 
@@ -2038,6 +2055,28 @@ async function submitMockTestWithAPI({
                     进入模拟真题
                   </button>
                 </div>
+                {/* 能力分析卡片：展示练习数据分析和薄弱项建议 */}
+                <div style={cardStyle}>
+                  <h2 style={{ marginTop: 0 }}>能力分析</h2>
+                  <p style={{ color: "#64748b", lineHeight: 1.7 }}>
+                    查看你的练习记录并获取薄弱项分析和学习建议。
+                  </p>
+                  <button
+                    onClick={async () => {
+                      // 先加载完整模考记录，然后进入分析页
+                      await loadMockRecords();
+                      setPage("analytics");
+                    }}
+                    disabled={isLoadingMockRecords}
+                    style={{
+                      ...primaryButtonStyle,
+                      background: isLoadingMockRecords ? "#cbd5e1" : "#111827",
+                      cursor: isLoadingMockRecords ? "not-allowed" : "pointer",
+                    }}
+                  >
+                    {isLoadingMockRecords ? "正在加载..." : "查看能力分析"}
+                  </button>
+                </div>
             </div>
 
           </>
@@ -2285,6 +2324,16 @@ async function submitMockTestWithAPI({
               setSelectedMockRecord(null);
               setPage("mock-records");
             }}
+          />
+        )}
+
+        {page === "analytics" && (
+          <AnalyticsPage
+            user={user}
+            records={mockRecords}
+            isLoading={isLoadingMockRecords}
+            message={mockRecordMessage}
+            onBackHome={() => setPage("home")}
           />
         )}
 
@@ -5436,15 +5485,6 @@ function MockRecordDetailPage({
     boxShadow: "0 10px 30px rgba(15, 23, 42, 0.06)",
   };
 
-  function normalizeText(text: string) {
-    return String(text || "")
-      .trim()
-      .toLowerCase()
-      .replace(/[“”]/g, '"')
-      .replace(/[‘’]/g, "'")
-      .replace(/[.,!?;:]/g, "")
-      .replace(/\s+/g, " ");
-  }
 
   return (
     <>
@@ -5535,7 +5575,8 @@ function MockRecordDetailPage({
 
             const userAnswer = buildFullAnswerFromSlots(question, slots);
             const isCorrect =
-              normalizeSentenceText(userAnswer) === normalizeText(question.target);
+              normalizeSentenceText(userAnswer) ===
+              normalizeSentenceText(question.target);
 
             return (
               <div
@@ -5715,6 +5756,189 @@ function MockRecordDetailPage({
   );
 }
 
+// 能力分析页面：汇总用户的完整模考记录，展示平均分、薄弱项和建议
+function AnalyticsPage({
+  user,
+  records,
+  isLoading,
+  message,
+  onBackHome,
+}: {
+  user: User | null;
+  records: MockRecord[];
+  isLoading: boolean;
+  message: string;
+  onBackHome: () => void;
+}) {
+  // 统计练习数据和薄弱项
+  const summary = useMemo(() => {
+    if (!records || records.length === 0) return null;
+    const total = records.length;
+    let sumFinal = 0;
+    let sumSentence = 0;
+    let sumEmail = 0;
+    let sumDiscussion = 0;
+    records.forEach((rec) => {
+      const finalScore = typeof rec.final_score === "number" ? rec.final_score : Number(rec.final_score);
+      const sentenceScore = typeof rec.sentence_score === "number" ? rec.sentence_score : Number(rec.sentence_score);
+      const emailScore = parseFloat(String(rec.email_score)) || 0;
+      const discussionScore = parseFloat(String(rec.discussion_score)) || 0;
+      sumFinal += isNaN(finalScore) ? 0 : finalScore;
+      sumSentence += isNaN(sentenceScore) ? 0 : sentenceScore;
+      sumEmail += isNaN(emailScore) ? 0 : emailScore;
+      sumDiscussion += isNaN(discussionScore) ? 0 : discussionScore;
+    });
+    const avgFinal = sumFinal / total;
+    const avgSentence = sumSentence / total;
+    const avgEmail = sumEmail / total;
+    const avgDiscussion = sumDiscussion / total;
+    // 计算相对比值用于判定薄弱项（将各项分数统一到 0-1 区间）
+    const ratioSentence = avgSentence / 5;
+    const ratioEmail = avgEmail / 5;
+    const ratioDiscussion = avgDiscussion / 5;
+    let weakest: "sentence" | "email" | "discussion" = "sentence";
+    let minRatio = ratioSentence;
+    if (ratioEmail < minRatio) {
+      weakest = "email";
+      minRatio = ratioEmail;
+    }
+    if (ratioDiscussion < minRatio) {
+      weakest = "discussion";
+      minRatio = ratioDiscussion;
+    }
+    const suggestions: string[] = [];
+    if (weakest === "sentence") {
+      suggestions.push("造句题正确率相对较低，建议多加练习词块顺序、语法搭配以及固定表达的运用。");
+    }
+    if (weakest === "email") {
+      suggestions.push("邮件写作分数相对较低，建议注意邮件结构、礼貌表达和具体细节描述，多参考范文提升写作质量。");
+    }
+    if (weakest === "discussion") {
+      suggestions.push("学术讨论分数相对较低，建议在回应中充分阐述理由，并加入具体例子支撑观点，同时与他人观点互动。");
+    }
+    return {
+      total,
+      avgFinal,
+      avgSentence,
+      avgEmail,
+      avgDiscussion,
+      weakest,
+      suggestions,
+    };
+  }, [records]);
+
+  // 样式定义
+  const containerStyle = {
+    background: "white",
+    border: "1px solid #e2e8f0",
+    borderRadius: "24px",
+    padding: "32px",
+    marginBottom: "24px",
+    boxShadow: "0 10px 30px rgba(15, 23, 42, 0.06)",
+  } as const;
+
+  const barContainerStyle = {
+    width: "100%",
+    background: "#e2e8f0",
+    borderRadius: "12px",
+    height: "12px",
+    marginTop: "6px",
+  } as const;
+
+  const barStyle = (ratio: number) => ({
+    width: `${Math.max(0, Math.min(1, ratio)) * 100}%`,
+    height: "12px",
+    background: "#6366f1",
+    borderRadius: "12px",
+  });
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={onBackHome}
+        style={{
+          padding: "10px 16px",
+          border: "1px solid #cbd5e1",
+          borderRadius: "12px",
+          background: "white",
+          fontWeight: 700,
+          cursor: "pointer",
+          marginBottom: "24px",
+        }}
+      >
+        返回首页
+      </button>
+
+      <div style={containerStyle}>
+        <h1 style={{ marginTop: 0 }}>能力分析</h1>
+        {/* 如果用户未登录 */}
+        {!user && (
+          <p style={{ color: "#be123c" }}>请先登录后再查看分析。</p>
+        )}
+        {/* 加载状态 */}
+        {user && isLoading && (
+          <p style={{ color: "#64748b" }}>正在加载练习记录...</p>
+        )}
+        {/* 错误信息 */}
+        {user && !isLoading && message && (
+          <p style={{ color: "#be123c" }}>{message}</p>
+        )}
+        {/* 没有记录 */}
+        {user && !isLoading && !message && summary === null && (
+          <p style={{ color: "#64748b" }}>
+            暂无完整模考记录，请先完成一次完整模考以生成分析。
+          </p>
+        )}
+        {/* 显示汇总数据 */}
+        {user && !isLoading && summary && (
+          <>
+            <div style={{ marginBottom: "24px" }}>
+              <h2 style={{ marginTop: 0, marginBottom: "12px" }}>总体统计</h2>
+              <p style={{ color: "#475569" }}>完成次数：{summary.total}</p>
+              <p style={{ color: "#475569" }}>
+                平均总分：{summary.avgFinal.toFixed(1)} / 6.0
+              </p>
+            </div>
+            <div style={{ marginBottom: "24px" }}>
+              <h2 style={{ marginTop: 0, marginBottom: "12px" }}>分项能力</h2>
+              <div style={{ marginBottom: "16px" }}>
+                <strong>造句正确率：</strong>
+                {(summary.avgSentence / 5 * 100).toFixed(0)}%
+                <div style={barContainerStyle}>
+                  <div style={barStyle(summary.avgSentence / 5)} />
+                </div>
+              </div>
+              <div style={{ marginBottom: "16px" }}>
+                <strong>邮件写作平均分：</strong>
+                {summary.avgEmail.toFixed(1)} / 5.0
+                <div style={barContainerStyle}>
+                  <div style={barStyle(summary.avgEmail / 5)} />
+                </div>
+              </div>
+              <div style={{ marginBottom: "16px" }}>
+                <strong>学术讨论平均分：</strong>
+                {summary.avgDiscussion.toFixed(1)} / 5.0
+                <div style={barContainerStyle}>
+                  <div style={barStyle(summary.avgDiscussion / 5)} />
+                </div>
+              </div>
+            </div>
+            <div>
+              <h2 style={{ marginTop: 0, marginBottom: "12px" }}>薄弱项分析</h2>
+              {summary.suggestions.map((tip, idx) => (
+                <p key={idx} style={{ color: "#475569", lineHeight: 1.7 }}>
+                  {tip}
+                </p>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+    </>
+  );
+}
+
 function AnnouncementBoard() {
   return (
     <section
@@ -5825,6 +6049,10 @@ function getPageFromPath(): Page {
     return "discussion";
   if (path.includes("/full-mock-test")) 
     return "mock";
+
+  // 新增对能力分析路径的识别
+  if (path.includes("/analytics")) 
+    return "analytics";
 
   return "home";
 }
