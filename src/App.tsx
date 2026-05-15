@@ -219,6 +219,14 @@ const EMAIL_SCORING_COST = 3;
 const DISCUSSION_SCORING_COST = 3;
 const announcements = [
   {
+    id: 0,
+    tag: "置顶",
+    title: "Happy Mother's Day",
+    date: "Pinned",
+    content:
+      "Use code MAY10TH to claim 15 bonus points before June",
+  },
+  {
     id: 1,
     tag: "优惠",
     title: "新用户体验兑换码",
