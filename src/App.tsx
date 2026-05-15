@@ -4459,9 +4459,23 @@ function MockTestPage({
           }}
         >
           <div style={{ flex: 1, minWidth: "200px" }}>
-            <h2 style={{ margin: "0 0 4px 0" }}>{mockPartTitle}</h2>
+            {/* Header title and question number text should be white for better contrast */}
+            <h2
+              style={{
+                margin: "0 0 4px 0",
+            color: "white",
+              }}
+            >
+              {mockPartTitle}
+            </h2>
             {mockPart === "sentence" && (
-              <div style={{ fontWeight: 600 }}>
+              <div
+                style={{
+                  fontWeight: 600,
+                  // Use pure white for the question label to improve contrast
+                  color: "white",
+                }}
+              >
                 Question {currentSentenceIndex + 1} of {data.sentenceQuestions.length}
               </div>
             )}
@@ -4875,9 +4889,8 @@ function MockTestPage({
                 </div>
 
                 <div
-
-                  style={{ display: "flex", flexWrap: "wrap", gap: "12px" }}
-
+                  /* Hide bottom sentence navigation buttons since navigation is handled in the header */
+                  style={{ display: "none" }}
                 >
 
                   <button
@@ -4959,309 +4972,202 @@ function MockTestPage({
       )}
 
       {mockPart === "email" && (
-
         <section style={cardStyle}>
-
-          <h2 style={{ marginTop: 0 }}>Part 2 Write an Email</h2>
-
-          <p style={{ color: "#64748b", lineHeight: 1.8 }}>
-
-            {data.emailPrompt.scenario}
-
-          </p>
-
+          <h2 style={{ marginTop: 0 }}>Part 2 Email Writing</h2>
           <div
-
             style={{
-
-              padding: "16px",
-
-              borderRadius: "14px",
-
-              background: "#f8fafc",
-
-              border: "1px solid #e2e8f0",
-
-              marginBottom: "16px",
-
+              display: "flex",
+              flexWrap: "wrap",
+              gap: "32px",
             }}
-
           >
-
-            <strong>{data.emailPrompt.task}</strong>
-
-            <ul style={{ lineHeight: 1.8 }}>
-
-              {data.emailPrompt.requirements.map((item) => (
-
-                <li key={item}>{item}</li>
-
-              ))}
-
-            </ul>
-
-            <p style={{ color: "#64748b", marginBottom: 0 }}>
-
-              {data.emailPrompt.suggestedLength}
-
-            </p>
-
+            {/* Left column: prompt and instructions */}
+            <div style={{ flex: "1 1 40%", minWidth: "260px" }}>
+              <p style={{ color: "#64748b", lineHeight: 1.8 }}>
+                {data.emailPrompt.scenario}
+              </p>
+              <div
+                style={{
+                  padding: "16px",
+                  borderRadius: "14px",
+                  background: "#f8fafc",
+                  border: "1px solid #e2e8f0",
+                  marginBottom: "16px",
+                }}
+              >
+                <strong>{data.emailPrompt.task}</strong>
+                <ul style={{ lineHeight: 1.8 }}>
+                  {data.emailPrompt.requirements.map((item) => (
+                    <li key={item}>{item}</li>
+                  ))}
+                </ul>
+                <p style={{ color: "#64748b", marginBottom: 0 }}>
+                  {data.emailPrompt.suggestedLength}
+                </p>
+              </div>
+            </div>
+            {/* Right column: writing area */}
+            <div
+              style={{
+                flex: "1 1 55%",
+                minWidth: "280px",
+                display: "flex",
+                flexDirection: "column",
+              }}
+            >
+              <textarea
+                value={emailAnswer}
+                onChange={(event) => setEmailAnswer(event.target.value)}
+                placeholder="Write your email here..."
+                style={{
+                  width: "100%",
+                  minHeight: "240px",
+                  padding: "16px",
+                  borderRadius: "16px",
+                  border: "1px solid #cbd5e1",
+                  fontSize: "15px",
+                  lineHeight: 1.7,
+                  boxSizing: "border-box",
+                }}
+              />
+              <p
+                style={{
+                  color: "#64748b",
+                  fontWeight: 700,
+                  marginTop: "8px",
+                }}
+              >
+                Word Count: {emailWordCount}
+              </p>
+              <button
+                type="button"
+                onClick={goToDiscussionPart}
+                style={{
+                  ...primaryButtonStyle,
+                  background: "#111827",
+                  marginTop: "12px",
+                }}
+              >
+                Next: Academic Discussion
+              </button>
+            </div>
           </div>
-
-          <textarea
-
-            value={emailAnswer}
-
-            onChange={(event) => setEmailAnswer(event.target.value)}
-
-            placeholder="Write your email here..."
-
-            style={{
-
-              width: "100%",
-
-              minHeight: "220px",
-
-              padding: "16px",
-
-              borderRadius: "16px",
-
-              border: "1px solid #cbd5e1",
-
-              fontSize: "15px",
-
-              lineHeight: 1.7,
-
-              boxSizing: "border-box",
-
-            }}
-
-          />
-
-          <p style={{ color: "#64748b", fontWeight: 700 }}>
-
-            Word Count: {emailWordCount}
-
-          </p>
-
-          <button
-
-            type="button"
-
-            onClick={goToDiscussionPart}
-
-            style={{
-
-              ...primaryButtonStyle,
-
-              background: "#111827",
-
-              marginTop: "12px",
-
-            }}
-
-          >
-
-            Next: Academic Discussion
-
-          </button>
-
         </section>
-
       )}
 
       {mockPart === "discussion" && (
-
         <section style={cardStyle}>
-
           <h2 style={{ marginTop: 0 }}>Part 3 Academic Discussion</h2>
-
-          <div style={{ display: "grid", gap: "14px", lineHeight: 1.8 }}>
-
-            <div
-
-              style={{
-
-                padding: "16px",
-
-                borderRadius: "14px",
-
-                background: "#f8fafc",
-
-                border: "1px solid #e2e8f0",
-
-              }}
-
-            >
-
-              <strong>Professor</strong>
-
-              <p style={{ marginBottom: 0 }}>
-
-                {data.discussionPrompt.professor}
-
-              </p>
-
-            </div>
-
-            <div
-
-              style={{
-
-                padding: "16px",
-
-                borderRadius: "14px",
-
-                background: "#f8fafc",
-
-                border: "1px solid #e2e8f0",
-
-              }}
-
-            >
-
-              <strong>{data.discussionPrompt.studentOneName}</strong>
-
-              <p style={{ marginBottom: 0 }}>
-
-                {data.discussionPrompt.studentOnePost}
-
-              </p>
-
-            </div>
-
-            <div
-
-              style={{
-
-                padding: "16px",
-
-                borderRadius: "14px",
-
-                background: "#f8fafc",
-
-                border: "1px solid #e2e8f0",
-
-              }}
-
-            >
-
-              <strong>{data.discussionPrompt.studentTwoName}</strong>
-
-              <p style={{ marginBottom: 0 }}>
-
-                {data.discussionPrompt.studentTwoPost}
-
-              </p>
-
-            </div>
-
-            <div
-
-              style={{
-
-                padding: "16px",
-
-                borderRadius: "14px",
-
-                background: "#eef2ff",
-
-                color: "#312e81",
-
-              }}
-
-            >
-
-              <strong>Question</strong>
-
-              <p>{data.discussionPrompt.question}</p>
-
-              <p style={{ marginBottom: 0 }}>
-
-                {data.discussionPrompt.suggestedLength}
-
-              </p>
-
-            </div>
-
-          </div>
-
-          <textarea
-
-            value={discussionAnswer}
-
-            onChange={(event) => setDiscussionAnswer(event.target.value)}
-
-            placeholder="Write your discussion response here..."
-
+          {/* Wrap posts/prompts and writing area in two columns */}
+          <div
             style={{
-
-              width: "100%",
-
-              minHeight: "240px",
-
-              padding: "16px",
-
-              borderRadius: "16px",
-
-              border: "1px solid #cbd5e1",
-
-              fontSize: "15px",
-
-              lineHeight: 1.7,
-
-              boxSizing: "border-box",
-
-              marginTop: "16px",
-
+              display: "flex",
+              flexWrap: "wrap",
+              gap: "32px",
             }}
-
-          />
-
-          <p style={{ color: "#64748b", fontWeight: 700 }}>
-
-            Word Count: {discussionWordCount}
-
-          </p>
-
-          {message && (
-
-            <p style={{ color: "#be123c", fontWeight: 700 }}>{message}</p>
-
-          )}
-
-          <button
-
-            type="button"
-
-            onClick={handleManualSubmit}
-
-            disabled={isSubmitting}
-
-            style={{
-
-              ...primaryButtonStyle,
-
-              width: "100%",
-
-              padding: "16px",
-
-              background: isSubmitting ? "#cbd5e1" : "#111827",
-
-              cursor: isSubmitting ? "not-allowed" : "pointer",
-
-              marginTop: "10px",
-
-            }}
-
           >
-
-            {isSubmitting ? "正在评分并生成报告..." : "提交完整模考（-10 points）"}
-
-          </button>
-
+            {/* Left column: professor and student posts, question */}
+            <div style={{ flex: "1 1 40%", minWidth: "260px" }}>
+              <div style={{ display: "grid", gap: "14px", lineHeight: 1.8 }}>
+                <div
+                  style={{
+                    padding: "16px",
+                    borderRadius: "14px",
+                    background: "#f8fafc",
+                    border: "1px solid #e2e8f0",
+                  }}
+                >
+                  <strong>Professor</strong>
+                  <p style={{ marginBottom: 0 }}>{data.discussionPrompt.professor}</p>
+                </div>
+                <div
+                  style={{
+                    padding: "16px",
+                    borderRadius: "14px",
+                    background: "#f8fafc",
+                    border: "1px solid #e2e8f0",
+                  }}
+                >
+                  <strong>{data.discussionPrompt.studentOneName}</strong>
+                  <p style={{ marginBottom: 0 }}>{data.discussionPrompt.studentOnePost}</p>
+                </div>
+                <div
+                  style={{
+                    padding: "16px",
+                    borderRadius: "14px",
+                    background: "#f8fafc",
+                    border: "1px solid #e2e8f0",
+                  }}
+                >
+                  <strong>{data.discussionPrompt.studentTwoName}</strong>
+                  <p style={{ marginBottom: 0 }}>{data.discussionPrompt.studentTwoPost}</p>
+                </div>
+                <div
+                  style={{
+                    padding: "16px",
+                    borderRadius: "14px",
+                    background: "#eef2ff",
+                    color: "#312e81",
+                  }}
+                >
+                  <strong>Question</strong>
+                  <p>{data.discussionPrompt.question}</p>
+                  <p style={{ marginBottom: 0 }}>{data.discussionPrompt.suggestedLength}</p>
+                </div>
+              </div>
+            </div>
+            {/* Right column: textarea, word count, and submit button */}
+            <div
+              style={{
+                flex: "1 1 55%",
+                minWidth: "280px",
+                display: "flex",
+                flexDirection: "column",
+              }}
+            >
+              <textarea
+                value={discussionAnswer}
+                onChange={(event) => setDiscussionAnswer(event.target.value)}
+                placeholder="Write your discussion response here..."
+                style={{
+                  width: "100%",
+                  minHeight: "240px",
+                  padding: "16px",
+                  borderRadius: "16px",
+                  border: "1px solid #cbd5e1",
+                  fontSize: "15px",
+                  lineHeight: 1.7,
+                  boxSizing: "border-box",
+                }}
+              />
+              <p
+                style={{
+                  color: "#64748b",
+                  fontWeight: 700,
+                  marginTop: "8px",
+                }}
+              >
+                Word Count: {discussionWordCount}
+              </p>
+              {message && (
+                <p style={{ color: "#be123c", fontWeight: 700 }}>{message}</p>
+              )}
+              <button
+                type="button"
+                onClick={handleManualSubmit}
+                disabled={isSubmitting}
+                style={{
+                  ...primaryButtonStyle,
+                  background: isSubmitting ? "#cbd5e1" : "#111827",
+                  cursor: isSubmitting ? "not-allowed" : "pointer",
+                  marginTop: "12px",
+                }}
+              >
+                {isSubmitting ? "正在评分并生成报告..." : "提交完整模考（-10 points）"}
+              </button>
+            </div>
+          </div>
         </section>
-
       )}
 
     </>
