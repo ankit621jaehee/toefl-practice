@@ -1902,7 +1902,7 @@ async function submitMockTestWithAPI({
         minHeight: "100vh",
         background: "#f8fafc",
         // Reduce outer padding on the exam page so the content takes up more horizontal space
-        padding: page === "mock" ? "20px" : "60px",
+        padding: page === "mock" ? "12px" : "60px",
         fontFamily:
           '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
       }}
@@ -1910,11 +1910,11 @@ async function submitMockTestWithAPI({
       <div
         style={{
           // Widen the main container for the full mock test so content fills more of the viewport
-          maxWidth: page === "mock" ? "1280px" : "980px",
+          maxWidth: page === "mock" ? "1440px" : "980px",
           margin: "0 auto",
           background: "white",
           // Reduce padding when taking the mock so more of the exam content is visible without scrolling
-          padding: page === "mock" ? "24px" : "40px",
+          padding: page === "mock" ? "16px" : "40px",
           // Use a smaller radius on the exam page and remove the drop shadow to better match the provided design
           borderRadius: page === "mock" ? "12px" : "24px",
           boxShadow:
