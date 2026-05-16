@@ -34,7 +34,8 @@ type Page =
   | "past-exam-detail"
   | "ets-mock-practice"
   | "ets-mock-detail"
-  | "analytics";
+  | "analytics"
+  | "practice-sessions";
 
 type Part =
   | {
@@ -215,6 +216,19 @@ type PracticeRecord = {
   points_spent: number;
   created_at: string;
 };
+
+// A local record of a single practice session.  These sessions are stored in
+// memory (and persisted to localStorage) to provide a unified summary of all
+// practice types.  Each session includes the type of practice performed,
+// the total duration in seconds, the score achieved (or "未完成" if the
+// session was not completed), and the date/time when the session started.
+type PracticeSession = {
+  id: string;
+  type: 'sentence' | 'email' | 'discussion' | 'mock';
+  duration: number;
+  score: number | string;
+  date: string;
+};
 const EMAIL_SCORING_COST = 3;
 const DISCUSSION_SCORING_COST = 3;
 const announcements = [
@@ -242,6 +256,16 @@ const announcements = [
     date: "2026-05-15",
   },
 ];
+
+// Format a duration in seconds as minutes:seconds (e.g., 5:07).  This helper
+// is used to display elapsed times for single practice sessions.  If seconds
+// is undefined or negative, it returns "0:00".
+function formatDuration(seconds: number): string {
+  const secs = Math.max(0, Math.floor(seconds));
+  const minutes = Math.floor(secs / 60);
+  const rest = secs % 60;
+  return `${minutes}:${String(rest).padStart(2, "0")}`;
+}
 
 
 const sampleEmailPrompt: EmailPrompt = {
@@ -841,6 +865,105 @@ function App() {
 );
   const [showPointsModal, setShowPointsModal] = useState(false);
 
+  // -------------------------------------------------------------------------
+  // Local practice session tracking
+  //
+  // The app collects summary information for every practice session (single
+  // sentence, email, discussion or full mock test).  Each session records
+  // when it started, how long the user spent (in seconds), the resulting
+  // score (or "未完成" if the session was abandoned), and the date.  These
+  // sessions are stored in memory and persisted to localStorage so they
+  // survive page reloads.  A unified summary page (practice-sessions) uses
+  // this data to display an overview of all user practice attempts.
+  const [practiceSessions, setPracticeSessions] = useState<PracticeSession[]>(
+    () => {
+      if (typeof window !== 'undefined') {
+        try {
+          const stored = localStorage.getItem('practiceSessions');
+          return stored ? (JSON.parse(stored) as PracticeSession[]) : [];
+        } catch {
+          return [];
+        }
+      }
+      return [];
+    }
+  );
+  // Start timestamps for each practice type.  When a session begins we record
+  // the current time; when it ends we compute the duration and reset the
+  // timestamp back to null.
+  const [sentenceStartTime, setSentenceStartTime] = useState<number | null>(null);
+  const [emailStartTime, setEmailStartTime] = useState<number | null>(null);
+  const [discussionStartTime, setDiscussionStartTime] = useState<number | null>(null);
+  const [mockStartTime, setMockStartTime] = useState<number | null>(null);
+  // A timer used to update the elapsed seconds for the currently active
+  // practice.  This value is updated once per second when a practice page
+  // is active and a start time is defined.  Other pages reset it to 0.
+  const [elapsedSeconds, setElapsedSeconds] = useState<number>(0);
+
+  // Persist sessions to localStorage whenever they change.  Errors are
+  // silently ignored.
+  useEffect(() => {
+    try {
+      localStorage.setItem('practiceSessions', JSON.stringify(practiceSessions));
+    } catch {
+      // ignore persistence errors
+    }
+  }, [practiceSessions]);
+
+  // Update the elapsed seconds timer based on the currently active practice
+  // session.  The timer observes the start timestamps directly rather than
+  // relying on the current page.  When a practice starts, the corresponding
+  // start time is set; when the session ends, that start time is reset to
+  // null.  The effect creates a single interval that updates once per
+  // second while any start time is active.
+  useEffect(() => {
+    let timer: number | undefined;
+    function update() {
+      if (sentenceStartTime !== null) {
+        setElapsedSeconds(Math.floor((Date.now() - sentenceStartTime) / 1000));
+      } else if (emailStartTime !== null) {
+        setElapsedSeconds(Math.floor((Date.now() - emailStartTime) / 1000));
+      } else if (discussionStartTime !== null) {
+        setElapsedSeconds(Math.floor((Date.now() - discussionStartTime) / 1000));
+      } else if (mockStartTime !== null) {
+        setElapsedSeconds(Math.floor((Date.now() - mockStartTime) / 1000));
+      } else {
+        setElapsedSeconds(0);
+      }
+    }
+    // Only set up a timer if at least one session has started
+    if (sentenceStartTime !== null || emailStartTime !== null || discussionStartTime !== null || mockStartTime !== null) {
+      update();
+      timer = window.setInterval(update, 1000);
+    } else {
+      setElapsedSeconds(0);
+    }
+    return () => {
+      if (timer !== undefined) {
+        clearInterval(timer);
+      }
+    };
+  }, [sentenceStartTime, emailStartTime, discussionStartTime, mockStartTime]);
+
+  // Helper to add a completed session to the list.  Accepts the practice
+  // type (sentence/email/discussion/mock), the duration in seconds, and
+  // the score achieved (as a number or the string "未完成").  A unique
+  // identifier and the current ISO timestamp are generated automatically.
+  function addPracticeSession(
+    type: 'sentence' | 'email' | 'discussion' | 'mock',
+    duration: number,
+    score: number | string
+  ) {
+    const newSession: PracticeSession = {
+      id: Date.now().toString(),
+      type,
+      duration,
+      score,
+      date: new Date().toISOString(),
+    };
+    setPracticeSessions((prev) => [newSession, ...prev]);
+  }
+
 
   const [page, setPageState] = useState<Page>(() => {
 
@@ -857,6 +980,8 @@ function App() {
   if (path === "/records") return "records";
 
   if (path === "/mock-records") return "mock-records";
+
+  if (path === "/practice-sessions") return "practice-sessions";
 
   return "home";
 
@@ -882,6 +1007,32 @@ useEffect(() => {
 
 function setPage(nextPage: Page) {
 
+  // When navigating away from an active practice page before submission, record
+  // the session as incomplete.  We check each practice type: if its start
+  // timestamp is not null and the next page differs, we compute the elapsed
+  // duration and append a session with "未完成" as the score.  After recording
+  // we reset the corresponding start time to null so that the timer stops.
+  if (page === "sentence" && sentenceStartTime !== null && nextPage !== "sentence") {
+    const duration = Math.floor((Date.now() - sentenceStartTime) / 1000);
+    addPracticeSession("sentence", duration, "未完成");
+    setSentenceStartTime(null);
+  }
+  if (page === "email" && emailStartTime !== null && nextPage !== "email") {
+    const duration = Math.floor((Date.now() - emailStartTime) / 1000);
+    addPracticeSession("email", duration, "未完成");
+    setEmailStartTime(null);
+  }
+  if (page === "discussion" && discussionStartTime !== null && nextPage !== "discussion") {
+    const duration = Math.floor((Date.now() - discussionStartTime) / 1000);
+    addPracticeSession("discussion", duration, "未完成");
+    setDiscussionStartTime(null);
+  }
+  if (page === "mock" && mockStartTime !== null && nextPage !== "mock" && nextPage !== "mock-result") {
+    const duration = Math.floor((Date.now() - mockStartTime) / 1000);
+    addPracticeSession("mock", duration, "未完成");
+    setMockStartTime(null);
+  }
+
   setPageState(nextPage);
 
   const pathMap: Partial<Record<Page, string>> = {
@@ -898,6 +1049,8 @@ function setPage(nextPage: Page) {
 
     // 能力分析页面路径
     "analytics": "/analytics",
+    // Unified practice session summary page
+    "practice-sessions": "/practice-sessions",
 
   };
 
@@ -1441,10 +1594,23 @@ function handleStartEtsMockPractice(questionSet: QuestionSet | null) {
 }
 
 async function handleStartMockTest() {
+  // Ensure the user is signed in and has enough points before starting the
+  // full mock test.  If not signed in, show an error message.  If the
+  // balance is insufficient, open the points purchase modal.
   if (!user) {
     setMockMessage("Please sign in before starting a mock test.");
     return;
   }
+  const MOCK_COST = 10;
+  if (points < MOCK_COST) {
+    setShowPointsModal(true);
+    return;
+  }
+  // Deduct the mock test cost up front and record the start time for
+  // duration tracking.  We update local points here; the backend will
+  // deduct separately when submitting the mock test.
+  setPoints((prev) => prev - MOCK_COST);
+  setMockStartTime(Date.now());
 
   setActiveQuestionSetId("");
   setActiveQuestionSourceType("");
@@ -1465,15 +1631,11 @@ async function handleStartMockTest() {
     setMockSentenceSlots(createInitialSlots(data.sentenceQuestions));
     setMockSentenceBanks(createBankOrders(data.sentenceQuestions));
 
-    if (typeof data.balance === "number") {   
-      setPoints(data.balance);
-    } else if (user) {
-      await loadPoints(user.id);
-    }
+    // Do not update points here based on the API response to avoid
+    // double-deducting the mock cost.  The local state has already been
+    // decremented and the session will update the backend on submission.
 
     setPage("mock");
-
-
   } catch (error) {
     const message =
       error instanceof Error
@@ -1551,14 +1713,17 @@ async function handleSubmitMockTest() {
     setMockResult(result);
     await saveQuestionAttempt(result);
     await loadQuestionAttempts();
-
-    if (typeof result.balance === "number") {
-      setPoints(result.balance);
-    } else if (user) {
-      await loadPoints(user.id);
+    // Record the practice session duration and final score now that the
+    // submission has completed.  The mockStartTime is set when the user
+    // begins the mock; we compute the total seconds spent and then reset it.
+    if (mockStartTime !== null) {
+      const duration = Math.floor((Date.now() - mockStartTime) / 1000);
+      addPracticeSession('mock', duration, result.finalScore);
+      setMockStartTime(null);
     }
-
-    setPage("mock-result");
+    // Do not update points here based on the backend balance because the
+    // cost has already been deducted at the start of the mock.
+    setPage('mock-result');
   } catch (error) {
     const message =
       error instanceof Error
@@ -1767,6 +1932,19 @@ async function submitMockTestWithAPI({
 
     setResults(finalResults);
     setIsSubmitted(true);
+    // Record the practice session when all questions have been submitted.  The
+    // total duration is computed from the sentenceStartTime and stored in the
+    // unified sessions list.  After recording, reset the start time so that
+    // the timer stops.
+    if (sentenceStartTime !== null) {
+      const duration = Math.floor((Date.now() - sentenceStartTime) / 1000);
+      const total = (Object.values(finalResults) as number[]).reduce(
+        (sum: number, s: number) => sum + s,
+        0
+      );
+      addPracticeSession('sentence', duration, total);
+      setSentenceStartTime(null);
+    }
   }
 
   function restartAll() {
@@ -1779,6 +1957,16 @@ async function submitMockTestWithAPI({
   }
 
   async function startNewPractice() {
+    // Require authentication before starting a practice.  If the user is
+    // not signed in, show an alert and abort.  When authenticated, record
+    // the start time so that the elapsed timer begins counting up.
+    if (!user) {
+      alert('请先登录后再开始练习。');
+      return;
+    }
+    // Record the start time for the sentence practice.  This timestamp
+    // will be used to compute the total duration when the session ends.
+    setSentenceStartTime(Date.now());
     setIsLoading(true);
     setApiMessage("");
 
@@ -1850,12 +2038,43 @@ async function submitMockTestWithAPI({
   }
 
   async function startEmailPractice() {
-    setPage("email");
+    // Require authentication and sufficient points before starting the email
+    // writing practice.  If the user is not signed in, prompt them to log
+    // in.  If there are insufficient points, open the points modal instead
+    // of starting the practice.  Otherwise deduct the points up front and
+    // record the start time.
+    if (!user) {
+      alert('请先登录后再开始练习。');
+      return;
+    }
+    if (points < EMAIL_SCORING_COST) {
+      setShowPointsModal(true);
+      return;
+    }
+    // Deduct the cost immediately.  We update local points here; the
+    // scoring API will no longer adjust the balance on submission.
+    setPoints((prev) => prev - EMAIL_SCORING_COST);
+    setEmailStartTime(Date.now());
+    setPage('email');
     await generateNewEmailPrompt();
   }
 
   async function startDiscussionPractice() {
-    setPage("discussion");
+    // Ensure the user is signed in and has enough points before starting the
+    // academic discussion practice.  If not signed in, alert the user.  If
+    // their balance is insufficient, show the points purchase modal.
+    if (!user) {
+      alert('请先登录后再开始练习。');
+      return;
+    }
+    if (points < DISCUSSION_SCORING_COST) {
+      setShowPointsModal(true);
+      return;
+    }
+    // Deduct the discussion practice cost up front and start timing.
+    setPoints((prev) => prev - DISCUSSION_SCORING_COST);
+    setDiscussionStartTime(Date.now());
+    setPage('discussion');
     await generateNewDiscussionPrompt();
   }
 
@@ -1865,39 +2084,50 @@ async function submitMockTestWithAPI({
     setIsScoringEmail(true);
     setEmailSubmitted(false);
     setEmailFeedback(null);
-
+    // Track the score to record in the practice summary.  If the API call
+    // succeeds, this variable will hold the returned numeric score.  If it
+    // fails, it will remain the string "未完成".
+    let sessionScore: number | string = '未完成';
     try {
       const feedback = await scoreEmailWritingWithAPI(
         currentEmailPrompt,
         emailAnswer
       );
-
       setEmailFeedback(feedback);
       setEmailSubmitted(true);
-
-      if (typeof feedback.balance === "number") {
-        setPoints(feedback.balance);
-      } else if (user) {
-        await loadPoints(user.id);
-      } 
+      // Extract a numeric score if possible.  Some API responses return
+      // strings (e.g. "4.0"); parseFloat will convert to a number when valid.
+      const parsed = parseFloat(feedback.score);
+      sessionScore = isNaN(parsed) ? feedback.score : parsed;
+      // Do not update the points based on the backend balance here because the
+      // cost has already been deducted when starting the practice.
     } catch (error) {
-        const message =
-          error instanceof Error
-            ? error.message
-            : "AI scoring failed. Please try again.";
-
-        setEmailFeedback({
-          score: "评分失败",
-          strengths: [],
-          problems: [message],
-          grammarCorrections: [],
-          actionPlan: [],
-          improvedVersion: "",
-          sampleAnswer: "",
-        });
-        setEmailSubmitted(true);
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'AI scoring failed. Please try again.';
+      setEmailFeedback({
+        score: '评分失败',
+        strengths: [],
+        problems: [message],
+        grammarCorrections: [],
+        actionPlan: [],
+        improvedVersion: '',
+        sampleAnswer: '',
+      });
+      setEmailSubmitted(true);
+      sessionScore = '未完成';
     } finally {
-        setIsScoringEmail(false);
+      // When scoring completes (successfully or not), record the session
+      // duration and score.  The duration is computed from the start time
+      // recorded at the beginning of the practice.  After recording, reset
+      // the start time so that the timer stops.
+      if (emailStartTime !== null) {
+        const duration = Math.floor((Date.now() - emailStartTime) / 1000);
+        addPracticeSession('email', duration, sessionScore);
+        setEmailStartTime(null);
+      }
+      setIsScoringEmail(false);
     }
   } 
 
@@ -1907,7 +2137,10 @@ async function submitMockTestWithAPI({
     setIsScoringDiscussion(true);
     setDiscussionSubmitted(false);
     setDiscussionFeedback(null);
-
+    // Track the score to record in the practice summary.  If the API call
+    // succeeds, this variable will hold the returned numeric score; otherwise
+    // it will remain the string "未完成".
+    let sessionScore: number | string = '未完成';
     try {
       const feedback = await scoreAcademicDiscussionWithAPI(
         currentDiscussionPrompt,
@@ -1916,29 +2149,36 @@ async function submitMockTestWithAPI({
 
       setDiscussionFeedback(feedback);
       setDiscussionSubmitted(true);
-
-      if (typeof feedback.balance === "number") {
-        setPoints(feedback.balance);
-      } else if (user) {
-        await loadPoints(user.id);
-      }
+      const parsed = parseFloat(feedback.score);
+      sessionScore = isNaN(parsed) ? feedback.score : parsed;
+      // Do not update the points here because they have already been
+      // deducted at the start of the session.
     } catch (error) {
       const message =
         error instanceof Error
           ? error.message
-          : "AI scoring failed. Please try again.";
+          : 'AI scoring failed. Please try again.';
 
       setDiscussionFeedback({
-        score: "评分失败",
+        score: '评分失败',
         strengths: [],
         problems: [message],
         grammarCorrections: [],
         actionPlan: [],
-        improvedVersion: "",
-        sampleAnswer: "",
+        improvedVersion: '',
+        sampleAnswer: '',
       });
       setDiscussionSubmitted(true);
+      sessionScore = '未完成';
     } finally {
+      // After scoring completes (successfully or not), record the practice
+      // session duration and score.  The duration is calculated from the
+      // recorded start time.  Then reset the start time to stop the timer.
+      if (discussionStartTime !== null) {
+        const duration = Math.floor((Date.now() - discussionStartTime) / 1000);
+        addPracticeSession('discussion', duration, sessionScore);
+        setDiscussionStartTime(null);
+      }
       setIsScoringDiscussion(false);
     }
   }
@@ -2176,13 +2416,29 @@ async function submitMockTestWithAPI({
                     进入模拟真题
                   </button>
                 </div>
+
+                {/* Card for viewing total practice sessions */}
+                <div style={cardStyle}>
+                  <h2 style={{ marginTop: 0 }}>总练习记录</h2>
+                  <p style={{ color: "#64748b", lineHeight: 1.7 }}>
+                    查看所有练习的耗时、得分与日期汇总。
+                  </p>
+                  <button
+                    onClick={() => {
+                      setPage("practice-sessions");
+                    }}
+                    style={primaryButtonStyle}
+                  >
+                    查看练习总记录
+                  </button>
+                </div>
             </div>
 
           </>
         )}
 
         {page === "sentence" && (
-          <SentencePractice
+            <SentencePractice
             questions={questions}
             currentIndex={currentIndex}
             setCurrentIndex={setCurrentIndex}
@@ -2208,66 +2464,98 @@ async function submitMockTestWithAPI({
             restartAll={restartAll}
             removeChunk={removeChunk}
             placeChunk={placeChunk}
+            elapsedSeconds={elapsedSeconds}
           />
         )}
 
         {page === "email" && (
-          <WritingPracticePage
-            title={currentEmailPrompt.title}
-            submitCost={EMAIL_SCORING_COST}
-            isGenerating={isGeneratingEmailPrompt}
-            onGenerateNew={generateNewEmailPrompt}
-            promptBlock={
-              <>
-                <p
-                  style={{
-                    color: "#64748b",
-                    lineHeight: 1.8,
-                    marginBottom: "24px",
-                  }}
-                >
-                  {currentEmailPrompt.scenario}
-                </p>
-
-                <div
-                  style={{
-                    padding: "22px",
-                    borderRadius: "18px",
-                    background: "#f1f5f9",
-                    marginBottom: "24px",
-                  }}
-                >
-                  <strong>{currentEmailPrompt.task}</strong>
-
-                  <ul style={{ lineHeight: 1.8 }}>
-                    {currentEmailPrompt.requirements.map((requirement) => (
-                      <li key={requirement}>{requirement}</li>
-                    ))}
-                  </ul>
-
-                  <p style={{ color: "#64748b", marginBottom: 0 }}>
-                    {currentEmailPrompt.suggestedLength}
+          <>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "flex-end",
+                gap: "16px",
+                marginBottom: "16px",
+                padding: "16px 20px",
+                background: "#f1f5f9",
+                borderRadius: "16px",
+                fontWeight: 700,
+              }}
+            >
+              <span>耗时：{formatDuration(elapsedSeconds)}</span>
+            </div>
+            <WritingPracticePage
+              title={currentEmailPrompt.title}
+              submitCost={EMAIL_SCORING_COST}
+              isGenerating={isGeneratingEmailPrompt}
+              onGenerateNew={generateNewEmailPrompt}
+              promptBlock={
+                <>
+                  <p
+                    style={{
+                      color: "#64748b",
+                      lineHeight: 1.8,
+                      marginBottom: "24px",
+                    }}
+                  >
+                    {currentEmailPrompt.scenario}
                   </p>
-                </div>
-              </>
-            }
-            answer={emailAnswer}
-            setAnswer={(value) => {
-              setEmailAnswer(value);
-              setEmailSubmitted(false);
-            }}
-            wordCount={emailWordCount}
-            placeholder="Write your email here..."
-            isScoring={isScoringEmail}
-            onSubmit={submitEmailWriting}
-            submitted={emailSubmitted}
-            feedback={emailFeedback}
-            setPage={setPage}
-          />
+
+                  <div
+                    style={{
+                      padding: "22px",
+                      borderRadius: "18px",
+                      background: "#f1f5f9",
+                      marginBottom: "24px",
+                    }}
+                  >
+                    <strong>{currentEmailPrompt.task}</strong>
+
+                    <ul style={{ lineHeight: 1.8 }}>
+                      {currentEmailPrompt.requirements.map((requirement) => (
+                        <li key={requirement}>{requirement}</li>
+                      ))}
+                    </ul>
+
+                    <p style={{ color: "#64748b", marginBottom: 0 }}>
+                      {currentEmailPrompt.suggestedLength}
+                    </p>
+                  </div>
+                </>
+              }
+              answer={emailAnswer}
+              setAnswer={(value) => {
+                setEmailAnswer(value);
+                setEmailSubmitted(false);
+              }}
+              wordCount={emailWordCount}
+              placeholder="Write your email here..."
+              isScoring={isScoringEmail}
+              onSubmit={submitEmailWriting}
+              submitted={emailSubmitted}
+              feedback={emailFeedback}
+              setPage={setPage}
+            />
+          </>
         )}
 
         {page === "discussion" && (
-          <WritingPracticePage
+          <>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "flex-end",
+                gap: "16px",
+                marginBottom: "16px",
+                padding: "16px 20px",
+                background: "#f1f5f9",
+                borderRadius: "16px",
+                fontWeight: 700,
+              }}
+            >
+              <span>耗时：{formatDuration(elapsedSeconds)}</span>
+            </div>
+            <WritingPracticePage
             title={currentDiscussionPrompt.title}
             submitCost={DISCUSSION_SCORING_COST}
             isGenerating={isGeneratingDiscussionPrompt}
@@ -2358,7 +2646,8 @@ async function submitMockTestWithAPI({
             submitted={discussionSubmitted}
             feedback={discussionFeedback}
             setPage={setPage}
-          />
+            />
+          </>
         )}
 
         {page === "mock" && mockTestData && (
@@ -2548,6 +2837,13 @@ async function submitMockTestWithAPI({
 
 
 
+        {page === "practice-sessions" && (
+          <PracticeSessionsPage
+            sessions={practiceSessions}
+            setPage={setPage}
+          />
+        )}
+
         {page === "records" && (
           <PracticeRecordsPage
             records={records}
@@ -2694,6 +2990,7 @@ function SentencePractice({
   restartAll,
   removeChunk,
   placeChunk,
+  elapsedSeconds,
 }: {
   questions: Question[];
   currentIndex: number;
@@ -2720,6 +3017,8 @@ function SentencePractice({
   restartAll: () => void;
   removeChunk: (slotIndex: number) => void;
   placeChunk: (chunk: Chunk, slotIndex: number) => void;
+  /** Number of seconds elapsed since the practice started. */
+  elapsedSeconds: number;
 }) {
   return (
     <>
@@ -2753,6 +3052,7 @@ function SentencePractice({
           background: "#f1f5f9",
           borderRadius: "16px",
           fontWeight: 700,
+          flexWrap: "wrap",
         }}
       >
         <span>
@@ -2768,6 +3068,7 @@ function SentencePractice({
             ? `总分：${totalScore} / ${questions.length * 0.5}`
             : "尚未提交"}
         </span>
+        <span>耗时：{formatDuration(elapsedSeconds)}</span>
       </div>
 
       <div style={{ display: "flex", gap: "8px", marginBottom: "28px" }}>
@@ -4400,7 +4701,8 @@ function MockTestPage({
           }
 
           if (mockPart === "discussion") {
-            onSubmitRef.current();
+            // For the discussion part we do not auto-submit when time is up.
+            // Simply set time left to zero and allow the user to submit manually.
             return 0;
           }
         }
@@ -6441,6 +6743,9 @@ function getPageFromPath(): Page {
   if (path.includes("/full-mock-test")) 
     return "mock";
 
+  if (path.includes("/practice-sessions")) 
+    return "practice-sessions";
+
   // 新增对能力分析路径的识别
   if (path.includes("/analytics")) 
     return "analytics";
@@ -7282,6 +7587,101 @@ function QuestionSetContentPreview({ content }: { content: QuestionSetContent })
         return null;
       })}
     </div>
+  );
+}
+
+// A unified page that displays all locally recorded practice sessions. Each
+// entry shows the practice type, the duration, the achieved score (or
+// "未完成"), and the date. This allows users to get a quick overview of
+// how long they have spent on each practice and how they performed.
+function PracticeSessionsPage({
+  sessions,
+  setPage,
+}: {
+  sessions: PracticeSession[];
+  setPage: (page: Page) => void;
+}) {
+  function formatType(type: PracticeSession["type"]) {
+    if (type === "sentence") return "Build a Sentence";
+    if (type === "email") return "Email Writing";
+    if (type === "discussion") return "Academic Discussion";
+    if (type === "mock") return "Full Mock Test";
+    return type;
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setPage("home")}
+        style={{
+          padding: "10px 16px",
+          border: "1px solid #cbd5e1",
+          borderRadius: "12px",
+          background: "white",
+          fontWeight: 700,
+          cursor: "pointer",
+          marginBottom: "24px",
+        }}
+      >
+        返回首页
+      </button>
+
+      <h2 style={{ fontSize: "28px", marginBottom: "10px" }}>
+        总练习记录
+      </h2>
+
+      <p style={{ color: "#64748b", marginBottom: "24px" }}>
+        显示所有练习的类型、耗时、得分和日期。
+      </p>
+
+      {sessions.length === 0 ? (
+        <p style={{ color: "#64748b" }}>暂无练习记录。</p>
+      ) : (
+        <div style={{ display: "grid", gap: "12px" }}>
+          {sessions.map((session) => (
+            <div
+              key={session.id}
+              style={{
+                width: "100%",
+                border: "1px solid #e2e8f0",
+                borderRadius: "18px",
+                background: "#f8fafc",
+                padding: "18px 20px",
+              }}
+            >
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1.4fr 1fr 1fr 1.6fr",
+                  gap: "14px",
+                  alignItems: "center",
+                }}
+              >
+                <strong>{formatType(session.type)}</strong>
+                <span style={{ color: "#64748b", fontWeight: 700 }}>
+                  {formatDuration(session.duration)}
+                </span>
+                <span
+                  style={{
+                    fontWeight: 800,
+                    color:
+                      typeof session.score === "number"
+                        ? "#312e81"
+                        : "#be123c",
+                  }}
+                >
+                  {session.score}
+                </span>
+                <span style={{ color: "#64748b" }}>
+                  {new Date(session.date).toLocaleString()}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </>
   );
 }
 
