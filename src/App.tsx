@@ -750,6 +750,19 @@ function App() {
     "past_exam" | "ets_mock" | ""
   >("");
 
+  // ---------------------------------------------------------------------------
+  // Authorization flags
+  //
+  // The TOEFL past exam library and ETS mock practice each require a paid
+  // subscription before a user can access the question set.  Users with
+  // authorization flags stored on their profile can bypass the paywall and
+  // access the practice lists directly.  If no flags are present (or the
+  // profile table does not define them), we assume the user has not yet been
+  // granted access and show a purchase/contact screen instead.  These flags
+  // are loaded when the authenticated user changes.
+  const [hasPastExamAccess, setHasPastExamAccess] = useState(false);
+  const [hasEtsMockAccess, setHasEtsMockAccess] = useState(false);
+
 
 
   useEffect(() => {
@@ -950,6 +963,38 @@ function setPage(nextPage: Page) {
     subscription.unsubscribe();
   };
 }, []);
+
+  // Load authorisation flags whenever the user changes.  These flags may be
+  // stored on the `profiles` table (past_exam_access, ets_mock_access).  If
+  // those columns are missing or the query fails, both flags default to false.
+  useEffect(() => {
+    async function loadAccess() {
+      if (!user) {
+        setHasPastExamAccess(false);
+        setHasEtsMockAccess(false);
+        return;
+      }
+      try {
+        const { data, error } = await supabase
+          .from("profiles")
+          .select("past_exam_access, ets_mock_access")
+          .eq("id", user.id)
+          .single();
+        if (error || !data) {
+          setHasPastExamAccess(false);
+          setHasEtsMockAccess(false);
+        } else {
+          // Cast to any to avoid TypeScript complaining about unknown columns
+          setHasPastExamAccess(!!(data as any).past_exam_access);
+          setHasEtsMockAccess(!!(data as any).ets_mock_access);
+        }
+      } catch (_err) {
+        setHasPastExamAccess(false);
+        setHasEtsMockAccess(false);
+      }
+    }
+    loadAccess();
+  }, [user]);
 
 const onBackHome = () => {
   if (activeQuestionSourceType === "ets_mock") {
@@ -2367,84 +2412,107 @@ async function submitMockTestWithAPI({
         )}
 
         {page === "past-exam" && (
-
-
-
-          <PastExamPage
-
-            items={pastExamSets}
-
-            practicedIds={getPracticedIds("past_exam")}
-
-            isLoading={isLoadingQuestionSets}
-
-            message={questionSetMessage}
-
-            onBackHome={() => setPage("home")}
-
-            onStart={(id) => {
-
-              setSelectedPastExamId(id);
-
-              setPageState("past-exam-detail");
-
-              window.history.pushState({}, "", `/past-exam/${id}`);
-
-            }}
-
-          />
-
-
-
+          hasPastExamAccess ? (
+            <PastExamPage
+              items={pastExamSets}
+              practicedIds={getPracticedIds("past_exam")}
+              isLoading={isLoadingQuestionSets}
+              message={questionSetMessage}
+              onBackHome={() => setPage("home")}
+              onStart={(id) => {
+                setSelectedPastExamId(id);
+                setPageState("past-exam-detail");
+                window.history.pushState({}, "", `/past-exam/${id}`);
+              }}
+            />
+          ) : (
+            <AccessPaywall
+              title="托福真题库"
+              description="订阅以使用过往真实考试真题进行练习。"
+              price="20元/月"
+              onBackHome={() => setPage("home")}
+            />
+          )
         )}
         
         {page === "past-exam-detail" && (
-          <PastExamDetailPage
-            examId={selectedPastExamId}
-            examSet={getPastExamSetById(selectedPastExamId)}
-            message={questionSetMessage}
-            onStart={() => {
-              handleStartPastExamPractice(getPastExamSetById(selectedPastExamId))
-            }}
-            onBack={() => {
-              setPageState("past-exam");
-              window.history.pushState({}, "", "/past-exam");
-            }}
-          />
+          hasPastExamAccess ? (
+            <PastExamDetailPage
+              examId={selectedPastExamId}
+              examSet={getPastExamSetById(selectedPastExamId)}
+              message={questionSetMessage}
+              onStart={() => {
+                handleStartPastExamPractice(getPastExamSetById(selectedPastExamId));
+              }}
+              onBack={() => {
+                setPageState("past-exam");
+                window.history.pushState({}, "", "/past-exam");
+              }}
+            />
+          ) : (
+            <AccessPaywall
+              title="托福真题库"
+              description="订阅以使用过往真实考试真题进行练习。"
+              price="20元/月"
+              onBackHome={() => {
+                // When gated out from detail page, reset to list page
+                setPageState("past-exam");
+                window.history.pushState({}, "", "/past-exam");
+              }}
+            />
+          )
         )}
 
         {page === "ets-mock-practice" && (
-
-          <EtsMockPracticePage
-            items={etsMockSets}
-            practicedIds={getPracticedIds("ets_mock")}
-            isLoading={isLoadingQuestionSets}
-            message={questionSetMessage}
-            onBackHome={onBackHome}
-            onStart={(id) => {
-              setSelectedEtsMockId(id);
-              setPageState("ets-mock-detail");
-              window.history.pushState({}, "", `/ets-mock-practice/${id}`);
-            }}
-          />
-
-
-
+          hasEtsMockAccess ? (
+            <EtsMockPracticePage
+              items={etsMockSets}
+              practicedIds={getPracticedIds("ets_mock")}
+              isLoading={isLoadingQuestionSets}
+              message={questionSetMessage}
+              onBackHome={onBackHome}
+              onStart={(id) => {
+                setSelectedEtsMockId(id);
+                setPageState("ets-mock-detail");
+                window.history.pushState({}, "", `/ets-mock-practice/${id}`);
+              }}
+            />
+          ) : (
+            <AccessPaywall
+              title="ETS 模考练习"
+              description="每套题仅需 2 元，立即购买以解锁 ETS 官方模拟试题。"
+              price="2元/套题"
+              onBackHome={() => setPage("home")}
+            />
+          )
         )}
         
         {page === "ets-mock-detail" && (
-          <EtsMockDetailPage
-            mockId={selectedEtsMockId}
-            mockSet={getEtsMockSetById(selectedEtsMockId)}
-            message={questionSetMessage}
-            onStart={() => {
-              handleStartEtsMockPractice(getEtsMockSetById(selectedEtsMockId));
-            }}
-            onBack={() => {
-              setPageState("ets-mock-practice");
-              window.history.pushState({}, "", "/ets-mock-practice");
-            }}
-          />
+          hasEtsMockAccess ? (
+            <EtsMockDetailPage
+              mockId={selectedEtsMockId}
+              mockSet={getEtsMockSetById(selectedEtsMockId)}
+              message={questionSetMessage}
+              onStart={() => {
+                handleStartEtsMockPractice(getEtsMockSetById(selectedEtsMockId));
+              }}
+              onBack={() => {
+                setPageState("ets-mock-practice");
+                window.history.pushState({}, "", "/ets-mock-practice");
+              }}
+            />
+          ) : (
+            <AccessPaywall
+              title="ETS 模考练习"
+              description="每套题仅需 2 元，立即购买以解锁 ETS 官方模拟试题。"
+              price="2元/套题"
+              onBackHome={() => {
+                // When gated out from detail page, reset to list page
+                setPageState("ets-mock-practice");
+                window.history.pushState({}, "", "/ets-mock-practice");
+              }}
+            />
+          )
         )}
 
 
@@ -6752,6 +6820,63 @@ function EtsMockPracticePage({
 
   );
 
+}
+
+// A simple paywall component displayed when the user has not purchased access
+// to a given question library.  It shows a title, a description of the
+// library, the monthly or per-set price, and a message directing the user
+// to contact customer service.  A back button allows the user to return to
+// the home page.  The styling aligns with the rest of the site using
+// rounded cards and neutral colours.
+function AccessPaywall({
+  title,
+  description,
+  price,
+  onBackHome,
+}: {
+  title: string;
+  description: string;
+  price: string;
+  onBackHome: () => void;
+}) {
+  return (
+    <>
+      <button
+        type="button"
+        onClick={onBackHome}
+        style={{
+          padding: "10px 16px",
+          border: "1px solid #cbd5e1",
+          borderRadius: "12px",
+          background: "white",
+          fontWeight: 700,
+          cursor: "pointer",
+          marginBottom: "24px",
+        }}
+      >
+        返回首页
+      </button>
+      <section
+        style={{
+          background: "white",
+          border: "1px solid #e2e8f0",
+          borderRadius: "20px",
+          padding: "24px",
+          marginBottom: "24px",
+          boxShadow: "0 10px 30px rgba(15, 23, 42, 0.06)",
+        }}
+      >
+        <h1 style={{ marginTop: 0 }}>{title}</h1>
+        <p style={{ color: "#64748b", lineHeight: 1.8 }}>{description}</p>
+        <p style={{ color: "#64748b", fontWeight: 700, marginTop: "20px" }}>
+          套餐价格：{price}
+        </p>
+        <p style={{ color: "#be123c", marginTop: "16px" }}>
+          您尚未订阅此题库的访问权限。请联系客服开通访问后再试。
+        </p>
+      </section>
+    </>
+  );
 }
 
 function PastExamDetailPage({
