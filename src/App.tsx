@@ -761,8 +761,7 @@ function App() {
   // granted access and show a purchase/contact screen instead.  These flags
   // are loaded when the authenticated user changes.
   const [hasPastExamAccess, setHasPastExamAccess] = useState(false);
-  const [hasEtsMockAccess, setHasEtsMockAccess] = useState(false);
-
+  const [unlockedEtsMockIds, setUnlockedEtsMockIds] = useState<string[]>([]);
 
 
   useEffect(() => {
@@ -971,30 +970,56 @@ function setPage(nextPage: Page) {
     async function loadAccess() {
       if (!user) {
         setHasPastExamAccess(false);
-        setHasEtsMockAccess(false);
         return;
       }
       try {
         const { data, error } = await supabase
           .from("profiles")
-          .select("past_exam_access, ets_mock_access")
+          .select("past_exam_access")
           .eq("id", user.id)
           .single();
         if (error || !data) {
           setHasPastExamAccess(false);
-          setHasEtsMockAccess(false);
         } else {
           // Cast to any to avoid TypeScript complaining about unknown columns
           setHasPastExamAccess(!!(data as any).past_exam_access);
-          setHasEtsMockAccess(!!(data as any).ets_mock_access);
         }
       } catch (_err) {
         setHasPastExamAccess(false);
-        setHasEtsMockAccess(false);
       }
     }
     loadAccess();
   }, [user]);
+
+useEffect(() => {
+  async function loadUnlockedEtsMockSets() {
+    if (!user) {
+      setUnlockedEtsMockIds([]);
+      return;
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from("user_question_set_access")
+        .select("question_set_id")
+        .eq("user_id", user.id)
+        .eq("source_type", "ets_mock");
+
+      if (error || !data) {
+        setUnlockedEtsMockIds([]);
+        return;
+      }
+
+      setUnlockedEtsMockIds(
+        data.map((item: { question_set_id: string }) => item.question_set_id)
+      );
+    } catch {
+      setUnlockedEtsMockIds([]);
+    }
+  }
+
+  loadUnlockedEtsMockSets();
+}, [user]);
 
 const onBackHome = () => {
   if (activeQuestionSourceType === "ets_mock") {
@@ -2464,31 +2489,25 @@ async function submitMockTestWithAPI({
         )}
 
         {page === "ets-mock-practice" && (
-          hasEtsMockAccess ? (
-            <EtsMockPracticePage
-              items={etsMockSets}
-              practicedIds={getPracticedIds("ets_mock")}
-              isLoading={isLoadingQuestionSets}
-              message={questionSetMessage}
-              onBackHome={onBackHome}
-              onStart={(id) => {
-                setSelectedEtsMockId(id);
-                setPageState("ets-mock-detail");
-                window.history.pushState({}, "", `/ets-mock-practice/${id}`);
-              }}
-            />
-          ) : (
-            <AccessPaywall
-              title="ETS 模考练习"
-              description="每套题仅需 2 元，立即购买以解锁 ETS 官方模拟试题。"
-              price="2元/套题"
-              onBackHome={() => setPage("home")}
-            />
-          )
+          // Always display the ETS mock practice list.  Each set shows locked/unlocked status individually.
+          <EtsMockPracticePage
+            items={etsMockSets}
+            practicedIds={getPracticedIds("ets_mock")}
+            unlockedIds={unlockedEtsMockIds}
+            isLoading={isLoadingQuestionSets}
+            message={questionSetMessage}
+            onBackHome={onBackHome}
+            onStart={(id) => {
+              setSelectedEtsMockId(id);
+              setPageState("ets-mock-detail");
+              window.history.pushState({}, "", `/ets-mock-practice/${id}`);
+            }}
+          />
         )}
         
         {page === "ets-mock-detail" && (
-          hasEtsMockAccess ? (
+          // Check if the selected set is unlocked individually.  If not, show paywall for that set.
+          unlockedEtsMockIds.includes(selectedEtsMockId) ? (
             <EtsMockDetailPage
               mockId={selectedEtsMockId}
               mockSet={getEtsMockSetById(selectedEtsMockId)}
@@ -2503,8 +2522,8 @@ async function submitMockTestWithAPI({
             />
           ) : (
             <AccessPaywall
-              title="ETS 模考练习"
-              description="每套题仅需 2 元，立即购买以解锁 ETS 官方模拟试题。"
+              title="该套题尚未解锁"
+              description="请联系客服解锁此套 ETS 模考题。每套题仅需 2 元。"
               price="2元/套题"
               onBackHome={() => {
                 // When gated out from detail page, reset to list page
@@ -6634,18 +6653,19 @@ function EtsMockPracticePage({
   items,
 
   practicedIds,
+  unlockedIds,
   isLoading,
   message,
   onBackHome,
 
   onStart,
-
 }: {
 
   items: QuestionSet[];
   practicedIds: string[];
+  unlockedIds: string[];
   isLoading: boolean;
-  message: string,
+  message: string;
   onBackHome: () => void;
 
   onStart: (id: string) => void;
@@ -6731,6 +6751,8 @@ function EtsMockPracticePage({
         {items.map((item) => {
 
           const practiced = practicedIds.includes(item.id);
+          // determine if this set is unlocked (purchased) for the current user
+          const unlocked = unlockedIds.includes(item.id);
 
           return (
 
@@ -6760,13 +6782,23 @@ function EtsMockPracticePage({
 
             >
 
+              {/* set title */}
               <strong>{item.title}</strong>
 
+              {/* status or price indicator */}
               <span
 
                 style={{
 
-                  color: practiced ? "#166534" : "#64748b",
+                  color: unlocked
+
+                    ? practiced
+
+                      ? "#166534"
+
+                      : "#64748b"
+
+                    : "#b91c1c",
 
                   fontWeight: 800,
 
@@ -6774,39 +6806,94 @@ function EtsMockPracticePage({
 
               >
 
-                {practiced ? "已练习" : "未练习"}
+                {unlocked
+
+                  ? practiced
+
+                    ? "已练习"
+
+                    : "未练习"
+
+                  : "未解锁 · 2元/套题"}
 
               </span>
 
-              <button
+              {/* action button: only enabled if unlocked */}
+              {unlocked ? (
 
-                type="button"
+                <button
 
-                onClick={() => onStart(item.id)}
+                  type="button"
 
-                style={{
+                  onClick={() => onStart(item.id)}
 
-                  padding: "10px 16px",
+                  style={{
 
-                  border: "none",
+                    padding: "10px 16px",
 
-                  borderRadius: "12px",
+                    border: "none",
 
-                  background: "#111827",
+                    borderRadius: "12px",
 
-                  color: "white",
+                    background: "#111827",
 
-                  fontWeight: 800,
+                    color: "white",
 
-                  cursor: "pointer",
+                    fontWeight: 800,
 
-                }}
+                    cursor: "pointer",
 
-              >
+                  }}
 
-                {practiced ? "再次练习" : "开始练习"}
+                >
 
-              </button>
+                  {practiced ? "再次练习" : "开始练习"}
+
+                </button>
+
+              ) : (
+
+                <button
+
+                  type="button"
+
+                  onClick={() => {
+
+                    alert(
+
+                      "该套题尚未解锁。请联系客服购买单套 ETS 模考解锁。"
+
+                    );
+
+                  }}
+
+                  style={{
+
+                    padding: "10px 16px",
+
+                    border: "1px solid #e2e8f0",
+
+                    borderRadius: "12px",
+
+                    background: "#f1f5f9",
+
+                    color: "#64748b",
+
+                    fontWeight: 700,
+
+                    cursor: "not-allowed",
+
+                  }}
+
+                  disabled
+
+                >
+
+                  联系客服解锁
+
+                </button>
+
+              )}
 
             </div>
 
