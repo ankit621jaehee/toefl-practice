@@ -1901,19 +1901,26 @@ async function submitMockTestWithAPI({
       style={{
         minHeight: "100vh",
         background: "#f8fafc",
-        padding: "60px",
+        // Reduce outer padding on the exam page so the content takes up more horizontal space
+        padding: page === "mock" ? "20px" : "60px",
         fontFamily:
           '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
       }}
     >
       <div
         style={{
-          maxWidth: "980px",
+          // Widen the main container for the full mock test so content fills more of the viewport
+          maxWidth: page === "mock" ? "1280px" : "980px",
           margin: "0 auto",
           background: "white",
-          padding: "40px",
-          borderRadius: "24px",
-          boxShadow: "0 10px 30px rgba(15, 23, 42, 0.08)",
+          // Reduce padding when taking the mock so more of the exam content is visible without scrolling
+          padding: page === "mock" ? "24px" : "40px",
+          // Use a smaller radius on the exam page and remove the drop shadow to better match the provided design
+          borderRadius: page === "mock" ? "12px" : "24px",
+          boxShadow:
+            page === "mock"
+              ? "none"
+              : "0 10px 30px rgba(15, 23, 42, 0.08)",
         }}
       >
         <h1 style={{ fontSize: "36px", marginBottom: "10px" }}>
@@ -4076,35 +4083,20 @@ function PracticeRecordDetailPage({
 }
 
 function MockTestPage({
-
   data,
-
   sentenceSlots,
-
   setSentenceSlots,
-
   sentenceBanks,
-
   dragged,
-
   setDragged,
-
   emailAnswer,
-
   setEmailAnswer,
-
   discussionAnswer,
-
   setDiscussionAnswer,
-
   isSubmitting,
-
   message,
-
   onSubmit,
-
   onCancel,
-
 }: {
 
   data: MockTestData;
@@ -4246,12 +4238,61 @@ function MockTestPage({
   const [timeLeft, setTimeLeft] = useState(6 * 60);
   const onSubmitRef = useRef(onSubmit);
 
+  // Track whether the user has paused the mock test. When paused, the countdown
+  // timer is halted and a modal asking whether to return or continue is shown.
+  const [isPaused, setIsPaused] = useState(false);
+  const [showPauseModal, setShowPauseModal] = useState(false);
+
+  // Styles for toolbar buttons that appear above the textareas in the email and
+  // discussion parts. These buttons offer simple editing actions like cut,
+  // paste, undo and redo. The look is kept minimal to blend with the
+  // streamlined exam UI.
+  const toolbarButtonStyle: CSSProperties = {
+    border: "1px solid #cbd5e1",
+    borderRadius: "8px",
+    padding: "4px 8px",
+    background: "white",
+    cursor: "pointer",
+    fontSize: "14px",
+    marginRight: "8px",
+  };
+
+  // Modal overlay styling for the pause confirmation. The overlay covers
+  // everything with a semi-transparent backdrop and centers the modal
+  // content.
+  const modalOverlayStyle: CSSProperties = {
+    position: "fixed",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    background: "rgba(0,0,0,0.5)",
+    display: "flex",
+    justifyContent: "center",
+    alignItems: "center",
+    zIndex: 100,
+  };
+
+  // Modal content styling. The content sits inside the overlay and uses a
+  // rounded card to match the overall aesthetic. It is narrow enough to read
+  // comfortably on both desktop and mobile widths.
+  const modalContentStyle: CSSProperties = {
+    background: "white",
+    borderRadius: "16px",
+    padding: "32px",
+    width: "90%",
+    maxWidth: "480px",
+    textAlign: "center",
+  };
+
   useEffect(() => {
     onSubmitRef.current = onSubmit;
   }, [onSubmit]);
 
   useEffect(() => {
-    if (isSubmitting) return;
+    // Halt the timer when the test is submitting or paused. This ensures the
+    // countdown stops while the pause modal is visible.
+    if (isSubmitting || isPaused) return;
 
     const timer = window.setInterval(() => {
       setTimeLeft((previous) => {
@@ -4269,7 +4310,7 @@ function MockTestPage({
             setMockPart("discussion");
             window.scrollTo({ top: 0, behavior: "smooth" });
             return 10 * 60;
-          } 
+          }
 
           if (mockPart === "discussion") {
             onSubmitRef.current();
@@ -4284,7 +4325,7 @@ function MockTestPage({
     return () => {
       window.clearInterval(timer);
     };
-  }, [mockPart, isSubmitting]);
+  }, [mockPart, isSubmitting, isPaused]);
 
   function formatTime(seconds: number) {
 
@@ -4446,7 +4487,85 @@ function MockTestPage({
   return (
 
     <>
+      {showPauseModal && (
+        <div style={modalOverlayStyle}>
+          <div style={modalContentStyle}>
+            <h1
+              style={{
+                fontSize: "42px",
+                margin: "0 0 24px",
+                letterSpacing: "1px",
+              }}
+            >
+              Pause Test
+            </h1>
 
+            <div
+              style={{
+                height: "1px",
+                background: "#d1d5db",
+                marginBottom: "28px",
+              }}
+            />
+
+            <p style={{ fontSize: "24px", lineHeight: 1.7, margin: 0 }}>
+              Select <strong>Return</strong> to continue working
+            </p>
+
+            <p style={{ fontSize: "24px", lineHeight: 1.7, marginTop: "4px" }}>
+              Select <strong>Continue</strong> to pause the test
+            </p>
+
+            <div
+              style={{
+                display: "flex",
+                gap: "32px",
+                marginTop: "36px",
+                flexWrap: "wrap",
+                justifyContent: "center",
+              }}
+            >
+
+              <button
+                type="button"
+                onClick={() => {
+                  setShowPauseModal(false);
+                  setIsPaused(false);
+                }}
+                style={{
+                  border: "none",
+                  borderRadius: "24px",
+                  background: "#006b67",
+                  color: "white",
+                  fontSize: "24px",
+                  fontWeight: 800,
+                  padding: "20px 64px",
+                  cursor: "pointer",
+                }}
+              >
+                Return
+              </button>
+
+              <button
+                type="button"
+                onClick={onCancel}
+                style={{
+                  border: "none",
+                  borderRadius: "24px",
+                  background: "#006b67",
+                  color: "white",
+                  fontSize: "24px",
+                  fontWeight: 800,
+                  padding: "20px 64px",
+                  cursor: "pointer",
+                }}
+              >
+                Continue
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {/* Custom header bar matching the exam design */}
       <div style={headerCardStyle}>
         <div
@@ -4496,7 +4615,14 @@ function MockTestPage({
             >
               {formatTime(timeLeft)}
             </span>
-            <button type="button" onClick={onCancel} style={headerButtonStyle}>
+            <button
+              type="button"
+              onClick={() => {
+                setIsPaused(true);
+                setShowPauseModal(true);
+              }}
+              style={headerButtonStyle}
+            >
               Pause Test
             </button>
             <button type="button" onClick={handleHeaderNext} style={headerButtonStyle}>
@@ -5015,6 +5141,15 @@ function MockTestPage({
                 flexDirection: "column",
               }}
             >
+
+              <div style={{ marginBottom: "10px" }}>
+                <button type="button" style={toolbarButtonStyle}>Cut</button>
+                <button type="button" style={toolbarButtonStyle}>Paste</button>
+                <button type="button" style={toolbarButtonStyle}>Undo</button>
+                <button type="button" style={toolbarButtonStyle}>Redo</button>
+              </div>
+
+
               <textarea
                 value={emailAnswer}
                 onChange={(event) => setEmailAnswer(event.target.value)}
@@ -5125,6 +5260,14 @@ function MockTestPage({
                 flexDirection: "column",
               }}
             >
+
+              <div style={{ marginBottom: "10px" }}>
+                <button type="button" style={toolbarButtonStyle}>Cut</button>
+                <button type="button" style={toolbarButtonStyle}>Paste</button>
+                <button type="button" style={toolbarButtonStyle}>Undo</button>
+                <button type="button" style={toolbarButtonStyle}>Redo</button>
+              </div>
+
               <textarea
                 value={discussionAnswer}
                 onChange={(event) => setDiscussionAnswer(event.target.value)}
