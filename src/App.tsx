@@ -546,7 +546,11 @@ function normalizeQuestions(apiQuestions: Question[]) {
 
     const fallback = fallbackQuestions[index % fallbackQuestions.length];
     const finalParts = validParts.length > 0 ? validParts : fallback.parts;
-    const finalPartsWithPunctuation = finalParts.flatMap(splitPunctuationFromPart);  
+    const splitParts = finalParts.flatMap(splitPunctuationFromPart);  
+    const finalPartsWithPunctuation = addPunctuationFromTarget(
+      splitParts,
+      question.target || fallback.target
+    );
 
     return {
       id: index + 1,
@@ -782,6 +786,51 @@ function splitPunctuationFromPart(part: Part): Part[] {
   ];
 }
 
+function addPunctuationFromTarget(parts: Part[], target: string): Part[] {
+  if (!target) return parts;
+
+  const result: Part[] = [];
+  let cursor = 0;
+
+  parts.forEach((part) => {
+    result.push(part);
+
+    const text =
+      part.type === "fixed"
+        ? part.text
+        : part.answer;
+
+    const index = target
+      .toLowerCase()
+      .indexOf(text.toLowerCase(), cursor);
+
+    if (index === -1) return;
+
+    cursor = index + text.length;
+
+    const punctuationMatch = target.slice(cursor).match(/^\s*([.,!?;:，。！？；：]+)/);
+
+    if (punctuationMatch) {
+      const last = result[result.length - 1];
+
+      if (
+        !(
+          last?.type === "fixed" &&
+          /^[.,!?;:，。！？；：]+$/.test(last.text)
+        )
+      ) {
+        result.push({
+          type: "fixed",
+          text: punctuationMatch[1],
+        });
+      }
+
+      cursor += punctuationMatch[0].length;
+    }
+  });
+
+  return result;
+}
 
 function buildFullAnswerFromSlots(question: Question, slots: (Chunk | null)[]) {
   let blankIndex = 0;
