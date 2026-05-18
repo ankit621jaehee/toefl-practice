@@ -2362,7 +2362,7 @@ async function submitMockTestWithAPI({
         minHeight: "100vh",
         background: page === "mock" ? "white" : "#f8fafc",
         // Remove outer padding on the sentence practice page as well as the mock page
-        padding: page === "mock" || page === "sentence" ? "0" : "60px",
+        padding: page === "mock" || page === "sentence" ? "0" : "40px 16px",
         fontFamily:
         '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
         overflow: page === "mock" ? "hidden" : "auto",
@@ -2376,7 +2376,7 @@ async function submitMockTestWithAPI({
           // Use full width for all pages except mock (which uses 100vw to avoid scrollbars)
           width: page === "mock" ? "100vw" : "100%",
           // Remove max width constraint when on the sentence or mock pages
-          maxWidth: page === "mock" || page === "sentence" ? "none" : "980px",
+          maxWidth: page === "mock" || page === "sentence" ? "none" : "1200px",
           minHeight: page === "mock" ? "100vh" : "auto",
           // Remove horizontal margins for sentence and mock pages
           margin: page === "mock" || page === "sentence" ? "0" : "0 auto",
