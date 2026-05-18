@@ -4698,7 +4698,6 @@ function MockTestPage({
   discussionAnswer,
   setDiscussionAnswer,
   isSubmitting,
-  message,
   onSubmit,
   onCancel,
 }: {
@@ -5847,23 +5846,21 @@ function MockTestPage({
       )}
 
       {mockPart === "discussion" && (
-        <section style={cardStyle}> 
+        <section style={cardStyle}>
           <h2 style={{ margin: "0 0 10px 0" }}>Part 3 Academic Discussion</h2>
 
-          <div
-            style={{
-            display: "flex",
-            flexWrap: "nowrap",
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)",
             gap: "20px",
             height: "calc(100% - 44px)",
             overflow: "hidden",
           }}
         >
-          {/* 左侧：教授和学生帖子 */}
+          {/* 左侧：任务说明 + 教授 + 问题 */}
           <div
             style={{
-              flex: "1 1 48%",
-              minWidth: "0",
               height: "100%",
               overflow: "auto",
               paddingRight: "6px",
@@ -5900,18 +5897,62 @@ function MockTestPage({
                   border: "1px solid #e2e8f0",
                 }}
               >
-                <strong>{data.discussionPrompt.professorName || "Professor"}</strong>
+                <strong>
+                  {data.discussionPrompt.professorName || "Professor"}
+                </strong>
                 <p style={{ marginBottom: 0 }}>
                   {data.discussionPrompt.professor}
                 </p>
               </div>
-    
+
+              <div
+                style={{
+                  padding: "14px 16px",
+                  borderRadius: "14px",
+                  background: "#eef2ff",
+                  color: "#312e81",
+                  border: "1px solid #c7d2fe",
+                }}
+              >
+                <strong>Question</strong>
+                <p style={{ marginBottom: "8px" }}>
+                  {data.discussionPrompt.question}
+                </p>
+                <p style={{ marginBottom: 0 }}>
+                  {data.discussionPrompt.suggestedLength}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* 右侧：上方学生观点 + 下方写作区 */}
+          <div
+            style={{
+              height: "100%",
+              display: "grid",
+              gridTemplateRows: "220px minmax(0, 1fr)",
+              gap: "12px",
+              overflow: "hidden",
+              boxSizing: "border-box",
+            }}
+          >
+            {/* 右上：两个学生观点 */}
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: "12px",
+                height: "220px",
+                overflow: "auto",
+              }}
+            >
               <div
                 style={{
                   padding: "14px 16px",
                   borderRadius: "14px",
                   background: "#f8fafc",
                   border: "1px solid #e2e8f0",
+                  lineHeight: 1.6,
                 }}
               >
                 <strong>{data.discussionPrompt.studentOneName}</strong>
@@ -5919,12 +5960,14 @@ function MockTestPage({
                   {data.discussionPrompt.studentOnePost}
                 </p>
               </div>
+
               <div
                 style={{
                   padding: "14px 16px",
                   borderRadius: "14px",
                   background: "#f8fafc",
                   border: "1px solid #e2e8f0",
+                  lineHeight: 1.6,
                 }}
               >
                 <strong>{data.discussionPrompt.studentTwoName}</strong>
@@ -5932,31 +5975,12 @@ function MockTestPage({
                   {data.discussionPrompt.studentTwoPost}
                 </p>
               </div>
-              <div
-                style={{
-                  padding: "14px 16px",
-                  borderRadius: "14px",
-                  background: "#eef2ff",
-                  color: "#312e81",
-                }}
-              >
-                <strong>Question</strong>
-                <p style={{ marginBottom: "8px" }}>
-                  {data.discussionPrompt.question}
-                </p>
-                  <p style={{ marginBottom: 0 }}>
-                    {data.discussionPrompt.suggestedLength}
-                  </p>
-                </div>
-              </div>
             </div>
-            {/* 右侧：写作区 */}
 
+            {/* 右下：写作区 */}
             <div
               style={{
-                flex: "1 1 52%",
-                minWidth: "0",
-                height: "100%",
+               minHeight: 0,
                 display: "flex",
                 flexDirection: "column",
                 overflow: "hidden",
@@ -5984,6 +6008,7 @@ function MockTestPage({
                   Redo
                 </button>
               </div>
+
               <textarea
                 value={discussionAnswer}
                 onChange={(event) => setDiscussionAnswer(event.target.value)}
@@ -6002,6 +6027,7 @@ function MockTestPage({
                   overflow: "auto",
                 }}
               />
+
               <div
                 style={{
                   display: "flex",
@@ -6021,37 +6047,26 @@ function MockTestPage({
                 >
                   Word Count: {discussionWordCount}
                 </p>
+
                 <button
                   type="button"
-                  onClick={handleManualSubmit}
+                  onClick={onSubmit}
                   disabled={isSubmitting}
                   style={{
                     ...primaryButtonStyle,
-                    background: isSubmitting ? "#cbd5e1" : "#111827",
-                    cursor: isSubmitting ? "not-allowed" : "pointer",
+                  background: isSubmitting ? "#cbd5e1" : "#111827",
                     padding: "10px 18px",
+                    cursor: isSubmitting ? "not-allowed" : "pointer",
                   }}
                 >
-                  {isSubmitting ? "Submitting..." : "Submit Mock Test"}
+                  {isSubmitting ? "Submitting..." : "Submit Test"}
                 </button>
               </div>
-              {message && (
-                <p
-                  style={{
-                    color: "#be123c",
-                    fontWeight: 700,
-                    marginTop: "8px",
-                    marginBottom: 0,
-                    flexShrink: 0,
-                  }}
-                >
-                  {message}
-                </p>
-              )}
             </div>
           </div>
-        </section>
-      )}
+        </div>
+      </section>
+    )}
     </>
   );
 }
