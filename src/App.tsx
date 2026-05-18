@@ -2373,32 +2373,20 @@ async function submitMockTestWithAPI({
           // Expand the sentence practice pages to full width without side margins.
           // When the user is on the "mock" or "sentence" pages, make the container span
           // the entire viewport. Otherwise fall back to a centered, fixed-width layout.
-          width:
-            page === "mock" || page === "sentence"
-              ? "100vw"
-              : "100%",
-          maxWidth:
-            page === "mock" || page === "sentence"
-              ? "none"
-              : "980px",
+          // Use full width for all pages except mock (which uses 100vw to avoid scrollbars)
+          width: page === "mock" ? "100vw" : "100%",
+          // Remove max width constraint when on the sentence or mock pages
+          maxWidth: page === "mock" || page === "sentence" ? "none" : "980px",
           minHeight: page === "mock" ? "100vh" : "auto",
-          margin:
-            page === "mock" || page === "sentence"
-              ? "0"
-              : "0 auto",
+          // Remove horizontal margins for sentence and mock pages
+          margin: page === "mock" || page === "sentence" ? "0" : "0 auto",
           background: "white",
-          padding:
-            page === "mock" || page === "sentence"
-              ? "0"
-              : "40px",
-          borderRadius:
-            page === "mock" || page === "sentence"
-              ? "0"
-              : "24px",
-          boxShadow:
-            page === "mock" || page === "sentence"
-              ? "none"
-              : "0 10px 30px rgba(15, 23, 42, 0.08)",
+          // Remove internal padding for sentence and mock pages so content touches the edges
+          padding: page === "mock" || page === "sentence" ? "0" : "40px",
+          // Remove rounding for sentence and mock pages to allow full-width layouts
+          borderRadius: page === "mock" || page === "sentence" ? "0" : "24px",
+          // Remove box shadow for full-width pages
+          boxShadow: page === "mock" || page === "sentence" ? "none" : "0 10px 30px rgba(15, 23, 42, 0.08)",
           }}
           >
         {page !== "mock" && (
