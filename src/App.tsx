@@ -2399,8 +2399,7 @@ async function submitMockTestWithAPI({
         {page === "home" && (
           <>
             <p style={{ color: "#64748b", marginBottom: "30px" }}>
-              选择练习板块。现在可以练 Build a Sentence、Email Writing 和
-              Academic Discussion。
+              练习新TOEFL写作版块。
             </p>
 
 
@@ -5241,10 +5240,6 @@ function MockTestPage({
 
           <p style={{ color: "#64748b", lineHeight: 1.7 }}>
 
-            A/B 对话补全。把词块拖到 B 句横线上，或点击词块自动填入第一个空格。
-
-            共 10 题，每题 0.5 分，错一空即为 0。本部分限时 6 分钟。
-
           </p>
 
           <div
@@ -7232,7 +7227,7 @@ function AnnouncementBoard() {
         <div>
           <h2 style={{ margin: 0 }}>Announcements</h2>
           <p style={{ color: "#64748b", marginBottom: 0 }}>
-            最新活动、优惠兑换码和功能更新会放在这里。
+            最新活动、优惠兑换码和功能更新
           </p>
         </div>
 
