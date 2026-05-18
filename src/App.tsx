@@ -2362,7 +2362,7 @@ async function submitMockTestWithAPI({
         minHeight: "100vh",
         background: page === "mock" ? "white" : "#f8fafc",
         // Remove outer padding on the sentence practice page as well as the mock page
-        padding: page === "mock" || page === "sentence" ? "0" : "40px 16px",
+        padding: page === "mock" || page === "sentence" ? "0" : "40px 0",
         fontFamily:
         '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
         overflow: page === "mock" ? "hidden" : "auto",
@@ -2375,18 +2375,13 @@ async function submitMockTestWithAPI({
           // the entire viewport. Otherwise fall back to a centered, fixed-width layout.
           // Use full width for all pages except mock (which uses 100vw to avoid scrollbars)
           width: page === "mock" ? "100vw" : "100%",
-          // Remove max width constraint when on the sentence or mock pages
-          maxWidth: page === "mock" || page === "sentence" ? "none" : "1200px",
+          maxWidth: "none",
           minHeight: page === "mock" ? "100vh" : "auto",
-          // Remove horizontal margins for sentence and mock pages
-          margin: page === "mock" || page === "sentence" ? "0" : "0 auto",
+          margin: "0",
           background: "white",
-          // Remove internal padding for sentence and mock pages so content touches the edges
-          padding: page === "mock" || page === "sentence" ? "0" : "40px",
-          // Remove rounding for sentence and mock pages to allow full-width layouts
-          borderRadius: page === "mock" || page === "sentence" ? "0" : "24px",
-          // Remove box shadow for full-width pages
-          boxShadow: page === "mock" || page === "sentence" ? "none" : "0 10px 30px rgba(15, 23, 42, 0.08)",
+          padding: page === "mock" || page === "sentence" ? "0" : "40px 60px",
+          borderRadius: page === "mock" || page === "sentence" ? "0" : "0",
+          boxShadow: "none",
           }}
           >
         {page !== "mock" && (
