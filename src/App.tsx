@@ -1838,21 +1838,6 @@ async function submitMockTestWithAPI({
     );
   }, [bankOrders, currentQuestion.id, currentSlots]);
 
-  // When reducing over the results object to compute the total score,
-  // provide explicit number types for `sum` and `score` so that
-  // TypeScript does not infer `any` for these parameters.  Without
-  // annotations, strict compilation settings will report an
-  // implicit-any error.  The reduction itself simply adds two
-  // numbers together.
-  // Cast `Object.values(results)` to `number[]` so that TypeScript knows we are reducing an array of numbers.
-  const totalScore = (Object.values(results) as number[]).reduce(
-    (sum: number, score: number) => sum + score,
-    0
-  );
-
-  const completedCount = questions.filter((question: Question) =>
-    isQuestionComplete(slotsByQuestion[question.id] || [])
-  ).length;
 
   const currentQuestionScore = results[currentQuestion.id];
   const currentQuestionCorrect = isSubmitted && currentQuestionScore === 0.5;
@@ -2447,8 +2432,6 @@ async function submitMockTestWithAPI({
             currentAnswers={currentAnswers}
             currentQuestion={currentQuestion}
             currentBank={currentBank}
-            completedCount={completedCount}
-            totalScore={totalScore}
             isSubmitted={isSubmitted}
             results={results}
             dragged={dragged}
@@ -2943,8 +2926,6 @@ function SentencePractice({
   currentAnswers,
   currentQuestion,
   currentBank,
-  completedCount,
-  totalScore,
   isSubmitted,
   results,
   dragged,
@@ -2970,8 +2951,6 @@ function SentencePractice({
   currentAnswers: string[];
   currentQuestion: Question;
   currentBank: Chunk[];
-  completedCount: number;
-  totalScore: number;
   isSubmitted: boolean;
   results: Record<number, number>;
   dragged: Chunk | null;
@@ -2990,21 +2969,7 @@ function SentencePractice({
   /** Number of seconds elapsed since the practice started. */
   elapsedSeconds: number;
 }) {
-  // Dark header and card styles to match the ETS practice UI.  These are
-  // analogous to the styles used in the full mock test page for consistency.
-  const headerCardStyle = {
-    background: "#075985",
-    color: "white",
-    borderRadius: "20px",
-    padding: "20px",
-    marginBottom: "24px",
-    position: "sticky" as const,
-    top: "12px",
-    zIndex: 20,
-  };
-  // Button style for actions in the header (e.g. Next/Submit).  Semi-transparent
-  // background echoes the mock test design.  Disabled states will use the
-  // default cursor styling from button state.
+
   const headerButtonStyle = {
     padding: "8px 16px",
     borderRadius: "8px",
@@ -3017,16 +2982,7 @@ function SentencePractice({
     alignItems: "center",
     justifyContent: "center",
   };
-  // Card style for the main practice content.  It matches the look of the
-  // ETS practice with soft borders and a subtle drop shadow.
-  const cardStyle = {
-    background: "white",
-    border: "1px solid #e2e8f0",
-    borderRadius: "20px",
-    padding: "24px",
-    marginBottom: "24px",
-    boxShadow: "0 10px 30px rgba(15, 23, 42, 0.06)",
-  };
+
   return (
     <>
       <button
@@ -3440,26 +3396,8 @@ function WritingPracticePage({
     top: "12px",
     zIndex: 20,
   };
-  const headerButtonStyle = {
-    padding: "8px 16px",
-    borderRadius: "8px",
-    background: "rgba(255, 255, 255, 0.2)",
-    color: "white",
-    fontWeight: 700,
-    border: "none",
-    cursor: "pointer",
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-  };
-  const cardStyle = {
-    background: "white",
-    border: "1px solid #e2e8f0",
-    borderRadius: "20px",
-    padding: "24px",
-    marginBottom: "24px",
-    boxShadow: "0 10px 30px rgba(15, 23, 42, 0.06)",
-  };
+
+
   return (
     <>
       <div
