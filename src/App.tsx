@@ -1836,15 +1836,18 @@ async function handleSubmitMockTest() {
       discussionAnswer: mockDiscussionAnswer,
     });
 
-    setMockResult(result);
-    await saveQuestionAttempt(result);
+    const roundedFinalScore = Math.round(Number(result.finalScore) * 2) / 2;
+    const roundedResult = {
+      ...result,
+      finalScore: roundedFinalScore,
+    };
+    setMockResult(roundedResult);
+    await saveQuestionAttempt(roundedResult);
     await loadQuestionAttempts();
-    // Record the practice session duration and final score now that the
-    // submission has completed.  The mockStartTime is set when the user
-    // begins the mock; we compute the total seconds spent and then reset it.
+
     if (mockStartTime !== null) {
       const duration = Math.floor((Date.now() - mockStartTime) / 1000);
-      addPracticeSession('mock', duration, result.finalScore);
+      addPracticeSession('mock', duration, roundedFinalScore);
       setMockStartTime(null);
     }
     // Do not update points here based on the backend balance because the
@@ -5956,7 +5959,7 @@ function MockResultPage({
             margin: "14px 0",
           }}
         >
-          {result.finalScore.toFixed(1)} / 6.0
+          {Number(result.finalScore).toFixed(1)} / 6.0
         </p>
 
         <p style={{ color: "#64748b", lineHeight: 1.8 }}>
