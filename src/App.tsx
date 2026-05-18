@@ -123,6 +123,8 @@ type EmailPrompt = {
 
 type DiscussionPrompt = {
   title: string;
+  instruction?: string;
+  professorName?: string;
   professor: string;
   studentOneName: string;
   studentOnePost: string;
@@ -130,6 +132,7 @@ type DiscussionPrompt = {
   studentTwoPost: string;
   question: string;
   suggestedLength: string;
+  knowledgeCategory?: string;
 };
 
 type WritingFeedback = {
@@ -2677,6 +2680,17 @@ async function submitMockTestWithAPI({
             onGenerateNew={generateNewDiscussionPrompt}
             promptBlock={
               <>
+                  {currentDiscussionPrompt.instruction && (
+                    <div
+                      style={{
+                        marginBottom: "18px",
+                        lineHeight: 1.8,
+                        whiteSpace: "pre-line",
+                      }}
+                    >
+                      {currentDiscussionPrompt.instruction}
+                    </div>
+                  )}
                 <div
                   style={{
                     padding: "22px",
@@ -2686,7 +2700,7 @@ async function submitMockTestWithAPI({
                     lineHeight: 1.8,
                   }}
                 >
-                  <strong>Professor</strong>
+                  <strong>{currentDiscussionPrompt.professorName || "Professor"}</strong>
                   <p style={{ marginBottom: 0 }}>
                     {currentDiscussionPrompt.professor}
                   </p>
@@ -5787,6 +5801,20 @@ function MockTestPage({
             {/* Left column: professor and student posts, question */}
             <div style={{ flex: "1 1 40%", minWidth: "260px" }}>
               <div style={{ display: "grid", gap: "14px", lineHeight: 1.8 }}>
+                {data.discussionPrompt.instruction && (
+                  <div
+                    style={{
+                      padding: "16px",
+                      borderRadius: "14px",
+                      background: "#ffffff",
+                      border: "1px solid #e2e8f0",
+                      whiteSpace: "pre-line",
+                      lineHeight: 1.8,
+                    }}
+                  >
+                    {data.discussionPrompt.instruction}
+                  </div>
+                )}
                 <div
                   style={{
                     padding: "16px",
@@ -5795,7 +5823,7 @@ function MockTestPage({
                     border: "1px solid #e2e8f0",
                   }}
                 >
-                  <strong>Professor</strong>
+                  <strong>{data.discussionPrompt.professorName || "Professor"}</strong>
                   <p style={{ marginBottom: 0 }}>{data.discussionPrompt.professor}</p>
                 </div>
                 <div
