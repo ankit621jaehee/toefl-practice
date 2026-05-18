@@ -2361,7 +2361,8 @@ async function submitMockTestWithAPI({
       style={{
         minHeight: "100vh",
         background: page === "mock" ? "white" : "#f8fafc",
-        padding: page === "mock" ? "0" : "60px",
+        // Remove outer padding on the sentence practice page as well as the mock page
+        padding: page === "mock" || page === "sentence" ? "0" : "60px",
         fontFamily:
         '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
         overflow: page === "mock" ? "hidden" : "auto",
@@ -3246,7 +3247,7 @@ function SentencePractice({
         </button>
       </div>
 
-      <div style={{ display: "flex", gap: "8px", marginBottom: "28px" }}>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", marginBottom: "28px" }}>
         {questions.map((question, index) => {
           const slots = slotsByQuestion[question.id] || [];
           const complete = isQuestionComplete(slots);
@@ -5310,7 +5311,7 @@ function MockTestPage({
 
           </div>
 
-          <div style={{ display: "flex", gap: "8px", marginBottom: "28px" }}>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", marginBottom: "28px" }}>
 
             {data.sentenceQuestions.map((question: MockSentenceQuestion, index: number) => {
 
