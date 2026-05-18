@@ -2360,32 +2360,33 @@ async function submitMockTestWithAPI({
     <div
       style={{
         minHeight: "100vh",
-        background: "#f8fafc",
-        // Reduce outer padding on the exam page so the content takes up more horizontal space
-        padding: page === "mock" ? "12px" : "60px",
+        background: page === "mock" ? "white" : "#f8fafc",
+        padding: page === "mock" ? "0" : "60px",
         fontFamily:
-          '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+        '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+        overflow: page === "mock" ? "hidden" : "auto",
       }}
     >
       <div
         style={{
-          // Widen the main container for the full mock test so content fills more of the viewport
-          maxWidth: page === "mock" ? "1440px" : "980px",
-          margin: "0 auto",
+          width: page === "mock" ? "100vw" : "100%",
+          maxWidth: page === "mock" ? "none" : "980px",
+          minHeight: page === "mock" ? "100vh" : "auto",
+          margin: page === "mock" ? "0" : "0 auto",
           background: "white",
-          // Reduce padding when taking the mock so more of the exam content is visible without scrolling
-          padding: page === "mock" ? "16px" : "40px",
-          // Use a smaller radius on the exam page and remove the drop shadow to better match the provided design
-          borderRadius: page === "mock" ? "12px" : "24px",
+          padding: page === "mock" ? "0" : "40px",
+          borderRadius: page === "mock" ? "0" : "24px",
           boxShadow:
             page === "mock"
-              ? "none"
-              : "0 10px 30px rgba(15, 23, 42, 0.08)",
-        }}
-      >
-        <h1 style={{ fontSize: "36px", marginBottom: "10px" }}>
-          TOEFL Practice Lab
-        </h1>
+            ? "none"
+            : "0 10px 30px rgba(15, 23, 42, 0.08)",
+          }}
+          >
+        {page !== "mock" && (
+          <h1 style={{ fontSize: "36px", marginBottom: "10px" }}>
+            TOEFL Practice Lab
+          </h1>
+        )}
 
         {page === "home" && (
           <>
@@ -4738,19 +4739,14 @@ function MockTestPage({
 }) {
 
   const cardStyle = {
-
     background: "white",
-
-    border: "1px solid #e2e8f0",
-
-    borderRadius: "20px",
-
-    padding: "24px",
-
-    marginBottom: "24px",
-
-    boxShadow: "0 10px 30px rgba(15, 23, 42, 0.06)",
-
+    border: "none",
+    borderRadius: "0",
+    padding: "18px 28px",
+    marginBottom: "0",
+    boxShadow: "none",
+    minHeight: "calc(100vh - 104px)",
+    boxSizing: "border-box" as const,
   };
 
   const primaryButtonStyle = {
@@ -4801,12 +4797,13 @@ function MockTestPage({
   const headerCardStyle = {
     background: "#075985",
     color: "white",
-    borderRadius: "20px",
-    padding: "20px",
-    marginBottom: "24px",
+    borderRadius: "0",
+    padding: "12px 28px",
+    marginBottom: "0",
     position: "sticky" as const,
-    top: "12px",
+    top: 0,
     zIndex: 20,
+    boxSizing: "border-box" as const,
   };
 
   const headerButtonStyle = {
@@ -5696,56 +5693,95 @@ function MockTestPage({
 
       {mockPart === "email" && (
         <section style={cardStyle}>
-          <h2 style={{ marginTop: 0 }}>Part 2 Email Writing</h2>
+          <h2 style={{ margin: "0 0 10px 0" }}>Part 2 Email Writing</h2>
+
           <div
             style={{
               display: "flex",
-              flexWrap: "wrap",
-              gap: "32px",
+              flexWrap: "nowrap",
+              gap: "20px",
+              height: "calc(100% - 44px)",
+              overflow: "hidden",
             }}
           >
-            {/* Left column: prompt and instructions */}
-            <div style={{ flex: "1 1 40%", minWidth: "260px" }}>
-              <p style={{ color: "#64748b", lineHeight: 1.8 }}>
+            {/* 左侧：题目区 */}
+            <div
+              style={{
+                flex: "1 1 48%",
+                minWidth: "0",
+                height: "100%",
+                overflow: "auto",
+                paddingRight: "6px",
+                boxSizing: "border-box",
+              }}
+            >
+              <p
+                style={{
+                  color: "#475569",
+                  lineHeight: 1.65,
+                  marginTop: 0,
+                  marginBottom: "14px",
+                }}
+              >
                 {data.emailPrompt.scenario}
               </p>
+
               <div
                 style={{
-                  padding: "16px",
+                  padding: "14px 16px",
                   borderRadius: "14px",
                   background: "#f8fafc",
                   border: "1px solid #e2e8f0",
-                  marginBottom: "16px",
+                  lineHeight: 1.65,
                 }}
               >
                 <strong>{data.emailPrompt.task}</strong>
-                <ul style={{ lineHeight: 1.8 }}>
+
+                <ul style={{ lineHeight: 1.65, marginTop: "10px", marginBottom: "10px" }}>
                   {data.emailPrompt.requirements.map((item) => (
                     <li key={item}>{item}</li>
                   ))}
                 </ul>
+
                 <p style={{ color: "#64748b", marginBottom: 0 }}>
                   {data.emailPrompt.suggestedLength}
                 </p>
               </div>
             </div>
-            {/* Right column: writing area */}
+
+            {/* 右侧：写作区 */}
             <div
               style={{
-                flex: "1 1 55%",
-                minWidth: "280px",
+                flex: "1 1 52%",
+                minWidth: "0",
+                height: "100%",
                 display: "flex",
                 flexDirection: "column",
+                overflow: "hidden",
+                boxSizing: "border-box",
               }}
             >
-
-              <div style={{ marginBottom: "10px" }}>
-                <button type="button" style={toolbarButtonStyle}>Cut</button>
-                <button type="button" style={toolbarButtonStyle}>Paste</button>
-                <button type="button" style={toolbarButtonStyle}>Undo</button>
-                <button type="button" style={toolbarButtonStyle}>Redo</button>
+              <div
+                style={{
+                  display: "flex",
+                  gap: "8px",
+                  marginBottom: "8px",
+                  flexShrink: 0,
+                }}
+              >
+                <button type="button" style={toolbarButtonStyle}>
+                  Cut
+                </button>
+                <button type="button" style={toolbarButtonStyle}>
+                  Paste
+                </button>
+                <button type="button" style={toolbarButtonStyle}>
+                  Undo
+                </button>
+                <button type="button" style={toolbarButtonStyle}>
+                  Redo
+                </button>
               </div>
-
 
               <textarea
                 value={emailAnswer}
@@ -5753,181 +5789,264 @@ function MockTestPage({
                 placeholder="Write your email here..."
                 style={{
                   width: "100%",
-                  minHeight: "240px",
-                  padding: "16px",
-                  borderRadius: "16px",
+                  flex: 1,
+                  minHeight: 0,
+                  padding: "14px",
+                  borderRadius: "14px",
                   border: "1px solid #cbd5e1",
                   fontSize: "15px",
-                  lineHeight: 1.7,
+                  lineHeight: 1.6,
                   boxSizing: "border-box",
+                  resize: "none",
+                  overflow: "auto",
                 }}
               />
-              <p
+
+              <div
                 style={{
-                  color: "#64748b",
-                  fontWeight: 700,
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  gap: "12px",
                   marginTop: "8px",
+                  flexShrink: 0,
                 }}
               >
-                Word Count: {emailWordCount}
-              </p>
-              <button
-                type="button"
-                onClick={goToDiscussionPart}
-                style={{
-                  ...primaryButtonStyle,
-                  background: "#111827",
-                  marginTop: "12px",
-                }}
-              >
-                Next: Academic Discussion
-              </button>
+                <p
+                  style={{
+                    color: "#64748b",
+                    fontWeight: 700,
+                    margin: 0,
+                  }}
+                >
+                  Word Count: {emailWordCount}
+                </p>
+
+                <button
+                  type="button"
+                  onClick={goToDiscussionPart}
+                  style={{
+                    ...primaryButtonStyle,
+                    background: "#111827",
+                    padding: "10px 18px",
+                  }}
+                >
+                  Next: Academic Discussion
+                </button>
+              </div>
             </div>
           </div>
         </section>
       )}
 
       {mockPart === "discussion" && (
-        <section style={cardStyle}>
-          <h2 style={{ marginTop: 0 }}>Part 3 Academic Discussion</h2>
-          {/* Wrap posts/prompts and writing area in two columns */}
+        <section style={cardStyle}> 
+          <h2 style={{ margin: "0 0 10px 0" }}>Part 3 Academic Discussion</h2>
+
           <div
             style={{
-              display: "flex",
-              flexWrap: "wrap",
-              gap: "32px",
+            display: "flex",
+            flexWrap: "nowrap",
+            gap: "20px",
+            height: "calc(100% - 44px)",
+            overflow: "hidden",
+          }}
+        >
+          {/* 左侧：教授和学生帖子 */}
+          <div
+            style={{
+              flex: "1 1 48%",
+              minWidth: "0",
+              height: "100%",
+              overflow: "auto",
+              paddingRight: "6px",
+              boxSizing: "border-box",
             }}
           >
-            {/* Left column: professor and student posts, question */}
-            <div style={{ flex: "1 1 40%", minWidth: "260px" }}>
-              <div style={{ display: "grid", gap: "14px", lineHeight: 1.8 }}>
-                {data.discussionPrompt.instruction && (
-                  <div
-                    style={{
-                      padding: "16px",
-                      borderRadius: "14px",
-                      background: "#ffffff",
-                      border: "1px solid #e2e8f0",
-                      whiteSpace: "pre-line",
-                      lineHeight: 1.8,
-                    }}
-                  >
-                    {data.discussionPrompt.instruction}
-                  </div>
-                )}
+            <div
+              style={{
+                display: "grid",
+                gap: "12px",
+                lineHeight: 1.6,
+              }}
+            >
+              {data.discussionPrompt.instruction && (
                 <div
                   style={{
-                    padding: "16px",
+                    padding: "14px 16px",
                     borderRadius: "14px",
-                    background: "#f8fafc",
+                    background: "#ffffff",
                     border: "1px solid #e2e8f0",
+                    whiteSpace: "pre-line",
+                    lineHeight: 1.6,
                   }}
                 >
-                  <strong>{data.discussionPrompt.professorName || "Professor"}</strong>
-                  <p style={{ marginBottom: 0 }}>{data.discussionPrompt.professor}</p>
+                  {data.discussionPrompt.instruction}
                 </div>
-                <div
-                  style={{
-                    padding: "16px",
-                    borderRadius: "14px",
-                    background: "#f8fafc",
-                    border: "1px solid #e2e8f0",
-                  }}
-                >
-                  <strong>{data.discussionPrompt.studentOneName}</strong>
-                  <p style={{ marginBottom: 0 }}>{data.discussionPrompt.studentOnePost}</p>
-                </div>
-                <div
-                  style={{
-                    padding: "16px",
-                    borderRadius: "14px",
-                    background: "#f8fafc",
-                    border: "1px solid #e2e8f0",
-                  }}
-                >
-                  <strong>{data.discussionPrompt.studentTwoName}</strong>
-                  <p style={{ marginBottom: 0 }}>{data.discussionPrompt.studentTwoPost}</p>
-                </div>
-                <div
-                  style={{
-                    padding: "16px",
-                    borderRadius: "14px",
-                    background: "#eef2ff",
-                    color: "#312e81",
-                  }}
-                >
-                  <strong>Question</strong>
-                  <p>{data.discussionPrompt.question}</p>
-                  <p style={{ marginBottom: 0 }}>{data.discussionPrompt.suggestedLength}</p>
+              )}
+
+              <div
+                style={{
+                  padding: "14px 16px",
+                  borderRadius: "14px",
+                  background: "#f8fafc",
+                  border: "1px solid #e2e8f0",
+                }}
+              >
+                <strong>{data.discussionPrompt.professorName || "Professor"}</strong>
+                <p style={{ marginBottom: 0 }}>
+                  {data.discussionPrompt.professor}
+                </p>
+              </div>
+    
+              <div
+                style={{
+                  padding: "14px 16px",
+                  borderRadius: "14px",
+                  background: "#f8fafc",
+                  border: "1px solid #e2e8f0",
+                }}
+              >
+                <strong>{data.discussionPrompt.studentOneName}</strong>
+                <p style={{ marginBottom: 0 }}>
+                  {data.discussionPrompt.studentOnePost}
+                </p>
+              </div>
+              <div
+                style={{
+                  padding: "14px 16px",
+                  borderRadius: "14px",
+                  background: "#f8fafc",
+                  border: "1px solid #e2e8f0",
+                }}
+              >
+                <strong>{data.discussionPrompt.studentTwoName}</strong>
+                <p style={{ marginBottom: 0 }}>
+                  {data.discussionPrompt.studentTwoPost}
+                </p>
+              </div>
+              <div
+                style={{
+                  padding: "14px 16px",
+                  borderRadius: "14px",
+                  background: "#eef2ff",
+                  color: "#312e81",
+                }}
+              >
+                <strong>Question</strong>
+                <p style={{ marginBottom: "8px" }}>
+                  {data.discussionPrompt.question}
+                </p>
+                  <p style={{ marginBottom: 0 }}>
+                    {data.discussionPrompt.suggestedLength}
+                  </p>
                 </div>
               </div>
             </div>
-            {/* Right column: textarea, word count, and submit button */}
+            {/* 右侧：写作区 */}
+
             <div
               style={{
-                flex: "1 1 55%",
-                minWidth: "280px",
+                flex: "1 1 52%",
+                minWidth: "0",
+                height: "100%",
                 display: "flex",
                 flexDirection: "column",
+                overflow: "hidden",
+                boxSizing: "border-box",
               }}
             >
-
-              <div style={{ marginBottom: "10px" }}>
-                <button type="button" style={toolbarButtonStyle}>Cut</button>
-                <button type="button" style={toolbarButtonStyle}>Paste</button>
-                <button type="button" style={toolbarButtonStyle}>Undo</button>
-                <button type="button" style={toolbarButtonStyle}>Redo</button>
+              <div
+                style={{
+                  display: "flex",
+                  gap: "8px",
+                  marginBottom: "8px",
+                  flexShrink: 0,
+                }}
+              >
+                <button type="button" style={toolbarButtonStyle}>
+                  Cut
+                </button>
+                <button type="button" style={toolbarButtonStyle}>
+                  Paste
+                </button>
+                <button type="button" style={toolbarButtonStyle}>
+                  Undo
+                </button>
+                <button type="button" style={toolbarButtonStyle}>
+                  Redo
+                </button>
               </div>
-
               <textarea
                 value={discussionAnswer}
                 onChange={(event) => setDiscussionAnswer(event.target.value)}
                 placeholder="Write your discussion response here..."
                 style={{
                   width: "100%",
-                  minHeight: "240px",
-                  padding: "16px",
-                  borderRadius: "16px",
+                  flex: 1,
+                  minHeight: 0,
+                  padding: "14px",
+                  borderRadius: "14px",
                   border: "1px solid #cbd5e1",
                   fontSize: "15px",
-                  lineHeight: 1.7,
+                  lineHeight: 1.6,
                   boxSizing: "border-box",
+                  resize: "none",
+                  overflow: "auto",
                 }}
               />
-              <p
+              <div
                 style={{
-                  color: "#64748b",
-                  fontWeight: 700,
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  gap: "12px",
                   marginTop: "8px",
+                  flexShrink: 0,
                 }}
               >
-                Word Count: {discussionWordCount}
-              </p>
+                <p
+                  style={{
+                    color: "#64748b",
+                    fontWeight: 700,
+                    margin: 0,
+                  }}
+                >
+                  Word Count: {discussionWordCount}
+                </p>
+                <button
+                  type="button"
+                  onClick={handleManualSubmit}
+                  disabled={isSubmitting}
+                  style={{
+                    ...primaryButtonStyle,
+                    background: isSubmitting ? "#cbd5e1" : "#111827",
+                    cursor: isSubmitting ? "not-allowed" : "pointer",
+                    padding: "10px 18px",
+                  }}
+                >
+                  {isSubmitting ? "Submitting..." : "Submit Mock Test"}
+                </button>
+              </div>
               {message && (
-                <p style={{ color: "#be123c", fontWeight: 700 }}>{message}</p>
+                <p
+                  style={{
+                    color: "#be123c",
+                    fontWeight: 700,
+                    marginTop: "8px",
+                    marginBottom: 0,
+                    flexShrink: 0,
+                  }}
+                >
+                  {message}
+                </p>
               )}
-              <button
-                type="button"
-                onClick={handleManualSubmit}
-                disabled={isSubmitting}
-                style={{
-                  ...primaryButtonStyle,
-                  background: isSubmitting ? "#cbd5e1" : "#111827",
-                  cursor: isSubmitting ? "not-allowed" : "pointer",
-                  marginTop: "12px",
-                }}
-              >
-                {isSubmitting ? "正在评分并生成报告..." : "提交完整模考（-10 points）"}
-              </button>
             </div>
           </div>
         </section>
       )}
-
     </>
-
   );
-
 }
 
 
@@ -5943,13 +6062,15 @@ function MockResultPage({
 }) {
   const cardStyle = {
     background: "white",
-    border: "1px solid #e2e8f0",
-    borderRadius: "20px",
-    padding: "24px",
-    marginBottom: "24px",
-    boxShadow: "0 10px 30px rgba(15, 23, 42, 0.06)",
+    border: "none",
+    borderRadius: "0",
+    padding: "16px 28px",
+    marginBottom: "0",
+    boxShadow: "none",
+    height: "calc(100vh - 76px)",
+    boxSizing: "border-box" as const,
+    overflow: "hidden",
   };
-
   const secondaryButtonStyle = {
     padding: "12px 18px",
     border: "1px solid #cbd5e1",
@@ -6138,11 +6259,14 @@ function MockRecordsPage({
 }) {
   const cardStyle = {
     background: "white",
-    border: "1px solid #e2e8f0",
-    borderRadius: "20px",
-    padding: "24px",
-    marginBottom: "24px",
-    boxShadow: "0 10px 30px rgba(15, 23, 42, 0.06)",
+    border: "none",
+    borderRadius: "0",
+    padding: "16px 28px",
+    marginBottom: "0",
+    boxShadow: "none",
+    height: "calc(100vh - 76px)",
+    boxSizing: "border-box" as const,
+    overflow: "hidden",
   };
 
   return (
@@ -6245,11 +6369,14 @@ function MockRecordDetailPage({
 }) {
   const cardStyle = {
     background: "white",
-    border: "1px solid #e2e8f0",
-    borderRadius: "20px",
-    padding: "24px",
-    marginBottom: "24px",
-    boxShadow: "0 10px 30px rgba(15, 23, 42, 0.06)",
+    border: "none",
+    borderRadius: "0",
+    padding: "16px 28px",
+    marginBottom: "0",
+    boxShadow: "none",
+    height: "calc(100vh - 76px)",
+    boxSizing: "border-box" as const,
+    overflow: "hidden",
   };
 
 
