@@ -2359,27 +2359,31 @@ async function submitMockTestWithAPI({
   return (
     <div
       style={{
+        width: "100%",
         minHeight: "100vh",
-        background: page === "mock" ? "white" : "#f8fafc",
-        // Remove outer padding on the sentence practice page as well as the mock page
-        padding: page === "mock" || page === "sentence" ? "0" : "40px 60px",
+        background: "white",
+        padding: 0,
+        margin: 0,
         fontFamily:
-        '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-        overflow: page === "mock" ? "hidden" : "auto",
+          '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+        overflowX: "hidden",
+        overflowY: page === "mock" ? "hidden" : "auto",
+        boxSizing: "border-box",
       }}
     >
       <div
         style={{
-          width: page === "mock" ? "100vw" : "100%",
+          width: "100%",
           maxWidth: "none",
           minHeight: page === "mock" ? "100vh" : "auto",
-          margin: "0",
-          background: "transparent",
-          padding: "0",
-          borderRadius: "0",
+          margin: 0,
+          background: "white",
+          padding: 0,
+          borderRadius: 0,
           boxShadow: "none",
-          }}
-          >
+          boxSizing: "border-box",
+        }}
+      >
         {page !== "mock" && (
           <h1 style={{ fontSize: "36px", marginBottom: "10px" }}>
             TOEFL Practice Lab
