@@ -2469,21 +2469,6 @@ async function submitMockTestWithAPI({
         )}
 
         {page === "email" && (
-          <>
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "flex-end",
-                gap: "16px",
-                marginBottom: "16px",
-                padding: "16px 20px",
-                background: "#f1f5f9",
-                borderRadius: "16px",
-                fontWeight: 700,
-              }}
-            >
-              <span>耗时：{formatDuration(elapsedSeconds)}</span>
-            </div>
             <WritingPracticePage
               title={currentEmailPrompt.title}
               submitCost={EMAIL_SCORING_COST}
@@ -2535,26 +2520,11 @@ async function submitMockTestWithAPI({
               submitted={emailSubmitted}
               feedback={emailFeedback}
               setPage={setPage}
+              elapsedSeconds={elapsedSeconds}
             />
-          </>
         )}
 
         {page === "discussion" && (
-          <>
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "flex-end",
-                gap: "16px",
-                marginBottom: "16px",
-                padding: "16px 20px",
-                background: "#f1f5f9",
-                borderRadius: "16px",
-                fontWeight: 700,
-              }}
-            >
-              <span>耗时：{formatDuration(elapsedSeconds)}</span>
-            </div>
             <WritingPracticePage
             title={currentDiscussionPrompt.title}
             submitCost={DISCUSSION_SCORING_COST}
@@ -2646,8 +2616,8 @@ async function submitMockTestWithAPI({
             submitted={discussionSubmitted}
             feedback={discussionFeedback}
             setPage={setPage}
+            elapsedSeconds={elapsedSeconds}
             />
-          </>
         )}
 
         {page === "mock" && mockTestData && (
@@ -3020,6 +2990,43 @@ function SentencePractice({
   /** Number of seconds elapsed since the practice started. */
   elapsedSeconds: number;
 }) {
+  // Dark header and card styles to match the ETS practice UI.  These are
+  // analogous to the styles used in the full mock test page for consistency.
+  const headerCardStyle = {
+    background: "#075985",
+    color: "white",
+    borderRadius: "20px",
+    padding: "20px",
+    marginBottom: "24px",
+    position: "sticky" as const,
+    top: "12px",
+    zIndex: 20,
+  };
+  // Button style for actions in the header (e.g. Next/Submit).  Semi-transparent
+  // background echoes the mock test design.  Disabled states will use the
+  // default cursor styling from button state.
+  const headerButtonStyle = {
+    padding: "8px 16px",
+    borderRadius: "8px",
+    background: "rgba(255, 255, 255, 0.2)",
+    color: "white",
+    fontWeight: 700,
+    border: "none",
+    cursor: "pointer",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+  };
+  // Card style for the main practice content.  It matches the look of the
+  // ETS practice with soft borders and a subtle drop shadow.
+  const cardStyle = {
+    background: "white",
+    border: "1px solid #e2e8f0",
+    borderRadius: "20px",
+    padding: "24px",
+    marginBottom: "24px",
+    boxShadow: "0 10px 30px rgba(15, 23, 42, 0.06)",
+  };
   return (
     <>
       <button
@@ -3046,29 +3053,46 @@ function SentencePractice({
         style={{
           display: "flex",
           justifyContent: "space-between",
+          alignItems: "center",
           gap: "16px",
-          marginBottom: "30px",
-          padding: "16px 20px",
-          background: "#f1f5f9",
-          borderRadius: "16px",
-          fontWeight: 700,
+          marginBottom: "24px",
+          padding: "20px",
+          background: "#075985",
+          borderRadius: "20px",
+          color: "white",
           flexWrap: "wrap",
         }}
       >
-        <span>
-          Question {currentIndex + 1} / {questions.length}
+        <span style={{ fontWeight: 700 }}>
+          Question {currentIndex + 1} of {questions.length}
         </span>
-
-        <span>
-          已完成：{completedCount} / {questions.length}
+        <span
+          style={{
+            fontSize: "20px",
+            fontWeight: 700,
+            color: "white",
+          }}
+        >
+          {formatDuration(elapsedSeconds)}
         </span>
-
-        <span>
-          {isSubmitted
-            ? `总分：${totalScore} / ${questions.length * 0.5}`
-            : "尚未提交"}
-        </span>
-        <span>耗时：{formatDuration(elapsedSeconds)}</span>
+        <button
+          type="button"
+          onClick={() => {
+            if (currentIndex < questions.length - 1) {
+              nextQuestion();
+            } else {
+              submitAll();
+            }
+          }}
+          disabled={isSubmitted}
+          style={headerButtonStyle}
+        >
+          {currentIndex < questions.length - 1
+            ? "Next"
+            : isSubmitted
+            ? "Submitted"
+            : "Submit"}
+        </button>
       </div>
 
       <div style={{ display: "flex", gap: "8px", marginBottom: "28px" }}>
@@ -3381,6 +3405,7 @@ function WritingPracticePage({
   submitted,
   feedback,
   setPage,
+  elapsedSeconds,
 }: {
   title: string;
   submitCost: number;
@@ -3396,7 +3421,45 @@ function WritingPracticePage({
   submitted: boolean;
   feedback: WritingFeedback | null;
   setPage: (page: Page) => void;
+  /** Number of seconds elapsed since the practice started. */
+  elapsedSeconds: number;
 }) {
+  // Define styles for the dark header and card to match the ETS practice UI used
+  // in the sentence and mock test pages.  These constants are declared here so
+  // they can be referenced within the return markup below.  The header uses a
+  // dark blue background with white text, while the card uses a light
+  // background with a soft border and shadow.  If you later decide to wrap
+  // the content in a card, you can reuse the `cardStyle` constant.
+  const headerCardStyle = {
+    background: "#075985",
+    color: "white",
+    borderRadius: "20px",
+    padding: "20px",
+    marginBottom: "24px",
+    position: "sticky" as const,
+    top: "12px",
+    zIndex: 20,
+  };
+  const headerButtonStyle = {
+    padding: "8px 16px",
+    borderRadius: "8px",
+    background: "rgba(255, 255, 255, 0.2)",
+    color: "white",
+    fontWeight: 700,
+    border: "none",
+    cursor: "pointer",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+  };
+  const cardStyle = {
+    background: "white",
+    border: "1px solid #e2e8f0",
+    borderRadius: "20px",
+    padding: "24px",
+    marginBottom: "24px",
+    boxShadow: "0 10px 30px rgba(15, 23, 42, 0.06)",
+  };
   return (
     <>
       <div
@@ -3439,7 +3502,38 @@ function WritingPracticePage({
         </button>
       </div>
 
-      <h2 style={{ fontSize: "28px", marginBottom: "10px" }}>{title}</h2>
+      {/* Header showing the practice title and elapsed time */}
+      <div style={headerCardStyle}>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            gap: "16px",
+            flexWrap: "wrap",
+          }}
+        >
+          <div style={{ flex: 1, minWidth: "200px" }}>
+            <h2
+              style={{
+                margin: "0 0 4px 0",
+                color: "white",
+              }}
+            >
+              {title}
+            </h2>
+          </div>
+          <span
+            style={{
+              fontSize: "20px",
+              fontWeight: 700,
+              color: "white",
+            }}
+          >
+            {formatDuration(elapsedSeconds)}
+          </span>
+        </div>
+      </div>
 
       {isGenerating ? (
         <div
