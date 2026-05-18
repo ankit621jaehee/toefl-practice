@@ -2359,36 +2359,37 @@ async function submitMockTestWithAPI({
   return (
     <div
       style={{
+        width: "100%",
         minHeight: "100vh",
-        background: page === "mock" ? "white" : "#f8fafc",
-        // Remove outer padding on the sentence practice page as well as the mock page
-        padding: page === "mock" || page === "sentence" ? "0" : "60px",
+        background: "white",
+        padding: 0,
+        margin: 0,
         fontFamily:
-        '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-        overflow: page === "mock" ? "hidden" : "auto",
+          '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+        overflowX: "hidden",
+        overflowY: page === "mock" ? "hidden" : "auto",
+        boxSizing: "border-box",
       }}
     >
       <div
         style={{
-          // Expand the sentence practice pages to full width without side margins.
-          // When the user is on the "mock" or "sentence" pages, make the container span
-          // the entire viewport. Otherwise fall back to a centered, fixed-width layout.
-          // Use full width for all pages except mock (which uses 100vw to avoid scrollbars)
-          width: page === "mock" ? "100vw" : "100%",
-          // Remove max width constraint when on the sentence or mock pages
-          maxWidth: page === "mock" || page === "sentence" ? "none" : "980px",
+          width: "100%",
+          maxWidth:
+            page === "mock" || page === "sentence"
+              ? "1280px"
+              : "980px",
           minHeight: page === "mock" ? "100vh" : "auto",
-          // Remove horizontal margins for sentence and mock pages
-          margin: page === "mock" || page === "sentence" ? "0" : "0 auto",
+          margin: "0 auto",
           background: "white",
-          // Remove internal padding for sentence and mock pages so content touches the edges
-          padding: page === "mock" || page === "sentence" ? "0" : "40px",
-          // Remove rounding for sentence and mock pages to allow full-width layouts
-          borderRadius: page === "mock" || page === "sentence" ? "0" : "24px",
-          // Remove box shadow for full-width pages
-          boxShadow: page === "mock" || page === "sentence" ? "none" : "0 10px 30px rgba(15, 23, 42, 0.08)",
-          }}
-          >
+          padding:
+            page === "mock" || page === "sentence"
+              ? "0"
+              : "40px",
+          borderRadius: 0,
+          boxShadow: "none",
+          boxSizing: "border-box",
+        }}
+      >
         {page !== "mock" && (
           <h1 style={{ fontSize: "36px", marginBottom: "10px" }}>
             TOEFL Practice Lab
