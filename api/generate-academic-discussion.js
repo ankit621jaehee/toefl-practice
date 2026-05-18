@@ -57,6 +57,12 @@ Requirements:
 9. Make the topic different from common sample prompts when possible.
 10. Do not include markdown.
 
+Also include a hidden field called "knowledgeCategory".
+The value must be exactly one of:
+内容发展, 词汇表达, 语法句型, 连贯与组织, 任务完成.
+Choose the category based on the main skill tested by this academic discussion prompt.
+Do not show this field to the student. It should only appear in the JSON output.
+
 Return valid JSON only.
 
 Return this exact JSON structure:
@@ -69,6 +75,7 @@ Return this exact JSON structure:
   "studentTwoPost": "I disagree. College is already expensive and stressful, so students should focus on courses that directly help their future careers.",
   "question": "Do you think universities should require students to take courses outside their major? Why or why not?",
   "suggestedLength": "Recommended length: at least 100 words"
+  "knowledgeCategory": "内容发展"
 }
 `;
 

@@ -44,6 +44,12 @@ Requirements:
 Selected difficulty: ${level}
 Selected topic: ${topic}
 
+Also include a hidden field called "knowledgeCategory".
+The value must be exactly one of:
+内容完整性, 词汇表达, 语法结构, 连贯性, 礼貌格式.
+Choose the category based on the main skill tested by this email prompt.
+Do not show this field to the student. It should only appear in the JSON output.
+
 Return valid JSON only. No markdown.
 
 Return this exact JSON structure:
@@ -56,7 +62,8 @@ Return this exact JSON structure:
     "Explain why you were absent.",
     "Ask whether you can make up the presentation."
   ],
-  "suggestedLength": "Recommended length: 100–150 words"
+  "suggestedLength": "Recommended length: 100–150 words",
+  "knowledgeCategory": "礼貌格式"
 }
 `;
 

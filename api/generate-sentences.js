@@ -322,6 +322,31 @@ Rules:
 Selected difficulty: ${level}
 Selected topic: ${topic}
 
+For each question, also include a hidden field called "knowledgeCategory".
+
+The value of "knowledgeCategory" must be exactly one of:
+从句, 短语搭配, 连词使用, 句型结构, 时态一致.
+
+Choose the category based on the main grammar or expression point tested by the sentence.
+
+Do not show this field to the student. It should only appear in the JSON output.
+
+Each question must follow this JSON structure:
+{
+  "id": number,
+  "contextSpeaker": "A",
+  "contextSentence": string,
+  "answerSpeaker": "B",
+  "target": string,
+  "parts": [
+    { "type": "fixed", "text": string },
+    { "type": "blank", "answer": string }
+  ],
+  "chunks": string[],
+  "explanation": string,
+  "knowledgeCategory": "从句"
+}
+
 Return valid JSON only.
 
 Return this exact JSON structure:
@@ -336,7 +361,8 @@ Return this exact JSON structure:
       "contextSentence": "What was the highlight of your trip?",
       "answerSpeaker": "B",
       "target": "The tour guides who showed us around the old city were fantastic.",
-      "explanation": "A asks about the highlight of the trip. B answers with a noun phrase followed by a relative clause."
+      "explanation": "A asks about the highlight of the trip. B answers with a noun phrase followed by a relative clause.",
+      "knowledgeCategory": "从句"
     }
   ]
 }

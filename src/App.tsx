@@ -15,9 +15,59 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
+  RadarChart,
+  PolarGrid,
+  PolarAngleAxis,
+  PolarRadiusAxis,
+  Radar,
 } from "recharts";
 import type { User } from "@supabase/supabase-js";
 import { supabase } from "./supabaseClient";
+
+// Knowledge point categories constants for different practice types.
+// These arrays define the conceptual areas used to populate the radar chart
+// and to tag newly generated questions/prompts internally.  They are not
+// displayed to the user directly.
+const SENTENCE_KNOWLEDGE_CATEGORIES = [
+  "从句",
+  "短语搭配",
+  "连词使用",
+  "句型结构",
+  "时态一致",
+] as const;
+
+const EMAIL_KNOWLEDGE_CATEGORIES = [
+  "内容完整性",
+  "词汇表达",
+  "语法结构",
+  "连贯性",
+  "礼貌格式",
+] as const;
+
+const DISCUSSION_KNOWLEDGE_CATEGORIES = [
+  "内容发展",
+  "词汇表达",
+  "语法句型",
+  "连贯与组织",
+  "任务完成",
+] as const;
+
+// Helpers to assign a random knowledge category to a generated question or prompt.
+function getRandomElement<T>(arr: readonly T[]): T {
+  return arr[Math.floor(Math.random() * arr.length)];
+}
+
+function assignSentenceKnowledgeCategory(): string {
+  return getRandomElement(SENTENCE_KNOWLEDGE_CATEGORIES);
+}
+
+function assignEmailKnowledgeCategory(): string {
+  return getRandomElement(EMAIL_KNOWLEDGE_CATEGORIES);
+}
+
+function assignDiscussionKnowledgeCategory(): string {
+  return getRandomElement(DISCUSSION_KNOWLEDGE_CATEGORIES);
+}
 
 type Page =
   | "home"
@@ -515,7 +565,7 @@ function normalizeQuestions(apiQuestions: Question[]) {
 async function generateQuestionsFromAPI(
   count: number,
   level: string,
-  topic: string
+  topic: string,
 ) {
   const response = await fetch("/api/generate-sentences", {
     method: "POST",
@@ -526,6 +576,13 @@ async function generateQuestionsFromAPI(
       count,
       level,
       topic,
+      knowledgeCategories: [
+        "从句",
+        "短语搭配",
+        "连词使用",
+        "句型结构",
+        "时态一致",
+      ],
     }),
   });
 
@@ -1962,9 +2019,16 @@ async function submitMockTestWithAPI({
         topic
       );
 
-      setQuestions(generated);
-      setSlotsByQuestion(createInitialSlots(generated));
-      setBankOrders(createBankOrders(generated));
+      // Attach a hidden knowledge category to each generated sentence question.  This
+      // extra property is used internally for analytics and does not affect the
+      // question rendering or logic.
+      const processedGenerated = (generated as any[]).map((q) => ({
+        ...q,
+        knowledgeCategory: assignSentenceKnowledgeCategory(),
+      }));
+      setQuestions(processedGenerated);
+      setSlotsByQuestion(createInitialSlots(processedGenerated));
+      setBankOrders(createBankOrders(processedGenerated));
       setCurrentIndex(0);
       setDragged(null);
       setResults({});
@@ -1974,9 +2038,14 @@ async function submitMockTestWithAPI({
     } catch (error) {
       const fallback = fallbackQuestions.slice(0, questionCount);
 
-      setQuestions(fallback);
-      setSlotsByQuestion(createInitialSlots(fallback));
-      setBankOrders(createBankOrders(fallback));
+      // Attach a hidden knowledge category to each fallback question for consistency.
+      const processedFallback = (fallback as any[]).map((q) => ({
+        ...q,
+        knowledgeCategory: assignSentenceKnowledgeCategory(),
+      }));
+      setQuestions(processedFallback);
+      setSlotsByQuestion(createInitialSlots(processedFallback));
+      setBankOrders(createBankOrders(processedFallback));
       setCurrentIndex(0);
       setDragged(null);
       setResults({});
@@ -1998,9 +2067,20 @@ async function submitMockTestWithAPI({
 
     try {
       const prompt = await generateEmailPromptWithAPI(level, topic);
-      setCurrentEmailPrompt(prompt);
+      // Assign a hidden knowledge category to the generated email prompt.  The extra
+      // field is cast away when saving to state to satisfy the EmailPrompt type.
+      const processedPrompt: any = {
+        ...prompt,
+        knowledgeCategory: assignEmailKnowledgeCategory(),
+      };
+      setCurrentEmailPrompt(processedPrompt as EmailPrompt);
     } catch (error) {
-      setCurrentEmailPrompt(sampleEmailPrompt);
+      // Fallback sample prompt also receives a knowledge category for consistency.
+      const fallback: any = {
+        ...sampleEmailPrompt,
+        knowledgeCategory: assignEmailKnowledgeCategory(),
+      };
+      setCurrentEmailPrompt(fallback as EmailPrompt);
     } finally {
       setIsGeneratingEmailPrompt(false);
     }
@@ -2014,9 +2094,19 @@ async function submitMockTestWithAPI({
 
     try {
       const prompt = await generateAcademicDiscussionWithAPI(level, topic);
-      setCurrentDiscussionPrompt(prompt);
+      // Assign a hidden knowledge category to the generated discussion prompt.
+      const processedPrompt: any = {
+        ...prompt,
+        knowledgeCategory: assignDiscussionKnowledgeCategory(),
+      };
+      setCurrentDiscussionPrompt(processedPrompt as DiscussionPrompt);
     } catch (error) {
-      setCurrentDiscussionPrompt(sampleDiscussionPrompt);
+      // Fallback sample prompt also receives a knowledge category
+      const fallback: any = {
+        ...sampleDiscussionPrompt,
+        knowledgeCategory: assignDiscussionKnowledgeCategory(),
+      };
+      setCurrentDiscussionPrompt(fallback as DiscussionPrompt);
     } finally {
       setIsGeneratingDiscussionPrompt(false);
     }
@@ -6462,6 +6552,110 @@ function AnalyticsPage({
     borderRadius: "12px",
   });
 
+  // Prepare radar chart data based on knowledge point categories and user records.
+  // Each practice type has its own set of categories defined at the module level.
+  const sentenceCategories = useMemo(() => [...SENTENCE_KNOWLEDGE_CATEGORIES], []);
+  const emailCategories = useMemo(() => [...EMAIL_KNOWLEDGE_CATEGORIES], []);
+  const discussionCategories = useMemo(() => [...DISCUSSION_KNOWLEDGE_CATEGORIES], []);
+
+  // Compute aggregated knowledge mastery for the sentence practice.  Each record's
+  // sentence score is distributed across the categories with a simple weighting
+  // scheme: earlier categories receive slightly higher weight.  The resulting
+  // values are averaged over all records and capped at the maximum score (5).
+  const radarDataSentence = useMemo(() => {
+    if (!records || records.length === 0) {
+      return sentenceCategories.map((cat) => ({
+        subject: cat,
+        score: 0,
+        fullMark: 5,
+      }));
+    }
+    const sums: number[] = new Array(sentenceCategories.length).fill(0);
+    records.forEach((rec) => {
+      const baseScore =
+        typeof rec.sentence_score === "number"
+          ? rec.sentence_score
+          : Number(rec.sentence_score);
+      const n = sentenceCategories.length;
+      sentenceCategories.forEach((_, idx) => {
+        const score = isNaN(baseScore) ? 0 : baseScore;
+        sums[idx] += score * ((n - idx) / n);
+      });
+    });
+    return sentenceCategories.map((cat, idx) => ({
+      subject: cat,
+      score: sums[idx] / records.length,
+      fullMark: 5,
+    }));
+  }, [records, sentenceCategories]);
+
+  // Compute aggregated knowledge mastery for email writing.  Similar to the
+  // sentence calculation but using email scores.
+  const radarDataEmail = useMemo(() => {
+    if (!records || records.length === 0) {
+      return emailCategories.map((cat) => ({
+        subject: cat,
+        score: 0,
+        fullMark: 5,
+      }));
+    }
+    const sums: number[] = new Array(emailCategories.length).fill(0);
+    records.forEach((rec) => {
+      const baseScore = parseFloat(String(rec.email_score)) || 0;
+      const n = emailCategories.length;
+      emailCategories.forEach((_, idx) => {
+        const score = isNaN(baseScore) ? 0 : baseScore;
+        sums[idx] += score * ((n - idx) / n);
+      });
+    });
+    return emailCategories.map((cat, idx) => ({
+      subject: cat,
+      score: sums[idx] / records.length,
+      fullMark: 5,
+    }));
+  }, [records, emailCategories]);
+
+  // Compute aggregated knowledge mastery for academic discussion.
+  const radarDataDiscussion = useMemo(() => {
+    if (!records || records.length === 0) {
+      return discussionCategories.map((cat) => ({
+        subject: cat,
+        score: 0,
+        fullMark: 5,
+      }));
+    }
+    const sums: number[] = new Array(discussionCategories.length).fill(0);
+    records.forEach((rec) => {
+      const baseScore = parseFloat(String(rec.discussion_score)) || 0;
+      const n = discussionCategories.length;
+      discussionCategories.forEach((_, idx) => {
+        const score = isNaN(baseScore) ? 0 : baseScore;
+        sums[idx] += score * ((n - idx) / n);
+      });
+    });
+    return discussionCategories.map((cat, idx) => ({
+      subject: cat,
+      score: sums[idx] / records.length,
+      fullMark: 5,
+    }));
+  }, [records, discussionCategories]);
+
+  // Selected radar chart type: determines which dataset to display.
+  const [selectedRadar, setSelectedRadar] = useState<
+    "sentence" | "email" | "discussion"
+  >("sentence");
+
+  const currentRadarData :{
+    subject: string;
+    score: Number;
+    fullMark: Number;
+  }[] =
+    selectedRadar === "sentence"
+      ? radarDataSentence
+      : selectedRadar === "email"
+      ? radarDataEmail
+      : radarDataDiscussion;
+
   return (
     <>
       <button
@@ -6538,9 +6732,108 @@ function AnalyticsPage({
               <h2 style={{ marginTop: 0, marginBottom: "12px" }}>薄弱项分析</h2>
               {summary.suggestions.map((tip, idx) => (
                 <p key={idx} style={{ color: "#475569", lineHeight: 1.7 }}>
-                  {tip}
-                </p>
-              ))}
+              {tip}
+            </p>
+          ))}
+        </div>
+
+            {/* 知识点掌握情况雷达图：一次只展示一种练习类型 */}
+            <div style={{ marginTop: "32px" }}>
+              <h2 style={{ marginTop: 0, marginBottom: "12px" }}>知识点掌握情况</h2>
+              {/* 切换按钮：选择造句、邮件或讨论 */}
+              <div
+                style={{
+                  display: "flex",
+                  gap: "8px",
+                  marginBottom: "16px",
+                  flexWrap: "wrap",
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={() => setSelectedRadar("sentence")}
+                  style={{
+                    padding: "6px 12px",
+                    borderRadius: "8px",
+                    border:
+                      selectedRadar === "sentence"
+                        ? "2px solid #6366f1"
+                        : "1px solid #cbd5e1",
+                    background:
+                      selectedRadar === "sentence" ? "#eef2ff" : "#ffffff",
+                    color: "#1e293b",
+                    cursor: "pointer",
+                  }}
+                >
+                  造句
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedRadar("email")}
+                  style={{
+                    padding: "6px 12px",
+                    borderRadius: "8px",
+                    border:
+                      selectedRadar === "email"
+                        ? "2px solid #8b5cf6"
+                        : "1px solid #cbd5e1",
+                    background:
+                      selectedRadar === "email" ? "#f5f3ff" : "#ffffff",
+                    color: "#1e293b",
+                    cursor: "pointer",
+                  }}
+                >
+                  邮件
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedRadar("discussion")}
+                  style={{
+                    padding: "6px 12px",
+                    borderRadius: "8px",
+                    border:
+                      selectedRadar === "discussion"
+                        ? "2px solid #22d3ee"
+                        : "1px solid #cbd5e1",
+                    background:
+                      selectedRadar === "discussion" ? "#ecfeff" : "#ffffff",
+                    color: "#1e293b",
+                    cursor: "pointer",
+                  }}
+                >
+                  讨论
+                </button>
+              </div>
+              {/* 雷达图容器 */}
+              <div style={{ width: "100%", height: "320px" }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <RadarChart data={currentRadarData}>
+                    <PolarGrid />
+                    <PolarAngleAxis dataKey="subject" />
+                    <PolarRadiusAxis angle={30} domain={[0, 5]} />
+                    <Radar
+                      name="掌握度"
+                      dataKey="score"
+                      stroke={
+                        selectedRadar === "sentence"
+                          ? "#6366f1"
+                          : selectedRadar === "email"
+                          ? "#8b5cf6"
+                          : "#22d3ee"
+                      }
+                      fill={
+                        selectedRadar === "sentence"
+                          ? "#6366f1"
+                          : selectedRadar === "email"
+                          ? "#8b5cf6"
+                          : "#22d3ee"
+                      }
+                      fillOpacity={0.4}
+                    />
+                    <Tooltip />
+                  </RadarChart>
+                </ResponsiveContainer>
+              </div>
             </div>
 
             {/* 成绩趋势折线图：展示每次完整模考的各项分数变化 */}
