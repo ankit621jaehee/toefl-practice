@@ -302,7 +302,7 @@ const announcements = [
     tag: "题库持续更新中",
     title: "往届真题 与 ETS模拟题 已上线",
     content:
-      "每次模拟考试消耗10积分，完成三部分内容后可获得 6 分制总分、知识点分析和备考建议。",
+      "完成三部分内容后可获得 6 分制总分、知识点分析和备考建议。请联系客服获取",
     date: "2026-05-15",
   },
 ];
@@ -2550,7 +2550,7 @@ async function submitMockTestWithAPI({
                   <h2 style={{ marginTop: 0 }}>ETS Mock Practice</h2>
 
                   <p style={{ color: "#64748b", lineHeight: 1.7 }}>
-                    使用 ETS 官方20套模拟题进行写作练习。
+                    使用 ETS 官方模拟题进行写作练习。
                   </p>
 
                   <button
