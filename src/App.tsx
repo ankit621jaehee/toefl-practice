@@ -546,6 +546,7 @@ function normalizeQuestions(apiQuestions: Question[]) {
 
     const fallback = fallbackQuestions[index % fallbackQuestions.length];
     const finalParts = validParts.length > 0 ? validParts : fallback.parts;
+    const finalPartsWithPunctuation = finalParts.flatMap(splitPunctuationFromPart);  
 
     return {
       id: index + 1,
@@ -553,8 +554,8 @@ function normalizeQuestions(apiQuestions: Question[]) {
       contextSentence: question.contextSentence || fallback.contextSentence,
       answerSpeaker: question.answerSpeaker || "B",
       target: question.target || fallback.target,
-      parts: finalParts,
-      chunks: getBlankAnswers({ ...fallback, parts: finalParts }),
+      parts: finalPartsWithPunctuation,
+      chunks: getBlankAnswers({ ...fallback, parts: finalPartsWithPunctuation }),
       explanation:
         question.explanation ||
         "This question tests sentence structure and logical connection between two speakers.",
@@ -756,12 +757,31 @@ function isQuestionComplete(slots: (Chunk | null)[]) {
 
 function normalizeSentenceText(text: string) {
   return text
-    .replace(/[,.!?;:]+$/g, "")
-    .replace(/^[,.!?;:]+/g, "")
+    .replace(/[.,!?;:，。！？；：]+/g, "")
     .replace(/\s+/g, " ")
     .trim()
     .toLowerCase();
 }
+
+function splitPunctuationFromPart(part: Part): Part[] {
+  if (part.type !== "blank") return [part];
+
+  const match = part.answer.match(/^(.+?)([.,!?;:，。！？；：]+)$/);
+
+  if (!match) return [part];
+
+  return [
+    {
+      type: "blank",
+      answer: match[1].trim(),
+    },
+    {
+      type: "fixed",
+      text: match[2],
+    },
+  ];
+}
+
 
 function buildFullAnswerFromSlots(question: Question, slots: (Chunk | null)[]) {
   let blankIndex = 0;
