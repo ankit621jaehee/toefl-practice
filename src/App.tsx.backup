@@ -15,59 +15,9 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
-  RadarChart,
-  PolarGrid,
-  PolarAngleAxis,
-  PolarRadiusAxis,
-  Radar,
 } from "recharts";
 import type { User } from "@supabase/supabase-js";
 import { supabase } from "./supabaseClient";
-
-// Knowledge point categories constants for different practice types.
-// These arrays define the conceptual areas used to populate the radar chart
-// and to tag newly generated questions/prompts internally.  They are not
-// displayed to the user directly.
-const SENTENCE_KNOWLEDGE_CATEGORIES = [
-  "从句",
-  "短语搭配",
-  "连词使用",
-  "句型结构",
-  "时态一致",
-] as const;
-
-const EMAIL_KNOWLEDGE_CATEGORIES = [
-  "内容完整性",
-  "词汇表达",
-  "语法结构",
-  "连贯性",
-  "礼貌格式",
-] as const;
-
-const DISCUSSION_KNOWLEDGE_CATEGORIES = [
-  "内容发展",
-  "词汇表达",
-  "语法句型",
-  "连贯与组织",
-  "任务完成",
-] as const;
-
-// Helpers to assign a random knowledge category to a generated question or prompt.
-function getRandomElement<T>(arr: readonly T[]): T {
-  return arr[Math.floor(Math.random() * arr.length)];
-}
-
-function assignSentenceKnowledgeCategory(): string {
-  return getRandomElement(SENTENCE_KNOWLEDGE_CATEGORIES);
-}
-
-function assignEmailKnowledgeCategory(): string {
-  return getRandomElement(EMAIL_KNOWLEDGE_CATEGORIES);
-}
-
-function assignDiscussionKnowledgeCategory(): string {
-  return getRandomElement(DISCUSSION_KNOWLEDGE_CATEGORIES);
-}
 
 type Page =
   | "home"
@@ -84,8 +34,7 @@ type Page =
   | "past-exam-detail"
   | "ets-mock-practice"
   | "ets-mock-detail"
-  | "analytics"
-  | "practice-sessions";
+  | "analytics";
 
 type Part =
   | {
@@ -123,8 +72,6 @@ type EmailPrompt = {
 
 type DiscussionPrompt = {
   title: string;
-  instruction?: string;
-  professorName?: string;
   professor: string;
   studentOneName: string;
   studentOnePost: string;
@@ -132,7 +79,6 @@ type DiscussionPrompt = {
   studentTwoPost: string;
   question: string;
   suggestedLength: string;
-  knowledgeCategory?: string;
 };
 
 type WritingFeedback = {
@@ -269,19 +215,6 @@ type PracticeRecord = {
   points_spent: number;
   created_at: string;
 };
-
-// A local record of a single practice session.  These sessions are stored in
-// memory (and persisted to localStorage) to provide a unified summary of all
-// practice types.  Each session includes the type of practice performed,
-// the total duration in seconds, the score achieved (or "未完成" if the
-// session was not completed), and the date/time when the session started.
-type PracticeSession = {
-  id: string;
-  type: 'sentence' | 'email' | 'discussion' | 'mock';
-  duration: number;
-  score: number | string;
-  date: string;
-};
 const EMAIL_SCORING_COST = 3;
 const DISCUSSION_SCORING_COST = 3;
 const announcements = [
@@ -305,20 +238,10 @@ const announcements = [
     tag: "题库持续更新中",
     title: "往届真题 与 ETS模拟题 已上线",
     content:
-      "完成三部分内容后可获得 6 分制总分、知识点分析和备考建议。请联系客服获取",
+      "每次模拟考试消耗10积分，完成三部分内容后可获得 6 分制总分、知识点分析和备考建议。",
     date: "2026-05-15",
   },
 ];
-
-// Format a duration in seconds as minutes:seconds (e.g., 5:07).  This helper
-// is used to display elapsed times for single practice sessions.  If seconds
-// is undefined or negative, it returns "0:00".
-function formatDuration(seconds: number): string {
-  const secs = Math.max(0, Math.floor(seconds));
-  const minutes = Math.floor(secs / 60);
-  const rest = secs % 60;
-  return `${minutes}:${String(rest).padStart(2, "0")}`;
-}
 
 
 const sampleEmailPrompt: EmailPrompt = {
@@ -549,11 +472,6 @@ function normalizeQuestions(apiQuestions: Question[]) {
 
     const fallback = fallbackQuestions[index % fallbackQuestions.length];
     const finalParts = validParts.length > 0 ? validParts : fallback.parts;
-    const splitParts = finalParts.flatMap(splitPunctuationFromPart);  
-    const finalPartsWithPunctuation = addPunctuationFromTarget(
-      splitParts,
-      question.target || fallback.target
-    );
 
     return {
       id: index + 1,
@@ -561,8 +479,8 @@ function normalizeQuestions(apiQuestions: Question[]) {
       contextSentence: question.contextSentence || fallback.contextSentence,
       answerSpeaker: question.answerSpeaker || "B",
       target: question.target || fallback.target,
-      parts: finalPartsWithPunctuation,
-      chunks: getBlankAnswers({ ...fallback, parts: finalPartsWithPunctuation }),
+      parts: finalParts,
+      chunks: getBlankAnswers({ ...fallback, parts: finalParts }),
       explanation:
         question.explanation ||
         "This question tests sentence structure and logical connection between two speakers.",
@@ -573,7 +491,7 @@ function normalizeQuestions(apiQuestions: Question[]) {
 async function generateQuestionsFromAPI(
   count: number,
   level: string,
-  topic: string,
+  topic: string
 ) {
   const response = await fetch("/api/generate-sentences", {
     method: "POST",
@@ -584,13 +502,6 @@ async function generateQuestionsFromAPI(
       count,
       level,
       topic,
-      knowledgeCategories: [
-        "从句",
-        "短语搭配",
-        "连词使用",
-        "句型结构",
-        "时态一致",
-      ],
     }),
   });
 
@@ -764,75 +675,11 @@ function isQuestionComplete(slots: (Chunk | null)[]) {
 
 function normalizeSentenceText(text: string) {
   return text
-    .replace(/[.,!?;:，。！？；：]+/g, "")
+    .replace(/[,.!?;:]+$/g, "")
+    .replace(/^[,.!?;:]+/g, "")
     .replace(/\s+/g, " ")
     .trim()
     .toLowerCase();
-}
-
-function splitPunctuationFromPart(part: Part): Part[] {
-  if (part.type !== "blank") return [part];
-
-  const match = part.answer.match(/^(.+?)([.,!?;:，。！？；：]+)$/);
-
-  if (!match) return [part];
-
-  return [
-    {
-      type: "blank",
-      answer: match[1].trim(),
-    },
-    {
-      type: "fixed",
-      text: match[2],
-    },
-  ];
-}
-
-function addPunctuationFromTarget(parts: Part[], target: string): Part[] {
-  if (!target) return parts;
-
-  const result: Part[] = [];
-  let cursor = 0;
-
-  parts.forEach((part) => {
-    result.push(part);
-
-    const text =
-      part.type === "fixed"
-        ? part.text
-        : part.answer;
-
-    const index = target
-      .toLowerCase()
-      .indexOf(text.toLowerCase(), cursor);
-
-    if (index === -1) return;
-
-    cursor = index + text.length;
-
-    const punctuationMatch = target.slice(cursor).match(/^\s*([.,!?;:，。！？；：]+)/);
-
-    if (punctuationMatch) {
-      const last = result[result.length - 1];
-
-      if (
-        !(
-          last?.type === "fixed" &&
-          /^[.,!?;:，。！？；：]+$/.test(last.text)
-        )
-      ) {
-        result.push({
-          type: "fixed",
-          text: punctuationMatch[1],
-        });
-      }
-
-      cursor += punctuationMatch[0].length;
-    }
-  });
-
-  return result;
 }
 
 function buildFullAnswerFromSlots(question: Question, slots: (Chunk | null)[]) {
@@ -994,105 +841,6 @@ function App() {
 );
   const [showPointsModal, setShowPointsModal] = useState(false);
 
-  // -------------------------------------------------------------------------
-  // Local practice session tracking
-  //
-  // The app collects summary information for every practice session (single
-  // sentence, email, discussion or full mock test).  Each session records
-  // when it started, how long the user spent (in seconds), the resulting
-  // score (or "未完成" if the session was abandoned), and the date.  These
-  // sessions are stored in memory and persisted to localStorage so they
-  // survive page reloads.  A unified summary page (practice-sessions) uses
-  // this data to display an overview of all user practice attempts.
-  const [practiceSessions, setPracticeSessions] = useState<PracticeSession[]>(
-    () => {
-      if (typeof window !== 'undefined') {
-        try {
-          const stored = localStorage.getItem('practiceSessions');
-          return stored ? (JSON.parse(stored) as PracticeSession[]) : [];
-        } catch {
-          return [];
-        }
-      }
-      return [];
-    }
-  );
-  // Start timestamps for each practice type.  When a session begins we record
-  // the current time; when it ends we compute the duration and reset the
-  // timestamp back to null.
-  const [sentenceStartTime, setSentenceStartTime] = useState<number | null>(null);
-  const [emailStartTime, setEmailStartTime] = useState<number | null>(null);
-  const [discussionStartTime, setDiscussionStartTime] = useState<number | null>(null);
-  const [mockStartTime, setMockStartTime] = useState<number | null>(null);
-  // A timer used to update the elapsed seconds for the currently active
-  // practice.  This value is updated once per second when a practice page
-  // is active and a start time is defined.  Other pages reset it to 0.
-  const [elapsedSeconds, setElapsedSeconds] = useState<number>(0);
-
-  // Persist sessions to localStorage whenever they change.  Errors are
-  // silently ignored.
-  useEffect(() => {
-    try {
-      localStorage.setItem('practiceSessions', JSON.stringify(practiceSessions));
-    } catch {
-      // ignore persistence errors
-    }
-  }, [practiceSessions]);
-
-  // Update the elapsed seconds timer based on the currently active practice
-  // session.  The timer observes the start timestamps directly rather than
-  // relying on the current page.  When a practice starts, the corresponding
-  // start time is set; when the session ends, that start time is reset to
-  // null.  The effect creates a single interval that updates once per
-  // second while any start time is active.
-  useEffect(() => {
-    let timer: number | undefined;
-    function update() {
-      if (sentenceStartTime !== null) {
-        setElapsedSeconds(Math.floor((Date.now() - sentenceStartTime) / 1000));
-      } else if (emailStartTime !== null) {
-        setElapsedSeconds(Math.floor((Date.now() - emailStartTime) / 1000));
-      } else if (discussionStartTime !== null) {
-        setElapsedSeconds(Math.floor((Date.now() - discussionStartTime) / 1000));
-      } else if (mockStartTime !== null) {
-        setElapsedSeconds(Math.floor((Date.now() - mockStartTime) / 1000));
-      } else {
-        setElapsedSeconds(0);
-      }
-    }
-    // Only set up a timer if at least one session has started
-    if (sentenceStartTime !== null || emailStartTime !== null || discussionStartTime !== null || mockStartTime !== null) {
-      update();
-      timer = window.setInterval(update, 1000);
-    } else {
-      setElapsedSeconds(0);
-    }
-    return () => {
-      if (timer !== undefined) {
-        clearInterval(timer);
-      }
-    };
-  }, [sentenceStartTime, emailStartTime, discussionStartTime, mockStartTime]);
-
-  // Helper to add a completed session to the list.  Accepts the practice
-  // type (sentence/email/discussion/mock), the duration in seconds, and
-  // the score achieved (as a number or the string "未完成").  A unique
-  // identifier and the current ISO timestamp are generated automatically.
-  function addPracticeSession(
-    type: 'sentence' | 'email' | 'discussion' | 'mock',
-    duration: number,
-    score: number | string
-  ) {
-    const newSession: PracticeSession = {
-      id: Date.now().toString(),
-      type,
-      duration,
-      score,
-      date: new Date().toISOString(),
-    };
-    setPracticeSessions((prev) => [newSession, ...prev]);
-  }
-
 
   const [page, setPageState] = useState<Page>(() => {
 
@@ -1109,8 +857,6 @@ function App() {
   if (path === "/records") return "records";
 
   if (path === "/mock-records") return "mock-records";
-
-  if (path === "/practice-sessions") return "practice-sessions";
 
   return "home";
 
@@ -1136,32 +882,6 @@ useEffect(() => {
 
 function setPage(nextPage: Page) {
 
-  // When navigating away from an active practice page before submission, record
-  // the session as incomplete.  We check each practice type: if its start
-  // timestamp is not null and the next page differs, we compute the elapsed
-  // duration and append a session with "未完成" as the score.  After recording
-  // we reset the corresponding start time to null so that the timer stops.
-  if (page === "sentence" && sentenceStartTime !== null && nextPage !== "sentence") {
-    const duration = Math.floor((Date.now() - sentenceStartTime) / 1000);
-    addPracticeSession("sentence", duration, "未完成");
-    setSentenceStartTime(null);
-  }
-  if (page === "email" && emailStartTime !== null && nextPage !== "email") {
-    const duration = Math.floor((Date.now() - emailStartTime) / 1000);
-    addPracticeSession("email", duration, "未完成");
-    setEmailStartTime(null);
-  }
-  if (page === "discussion" && discussionStartTime !== null && nextPage !== "discussion") {
-    const duration = Math.floor((Date.now() - discussionStartTime) / 1000);
-    addPracticeSession("discussion", duration, "未完成");
-    setDiscussionStartTime(null);
-  }
-  if (page === "mock" && mockStartTime !== null && nextPage !== "mock" && nextPage !== "mock-result") {
-    const duration = Math.floor((Date.now() - mockStartTime) / 1000);
-    addPracticeSession("mock", duration, "未完成");
-    setMockStartTime(null);
-  }
-
   setPageState(nextPage);
 
   const pathMap: Partial<Record<Page, string>> = {
@@ -1178,8 +898,6 @@ function setPage(nextPage: Page) {
 
     // 能力分析页面路径
     "analytics": "/analytics",
-    // Unified practice session summary page
-    "practice-sessions": "/practice-sessions",
 
   };
 
@@ -1723,23 +1441,10 @@ function handleStartEtsMockPractice(questionSet: QuestionSet | null) {
 }
 
 async function handleStartMockTest() {
-  // Ensure the user is signed in and has enough points before starting the
-  // full mock test.  If not signed in, show an error message.  If the
-  // balance is insufficient, open the points purchase modal.
   if (!user) {
     setMockMessage("Please sign in before starting a mock test.");
     return;
   }
-  const MOCK_COST = 10;
-  if (points < MOCK_COST) {
-    setShowPointsModal(true);
-    return;
-  }
-  // Deduct the mock test cost up front and record the start time for
-  // duration tracking.  We update local points here; the backend will
-  // deduct separately when submitting the mock test.
-  setPoints((prev) => prev - MOCK_COST);
-  setMockStartTime(Date.now());
 
   setActiveQuestionSetId("");
   setActiveQuestionSourceType("");
@@ -1760,11 +1465,15 @@ async function handleStartMockTest() {
     setMockSentenceSlots(createInitialSlots(data.sentenceQuestions));
     setMockSentenceBanks(createBankOrders(data.sentenceQuestions));
 
-    // Do not update points here based on the API response to avoid
-    // double-deducting the mock cost.  The local state has already been
-    // decremented and the session will update the backend on submission.
+    if (typeof data.balance === "number") {   
+      setPoints(data.balance);
+    } else if (user) {
+      await loadPoints(user.id);
+    }
 
     setPage("mock");
+
+
   } catch (error) {
     const message =
       error instanceof Error
@@ -1839,23 +1548,17 @@ async function handleSubmitMockTest() {
       discussionAnswer: mockDiscussionAnswer,
     });
 
-    const roundedFinalScore = Math.round(Number(result.finalScore) * 2) / 2;
-    const roundedResult = {
-      ...result,
-      finalScore: roundedFinalScore,
-    };
-    setMockResult(roundedResult);
-    await saveQuestionAttempt(roundedResult);
+    setMockResult(result);
+    await saveQuestionAttempt(result);
     await loadQuestionAttempts();
 
-    if (mockStartTime !== null) {
-      const duration = Math.floor((Date.now() - mockStartTime) / 1000);
-      addPracticeSession('mock', duration, roundedFinalScore);
-      setMockStartTime(null);
+    if (typeof result.balance === "number") {
+      setPoints(result.balance);
+    } else if (user) {
+      await loadPoints(user.id);
     }
-    // Do not update points here based on the backend balance because the
-    // cost has already been deducted at the start of the mock.
-    setPage('mock-result');
+
+    setPage("mock-result");
   } catch (error) {
     const message =
       error instanceof Error
@@ -1970,6 +1673,21 @@ async function submitMockTestWithAPI({
     );
   }, [bankOrders, currentQuestion.id, currentSlots]);
 
+  // When reducing over the results object to compute the total score,
+  // provide explicit number types for `sum` and `score` so that
+  // TypeScript does not infer `any` for these parameters.  Without
+  // annotations, strict compilation settings will report an
+  // implicit-any error.  The reduction itself simply adds two
+  // numbers together.
+  // Cast `Object.values(results)` to `number[]` so that TypeScript knows we are reducing an array of numbers.
+  const totalScore = (Object.values(results) as number[]).reduce(
+    (sum: number, score: number) => sum + score,
+    0
+  );
+
+  const completedCount = questions.filter((question: Question) =>
+    isQuestionComplete(slotsByQuestion[question.id] || [])
+  ).length;
 
   const currentQuestionScore = results[currentQuestion.id];
   const currentQuestionCorrect = isSubmitted && currentQuestionScore === 0.5;
@@ -2049,19 +1767,6 @@ async function submitMockTestWithAPI({
 
     setResults(finalResults);
     setIsSubmitted(true);
-    // Record the practice session when all questions have been submitted.  The
-    // total duration is computed from the sentenceStartTime and stored in the
-    // unified sessions list.  After recording, reset the start time so that
-    // the timer stops.
-    if (sentenceStartTime !== null) {
-      const duration = Math.floor((Date.now() - sentenceStartTime) / 1000);
-      const total = (Object.values(finalResults) as number[]).reduce(
-        (sum: number, s: number) => sum + s,
-        0
-      );
-      addPracticeSession('sentence', duration, total);
-      setSentenceStartTime(null);
-    }
   }
 
   function restartAll() {
@@ -2074,16 +1779,6 @@ async function submitMockTestWithAPI({
   }
 
   async function startNewPractice() {
-    // Require authentication before starting a practice.  If the user is
-    // not signed in, show an alert and abort.  When authenticated, record
-    // the start time so that the elapsed timer begins counting up.
-    if (!user) {
-      alert('请先登录后再开始练习。');
-      return;
-    }
-    // Record the start time for the sentence practice.  This timestamp
-    // will be used to compute the total duration when the session ends.
-    setSentenceStartTime(Date.now());
     setIsLoading(true);
     setApiMessage("");
 
@@ -2094,16 +1789,9 @@ async function submitMockTestWithAPI({
         topic
       );
 
-      // Attach a hidden knowledge category to each generated sentence question.  This
-      // extra property is used internally for analytics and does not affect the
-      // question rendering or logic.
-      const processedGenerated = (generated as any[]).map((q) => ({
-        ...q,
-        knowledgeCategory: assignSentenceKnowledgeCategory(),
-      }));
-      setQuestions(processedGenerated);
-      setSlotsByQuestion(createInitialSlots(processedGenerated));
-      setBankOrders(createBankOrders(processedGenerated));
+      setQuestions(generated);
+      setSlotsByQuestion(createInitialSlots(generated));
+      setBankOrders(createBankOrders(generated));
       setCurrentIndex(0);
       setDragged(null);
       setResults({});
@@ -2113,14 +1801,9 @@ async function submitMockTestWithAPI({
     } catch (error) {
       const fallback = fallbackQuestions.slice(0, questionCount);
 
-      // Attach a hidden knowledge category to each fallback question for consistency.
-      const processedFallback = (fallback as any[]).map((q) => ({
-        ...q,
-        knowledgeCategory: assignSentenceKnowledgeCategory(),
-      }));
-      setQuestions(processedFallback);
-      setSlotsByQuestion(createInitialSlots(processedFallback));
-      setBankOrders(createBankOrders(processedFallback));
+      setQuestions(fallback);
+      setSlotsByQuestion(createInitialSlots(fallback));
+      setBankOrders(createBankOrders(fallback));
       setCurrentIndex(0);
       setDragged(null);
       setResults({});
@@ -2142,20 +1825,9 @@ async function submitMockTestWithAPI({
 
     try {
       const prompt = await generateEmailPromptWithAPI(level, topic);
-      // Assign a hidden knowledge category to the generated email prompt.  The extra
-      // field is cast away when saving to state to satisfy the EmailPrompt type.
-      const processedPrompt: any = {
-        ...prompt,
-        knowledgeCategory: assignEmailKnowledgeCategory(),
-      };
-      setCurrentEmailPrompt(processedPrompt as EmailPrompt);
+      setCurrentEmailPrompt(prompt);
     } catch (error) {
-      // Fallback sample prompt also receives a knowledge category for consistency.
-      const fallback: any = {
-        ...sampleEmailPrompt,
-        knowledgeCategory: assignEmailKnowledgeCategory(),
-      };
-      setCurrentEmailPrompt(fallback as EmailPrompt);
+      setCurrentEmailPrompt(sampleEmailPrompt);
     } finally {
       setIsGeneratingEmailPrompt(false);
     }
@@ -2169,62 +1841,21 @@ async function submitMockTestWithAPI({
 
     try {
       const prompt = await generateAcademicDiscussionWithAPI(level, topic);
-      // Assign a hidden knowledge category to the generated discussion prompt.
-      const processedPrompt: any = {
-        ...prompt,
-        knowledgeCategory: assignDiscussionKnowledgeCategory(),
-      };
-      setCurrentDiscussionPrompt(processedPrompt as DiscussionPrompt);
+      setCurrentDiscussionPrompt(prompt);
     } catch (error) {
-      // Fallback sample prompt also receives a knowledge category
-      const fallback: any = {
-        ...sampleDiscussionPrompt,
-        knowledgeCategory: assignDiscussionKnowledgeCategory(),
-      };
-      setCurrentDiscussionPrompt(fallback as DiscussionPrompt);
+      setCurrentDiscussionPrompt(sampleDiscussionPrompt);
     } finally {
       setIsGeneratingDiscussionPrompt(false);
     }
   }
 
   async function startEmailPractice() {
-    // Require authentication and sufficient points before starting the email
-    // writing practice.  If the user is not signed in, prompt them to log
-    // in.  If there are insufficient points, open the points modal instead
-    // of starting the practice.  Otherwise deduct the points up front and
-    // record the start time.
-    if (!user) {
-      alert('请先登录后再开始练习。');
-      return;
-    }
-    if (points < EMAIL_SCORING_COST) {
-      setShowPointsModal(true);
-      return;
-    }
-    // Deduct the cost immediately.  We update local points here; the
-    // scoring API will no longer adjust the balance on submission.
-    setPoints((prev) => prev - EMAIL_SCORING_COST);
-    setEmailStartTime(Date.now());
-    setPage('email');
+    setPage("email");
     await generateNewEmailPrompt();
   }
 
   async function startDiscussionPractice() {
-    // Ensure the user is signed in and has enough points before starting the
-    // academic discussion practice.  If not signed in, alert the user.  If
-    // their balance is insufficient, show the points purchase modal.
-    if (!user) {
-      alert('请先登录后再开始练习。');
-      return;
-    }
-    if (points < DISCUSSION_SCORING_COST) {
-      setShowPointsModal(true);
-      return;
-    }
-    // Deduct the discussion practice cost up front and start timing.
-    setPoints((prev) => prev - DISCUSSION_SCORING_COST);
-    setDiscussionStartTime(Date.now());
-    setPage('discussion');
+    setPage("discussion");
     await generateNewDiscussionPrompt();
   }
 
@@ -2234,50 +1865,39 @@ async function submitMockTestWithAPI({
     setIsScoringEmail(true);
     setEmailSubmitted(false);
     setEmailFeedback(null);
-    // Track the score to record in the practice summary.  If the API call
-    // succeeds, this variable will hold the returned numeric score.  If it
-    // fails, it will remain the string "未完成".
-    let sessionScore: number | string = '未完成';
+
     try {
       const feedback = await scoreEmailWritingWithAPI(
         currentEmailPrompt,
         emailAnswer
       );
+
       setEmailFeedback(feedback);
       setEmailSubmitted(true);
-      // Extract a numeric score if possible.  Some API responses return
-      // strings (e.g. "4.0"); parseFloat will convert to a number when valid.
-      const parsed = parseFloat(feedback.score);
-      sessionScore = isNaN(parsed) ? feedback.score : parsed;
-      // Do not update the points based on the backend balance here because the
-      // cost has already been deducted when starting the practice.
+
+      if (typeof feedback.balance === "number") {
+        setPoints(feedback.balance);
+      } else if (user) {
+        await loadPoints(user.id);
+      } 
     } catch (error) {
-      const message =
-        error instanceof Error
-          ? error.message
-          : 'AI scoring failed. Please try again.';
-      setEmailFeedback({
-        score: '评分失败',
-        strengths: [],
-        problems: [message],
-        grammarCorrections: [],
-        actionPlan: [],
-        improvedVersion: '',
-        sampleAnswer: '',
-      });
-      setEmailSubmitted(true);
-      sessionScore = '未完成';
+        const message =
+          error instanceof Error
+            ? error.message
+            : "AI scoring failed. Please try again.";
+
+        setEmailFeedback({
+          score: "评分失败",
+          strengths: [],
+          problems: [message],
+          grammarCorrections: [],
+          actionPlan: [],
+          improvedVersion: "",
+          sampleAnswer: "",
+        });
+        setEmailSubmitted(true);
     } finally {
-      // When scoring completes (successfully or not), record the session
-      // duration and score.  The duration is computed from the start time
-      // recorded at the beginning of the practice.  After recording, reset
-      // the start time so that the timer stops.
-      if (emailStartTime !== null) {
-        const duration = Math.floor((Date.now() - emailStartTime) / 1000);
-        addPracticeSession('email', duration, sessionScore);
-        setEmailStartTime(null);
-      }
-      setIsScoringEmail(false);
+        setIsScoringEmail(false);
     }
   } 
 
@@ -2287,10 +1907,7 @@ async function submitMockTestWithAPI({
     setIsScoringDiscussion(true);
     setDiscussionSubmitted(false);
     setDiscussionFeedback(null);
-    // Track the score to record in the practice summary.  If the API call
-    // succeeds, this variable will hold the returned numeric score; otherwise
-    // it will remain the string "未完成".
-    let sessionScore: number | string = '未完成';
+
     try {
       const feedback = await scoreAcademicDiscussionWithAPI(
         currentDiscussionPrompt,
@@ -2299,36 +1916,29 @@ async function submitMockTestWithAPI({
 
       setDiscussionFeedback(feedback);
       setDiscussionSubmitted(true);
-      const parsed = parseFloat(feedback.score);
-      sessionScore = isNaN(parsed) ? feedback.score : parsed;
-      // Do not update the points here because they have already been
-      // deducted at the start of the session.
+
+      if (typeof feedback.balance === "number") {
+        setPoints(feedback.balance);
+      } else if (user) {
+        await loadPoints(user.id);
+      }
     } catch (error) {
       const message =
         error instanceof Error
           ? error.message
-          : 'AI scoring failed. Please try again.';
+          : "AI scoring failed. Please try again.";
 
       setDiscussionFeedback({
-        score: '评分失败',
+        score: "评分失败",
         strengths: [],
         problems: [message],
         grammarCorrections: [],
         actionPlan: [],
-        improvedVersion: '',
-        sampleAnswer: '',
+        improvedVersion: "",
+        sampleAnswer: "",
       });
       setDiscussionSubmitted(true);
-      sessionScore = '未完成';
     } finally {
-      // After scoring completes (successfully or not), record the practice
-      // session duration and score.  The duration is calculated from the
-      // recorded start time.  Then reset the start time to stop the timer.
-      if (discussionStartTime !== null) {
-        const duration = Math.floor((Date.now() - discussionStartTime) / 1000);
-        addPracticeSession('discussion', duration, sessionScore);
-        setDiscussionStartTime(null);
-      }
       setIsScoringDiscussion(false);
     }
   }
@@ -2360,31 +1970,32 @@ async function submitMockTestWithAPI({
     <div
       style={{
         minHeight: "100vh",
-        background: page === "mock" ? "white" : "#f8fafc",
-        // Remove outer padding on the sentence practice page as well as the mock page
-        padding: page === "mock" || page === "sentence" ? "0" : "40px 60px",
+        background: "#f8fafc",
+        // Reduce outer padding on the exam page so the content takes up more horizontal space
+        padding: page === "mock" ? "12px" : "60px",
         fontFamily:
-        '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-        overflow: page === "mock" ? "hidden" : "auto",
+          '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
       }}
     >
       <div
         style={{
-          width: page === "mock" ? "100vw" : "100%",
-          maxWidth: "none",
-          minHeight: page === "mock" ? "100vh" : "auto",
-          margin: "0",
-          background: "transparent",
-          padding: "0",
-          borderRadius: "0",
-          boxShadow: "none",
-          }}
-          >
-        {page !== "mock" && (
-          <h1 style={{ fontSize: "36px", marginBottom: "10px" }}>
-            TOEFL Practice Lab
-          </h1>
-        )}
+          // Widen the main container for the full mock test so content fills more of the viewport
+          maxWidth: page === "mock" ? "1440px" : "980px",
+          margin: "0 auto",
+          background: "white",
+          // Reduce padding when taking the mock so more of the exam content is visible without scrolling
+          padding: page === "mock" ? "16px" : "40px",
+          // Use a smaller radius on the exam page and remove the drop shadow to better match the provided design
+          borderRadius: page === "mock" ? "12px" : "24px",
+          boxShadow:
+            page === "mock"
+              ? "none"
+              : "0 10px 30px rgba(15, 23, 42, 0.08)",
+        }}
+      >
+        <h1 style={{ fontSize: "36px", marginBottom: "10px" }}>
+          TOEFL Practice Lab
+        </h1>
 
         {page === "home" && (
           <>
@@ -2555,7 +2166,7 @@ async function submitMockTestWithAPI({
                   <h2 style={{ marginTop: 0 }}>ETS Mock Practice</h2>
 
                   <p style={{ color: "#64748b", lineHeight: 1.7 }}>
-                    使用 ETS 官方模拟题进行写作练习。
+                    使用 ETS 官方20套模拟题进行写作练习。
                   </p>
 
                   <button
@@ -2565,29 +2176,13 @@ async function submitMockTestWithAPI({
                     进入模拟真题
                   </button>
                 </div>
-
-                {/* Card for viewing total practice sessions */}
-                <div style={cardStyle}>
-                  <h2 style={{ marginTop: 0 }}>总练习记录</h2>
-                  <p style={{ color: "#64748b", lineHeight: 1.7 }}>
-                    查看所有练习的耗时、得分与日期汇总。
-                  </p>
-                  <button
-                    onClick={() => {
-                      setPage("practice-sessions");
-                    }}
-                    style={primaryButtonStyle}
-                  >
-                    查看练习总记录
-                  </button>
-                </div>
             </div>
 
           </>
         )}
 
         {page === "sentence" && (
-            <SentencePractice
+          <SentencePractice
             questions={questions}
             currentIndex={currentIndex}
             setCurrentIndex={setCurrentIndex}
@@ -2596,6 +2191,8 @@ async function submitMockTestWithAPI({
             currentAnswers={currentAnswers}
             currentQuestion={currentQuestion}
             currentBank={currentBank}
+            completedCount={completedCount}
+            totalScore={totalScore}
             isSubmitted={isSubmitted}
             results={results}
             dragged={dragged}
@@ -2611,85 +2208,72 @@ async function submitMockTestWithAPI({
             restartAll={restartAll}
             removeChunk={removeChunk}
             placeChunk={placeChunk}
-            elapsedSeconds={elapsedSeconds}
           />
         )}
 
         {page === "email" && (
-            <WritingPracticePage
-              title={currentEmailPrompt.title}
-              submitCost={EMAIL_SCORING_COST}
-              isGenerating={isGeneratingEmailPrompt}
-              onGenerateNew={generateNewEmailPrompt}
-              promptBlock={
-                <>
-                  <p
-                    style={{
-                      color: "#64748b",
-                      lineHeight: 1.8,
-                      marginBottom: "24px",
-                    }}
-                  >
-                    {currentEmailPrompt.scenario}
+          <WritingPracticePage
+            title={currentEmailPrompt.title}
+            submitCost={EMAIL_SCORING_COST}
+            isGenerating={isGeneratingEmailPrompt}
+            onGenerateNew={generateNewEmailPrompt}
+            promptBlock={
+              <>
+                <p
+                  style={{
+                    color: "#64748b",
+                    lineHeight: 1.8,
+                    marginBottom: "24px",
+                  }}
+                >
+                  {currentEmailPrompt.scenario}
+                </p>
+
+                <div
+                  style={{
+                    padding: "22px",
+                    borderRadius: "18px",
+                    background: "#f1f5f9",
+                    marginBottom: "24px",
+                  }}
+                >
+                  <strong>{currentEmailPrompt.task}</strong>
+
+                  <ul style={{ lineHeight: 1.8 }}>
+                    {currentEmailPrompt.requirements.map((requirement) => (
+                      <li key={requirement}>{requirement}</li>
+                    ))}
+                  </ul>
+
+                  <p style={{ color: "#64748b", marginBottom: 0 }}>
+                    {currentEmailPrompt.suggestedLength}
                   </p>
-
-                  <div
-                    style={{
-                      padding: "22px",
-                      borderRadius: "18px",
-                      background: "#f1f5f9",
-                      marginBottom: "24px",
-                    }}
-                  >
-                    <strong>{currentEmailPrompt.task}</strong>
-
-                    <ul style={{ lineHeight: 1.8 }}>
-                      {currentEmailPrompt.requirements.map((requirement) => (
-                        <li key={requirement}>{requirement}</li>
-                      ))}
-                    </ul>
-
-                    <p style={{ color: "#64748b", marginBottom: 0 }}>
-                      {currentEmailPrompt.suggestedLength}
-                    </p>
-                  </div>
-                </>
-              }
-              answer={emailAnswer}
-              setAnswer={(value) => {
-                setEmailAnswer(value);
-                setEmailSubmitted(false);
-              }}
-              wordCount={emailWordCount}
-              placeholder="Write your email here..."
-              isScoring={isScoringEmail}
-              onSubmit={submitEmailWriting}
-              submitted={emailSubmitted}
-              feedback={emailFeedback}
-              setPage={setPage}
-              elapsedSeconds={elapsedSeconds}
-            />
+                </div>
+              </>
+            }
+            answer={emailAnswer}
+            setAnswer={(value) => {
+              setEmailAnswer(value);
+              setEmailSubmitted(false);
+            }}
+            wordCount={emailWordCount}
+            placeholder="Write your email here..."
+            isScoring={isScoringEmail}
+            onSubmit={submitEmailWriting}
+            submitted={emailSubmitted}
+            feedback={emailFeedback}
+            setPage={setPage}
+          />
         )}
 
         {page === "discussion" && (
-            <WritingPracticePage
+          <WritingPracticePage
             title={currentDiscussionPrompt.title}
             submitCost={DISCUSSION_SCORING_COST}
             isGenerating={isGeneratingDiscussionPrompt}
             onGenerateNew={generateNewDiscussionPrompt}
             promptBlock={
               <>
-                  {currentDiscussionPrompt.instruction && (
-                    <div
-                      style={{
-                        marginBottom: "18px",
-                        lineHeight: 1.8,
-                        whiteSpace: "pre-line",
-                      }}
-                    >
-                      {currentDiscussionPrompt.instruction}
-                    </div>
-                  )}
                 <div
                   style={{
                     padding: "22px",
@@ -2699,7 +2283,7 @@ async function submitMockTestWithAPI({
                     lineHeight: 1.8,
                   }}
                 >
-                  <strong>{currentDiscussionPrompt.professorName || "Professor"}</strong>
+                  <strong>Professor</strong>
                   <p style={{ marginBottom: 0 }}>
                     {currentDiscussionPrompt.professor}
                   </p>
@@ -2774,8 +2358,7 @@ async function submitMockTestWithAPI({
             submitted={discussionSubmitted}
             feedback={discussionFeedback}
             setPage={setPage}
-            elapsedSeconds={elapsedSeconds}
-            />
+          />
         )}
 
         {page === "mock" && mockTestData && (
@@ -2965,13 +2548,6 @@ async function submitMockTestWithAPI({
 
 
 
-        {page === "practice-sessions" && (
-          <PracticeSessionsPage
-            sessions={practiceSessions}
-            setPage={setPage}
-          />
-        )}
-
         {page === "records" && (
           <PracticeRecordsPage
             records={records}
@@ -3101,6 +2677,8 @@ function SentencePractice({
   currentAnswers,
   currentQuestion,
   currentBank,
+  completedCount,
+  totalScore,
   isSubmitted,
   results,
   dragged,
@@ -3116,7 +2694,6 @@ function SentencePractice({
   restartAll,
   removeChunk,
   placeChunk,
-  elapsedSeconds,
 }: {
   questions: Question[];
   currentIndex: number;
@@ -3126,6 +2703,8 @@ function SentencePractice({
   currentAnswers: string[];
   currentQuestion: Question;
   currentBank: Chunk[];
+  completedCount: number;
+  totalScore: number;
   isSubmitted: boolean;
   results: Record<number, number>;
   dragged: Chunk | null;
@@ -3141,23 +2720,7 @@ function SentencePractice({
   restartAll: () => void;
   removeChunk: (slotIndex: number) => void;
   placeChunk: (chunk: Chunk, slotIndex: number) => void;
-  /** Number of seconds elapsed since the practice started. */
-  elapsedSeconds: number;
 }) {
-
-  const headerButtonStyle = {
-    padding: "8px 16px",
-    borderRadius: "8px",
-    background: "rgba(255, 255, 255, 0.2)",
-    color: "white",
-    fontWeight: 700,
-    border: "none",
-    cursor: "pointer",
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-  };
-
   return (
     <>
       <button
@@ -3184,49 +2747,30 @@ function SentencePractice({
         style={{
           display: "flex",
           justifyContent: "space-between",
-          alignItems: "center",
           gap: "16px",
-          marginBottom: "24px",
-          padding: "20px",
-          background: "#075985",
-          borderRadius: "20px",
-          color: "white",
-          flexWrap: "wrap",
+          marginBottom: "30px",
+          padding: "16px 20px",
+          background: "#f1f5f9",
+          borderRadius: "16px",
+          fontWeight: 700,
         }}
       >
-        <span style={{ fontWeight: 700 }}>
-          Question {currentIndex + 1} of {questions.length}
+        <span>
+          Question {currentIndex + 1} / {questions.length}
         </span>
-        <span
-          style={{
-            fontSize: "20px",
-            fontWeight: 700,
-            color: "white",
-          }}
-        >
-          {formatDuration(elapsedSeconds)}
+
+        <span>
+          已完成：{completedCount} / {questions.length}
         </span>
-        <button
-          type="button"
-          onClick={() => {
-            if (currentIndex < questions.length - 1) {
-              nextQuestion();
-            } else {
-              submitAll();
-            }
-          }}
-          disabled={isSubmitted}
-          style={headerButtonStyle}
-        >
-          {currentIndex < questions.length - 1
-            ? "Next"
-            : isSubmitted
-            ? "Submitted"
-            : "Submit"}
-        </button>
+
+        <span>
+          {isSubmitted
+            ? `总分：${totalScore} / ${questions.length * 0.5}`
+            : "尚未提交"}
+        </span>
       </div>
 
-      <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", marginBottom: "28px" }}>
+      <div style={{ display: "flex", gap: "8px", marginBottom: "28px" }}>
         {questions.map((question, index) => {
           const slots = slotsByQuestion[question.id] || [];
           const complete = isQuestionComplete(slots);
@@ -3536,7 +3080,6 @@ function WritingPracticePage({
   submitted,
   feedback,
   setPage,
-  elapsedSeconds,
 }: {
   title: string;
   submitCost: number;
@@ -3552,27 +3095,7 @@ function WritingPracticePage({
   submitted: boolean;
   feedback: WritingFeedback | null;
   setPage: (page: Page) => void;
-  /** Number of seconds elapsed since the practice started. */
-  elapsedSeconds: number;
 }) {
-  // Define styles for the dark header and card to match the ETS practice UI used
-  // in the sentence and mock test pages.  These constants are declared here so
-  // they can be referenced within the return markup below.  The header uses a
-  // dark blue background with white text, while the card uses a light
-  // background with a soft border and shadow.  If you later decide to wrap
-  // the content in a card, you can reuse the `cardStyle` constant.
-  const headerCardStyle = {
-    background: "#075985",
-    color: "white",
-    borderRadius: "20px",
-    padding: "20px",
-    marginBottom: "24px",
-    position: "sticky" as const,
-    top: "12px",
-    zIndex: 20,
-  };
-
-
   return (
     <>
       <div
@@ -3615,38 +3138,7 @@ function WritingPracticePage({
         </button>
       </div>
 
-      {/* Header showing the practice title and elapsed time */}
-      <div style={headerCardStyle}>
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            gap: "16px",
-            flexWrap: "wrap",
-          }}
-        >
-          <div style={{ flex: 1, minWidth: "200px" }}>
-            <h2
-              style={{
-                margin: "0 0 4px 0",
-                color: "white",
-              }}
-            >
-              {title}
-            </h2>
-          </div>
-          <span
-            style={{
-              fontSize: "20px",
-              fontWeight: 700,
-              color: "white",
-            }}
-          >
-            {formatDuration(elapsedSeconds)}
-          </span>
-        </div>
-      </div>
+      <h2 style={{ fontSize: "28px", marginBottom: "10px" }}>{title}</h2>
 
       {isGenerating ? (
         <div
@@ -4737,14 +4229,19 @@ function MockTestPage({
 }) {
 
   const cardStyle = {
+
     background: "white",
-    border: "none",
-    borderRadius: "0",
-    padding: "18px 28px",
-    marginBottom: "0",
-    boxShadow: "none",
-    minHeight: "calc(100vh - 104px)",
-    boxSizing: "border-box" as const,
+
+    border: "1px solid #e2e8f0",
+
+    borderRadius: "20px",
+
+    padding: "24px",
+
+    marginBottom: "24px",
+
+    boxShadow: "0 10px 30px rgba(15, 23, 42, 0.06)",
+
   };
 
   const primaryButtonStyle = {
@@ -4795,13 +4292,12 @@ function MockTestPage({
   const headerCardStyle = {
     background: "#075985",
     color: "white",
-    borderRadius: "0",
-    padding: "12px 28px",
-    marginBottom: "0",
+    borderRadius: "20px",
+    padding: "20px",
+    marginBottom: "24px",
     position: "sticky" as const,
-    top: 0,
+    top: "12px",
     zIndex: 20,
-    boxSizing: "border-box" as const,
   };
 
   const headerButtonStyle = {
@@ -4904,8 +4400,7 @@ function MockTestPage({
           }
 
           if (mockPart === "discussion") {
-            // For the discussion part we do not auto-submit when time is up.
-            // Simply set time left to zero and allow the user to submit manually.
+            onSubmitRef.current();
             return 0;
           }
         }
@@ -5290,7 +4785,7 @@ function MockTestPage({
 
           </div>
 
-          <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", marginBottom: "28px" }}>
+          <div style={{ display: "flex", gap: "8px", marginBottom: "28px" }}>
 
             {data.sentenceQuestions.map((question: MockSentenceQuestion, index: number) => {
 
@@ -5691,95 +5186,56 @@ function MockTestPage({
 
       {mockPart === "email" && (
         <section style={cardStyle}>
-          <h2 style={{ margin: "0 0 10px 0" }}>Part 2 Email Writing</h2>
-
+          <h2 style={{ marginTop: 0 }}>Part 2 Email Writing</h2>
           <div
             style={{
               display: "flex",
-              flexWrap: "nowrap",
-              gap: "20px",
-              height: "calc(100% - 44px)",
-              overflow: "hidden",
+              flexWrap: "wrap",
+              gap: "32px",
             }}
           >
-            {/* 左侧：题目区 */}
-            <div
-              style={{
-                flex: "1 1 48%",
-                minWidth: "0",
-                height: "100%",
-                overflow: "auto",
-                paddingRight: "6px",
-                boxSizing: "border-box",
-              }}
-            >
-              <p
-                style={{
-                  color: "#475569",
-                  lineHeight: 1.65,
-                  marginTop: 0,
-                  marginBottom: "14px",
-                }}
-              >
+            {/* Left column: prompt and instructions */}
+            <div style={{ flex: "1 1 40%", minWidth: "260px" }}>
+              <p style={{ color: "#64748b", lineHeight: 1.8 }}>
                 {data.emailPrompt.scenario}
               </p>
-
               <div
                 style={{
-                  padding: "14px 16px",
+                  padding: "16px",
                   borderRadius: "14px",
                   background: "#f8fafc",
                   border: "1px solid #e2e8f0",
-                  lineHeight: 1.65,
+                  marginBottom: "16px",
                 }}
               >
                 <strong>{data.emailPrompt.task}</strong>
-
-                <ul style={{ lineHeight: 1.65, marginTop: "10px", marginBottom: "10px" }}>
+                <ul style={{ lineHeight: 1.8 }}>
                   {data.emailPrompt.requirements.map((item) => (
                     <li key={item}>{item}</li>
                   ))}
                 </ul>
-
                 <p style={{ color: "#64748b", marginBottom: 0 }}>
                   {data.emailPrompt.suggestedLength}
                 </p>
               </div>
             </div>
-
-            {/* 右侧：写作区 */}
+            {/* Right column: writing area */}
             <div
               style={{
-                flex: "1 1 52%",
-                minWidth: "0",
-                height: "100%",
+                flex: "1 1 55%",
+                minWidth: "280px",
                 display: "flex",
                 flexDirection: "column",
-                overflow: "hidden",
-                boxSizing: "border-box",
               }}
             >
-              <div
-                style={{
-                  display: "flex",
-                  gap: "8px",
-                  marginBottom: "8px",
-                  flexShrink: 0,
-                }}
-              >
-                <button type="button" style={toolbarButtonStyle}>
-                  Cut
-                </button>
-                <button type="button" style={toolbarButtonStyle}>
-                  Paste
-                </button>
-                <button type="button" style={toolbarButtonStyle}>
-                  Undo
-                </button>
-                <button type="button" style={toolbarButtonStyle}>
-                  Redo
-                </button>
+
+              <div style={{ marginBottom: "10px" }}>
+                <button type="button" style={toolbarButtonStyle}>Cut</button>
+                <button type="button" style={toolbarButtonStyle}>Paste</button>
+                <button type="button" style={toolbarButtonStyle}>Undo</button>
+                <button type="button" style={toolbarButtonStyle}>Redo</button>
               </div>
+
 
               <textarea
                 value={emailAnswer}
@@ -5787,264 +5243,167 @@ function MockTestPage({
                 placeholder="Write your email here..."
                 style={{
                   width: "100%",
-                  flex: 1,
-                  minHeight: 0,
-                  padding: "14px",
-                  borderRadius: "14px",
+                  minHeight: "240px",
+                  padding: "16px",
+                  borderRadius: "16px",
                   border: "1px solid #cbd5e1",
                   fontSize: "15px",
-                  lineHeight: 1.6,
+                  lineHeight: 1.7,
                   boxSizing: "border-box",
-                  resize: "none",
-                  overflow: "auto",
                 }}
               />
-
-              <div
+              <p
                 style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  gap: "12px",
+                  color: "#64748b",
+                  fontWeight: 700,
                   marginTop: "8px",
-                  flexShrink: 0,
                 }}
               >
-                <p
-                  style={{
-                    color: "#64748b",
-                    fontWeight: 700,
-                    margin: 0,
-                  }}
-                >
-                  Word Count: {emailWordCount}
-                </p>
-
-                <button
-                  type="button"
-                  onClick={goToDiscussionPart}
-                  style={{
-                    ...primaryButtonStyle,
-                    background: "#111827",
-                    padding: "10px 18px",
-                  }}
-                >
-                  Next: Academic Discussion
-                </button>
-              </div>
+                Word Count: {emailWordCount}
+              </p>
+              <button
+                type="button"
+                onClick={goToDiscussionPart}
+                style={{
+                  ...primaryButtonStyle,
+                  background: "#111827",
+                  marginTop: "12px",
+                }}
+              >
+                Next: Academic Discussion
+              </button>
             </div>
           </div>
         </section>
       )}
 
       {mockPart === "discussion" && (
-        <section style={cardStyle}> 
-          <h2 style={{ margin: "0 0 10px 0" }}>Part 3 Academic Discussion</h2>
-
+        <section style={cardStyle}>
+          <h2 style={{ marginTop: 0 }}>Part 3 Academic Discussion</h2>
+          {/* Wrap posts/prompts and writing area in two columns */}
           <div
             style={{
-            display: "flex",
-            flexWrap: "nowrap",
-            gap: "20px",
-            height: "calc(100% - 44px)",
-            overflow: "hidden",
-          }}
-        >
-          {/* 左侧：教授和学生帖子 */}
-          <div
-            style={{
-              flex: "1 1 48%",
-              minWidth: "0",
-              height: "100%",
-              overflow: "auto",
-              paddingRight: "6px",
-              boxSizing: "border-box",
+              display: "flex",
+              flexWrap: "wrap",
+              gap: "32px",
             }}
           >
-            <div
-              style={{
-                display: "grid",
-                gap: "12px",
-                lineHeight: 1.6,
-              }}
-            >
-              {data.discussionPrompt.instruction && (
+            {/* Left column: professor and student posts, question */}
+            <div style={{ flex: "1 1 40%", minWidth: "260px" }}>
+              <div style={{ display: "grid", gap: "14px", lineHeight: 1.8 }}>
                 <div
                   style={{
-                    padding: "14px 16px",
+                    padding: "16px",
                     borderRadius: "14px",
-                    background: "#ffffff",
+                    background: "#f8fafc",
                     border: "1px solid #e2e8f0",
-                    whiteSpace: "pre-line",
-                    lineHeight: 1.6,
                   }}
                 >
-                  {data.discussionPrompt.instruction}
+                  <strong>Professor</strong>
+                  <p style={{ marginBottom: 0 }}>{data.discussionPrompt.professor}</p>
                 </div>
-              )}
-
-              <div
-                style={{
-                  padding: "14px 16px",
-                  borderRadius: "14px",
-                  background: "#f8fafc",
-                  border: "1px solid #e2e8f0",
-                }}
-              >
-                <strong>{data.discussionPrompt.professorName || "Professor"}</strong>
-                <p style={{ marginBottom: 0 }}>
-                  {data.discussionPrompt.professor}
-                </p>
-              </div>
-    
-              <div
-                style={{
-                  padding: "14px 16px",
-                  borderRadius: "14px",
-                  background: "#f8fafc",
-                  border: "1px solid #e2e8f0",
-                }}
-              >
-                <strong>{data.discussionPrompt.studentOneName}</strong>
-                <p style={{ marginBottom: 0 }}>
-                  {data.discussionPrompt.studentOnePost}
-                </p>
-              </div>
-              <div
-                style={{
-                  padding: "14px 16px",
-                  borderRadius: "14px",
-                  background: "#f8fafc",
-                  border: "1px solid #e2e8f0",
-                }}
-              >
-                <strong>{data.discussionPrompt.studentTwoName}</strong>
-                <p style={{ marginBottom: 0 }}>
-                  {data.discussionPrompt.studentTwoPost}
-                </p>
-              </div>
-              <div
-                style={{
-                  padding: "14px 16px",
-                  borderRadius: "14px",
-                  background: "#eef2ff",
-                  color: "#312e81",
-                }}
-              >
-                <strong>Question</strong>
-                <p style={{ marginBottom: "8px" }}>
-                  {data.discussionPrompt.question}
-                </p>
-                  <p style={{ marginBottom: 0 }}>
-                    {data.discussionPrompt.suggestedLength}
-                  </p>
+                <div
+                  style={{
+                    padding: "16px",
+                    borderRadius: "14px",
+                    background: "#f8fafc",
+                    border: "1px solid #e2e8f0",
+                  }}
+                >
+                  <strong>{data.discussionPrompt.studentOneName}</strong>
+                  <p style={{ marginBottom: 0 }}>{data.discussionPrompt.studentOnePost}</p>
+                </div>
+                <div
+                  style={{
+                    padding: "16px",
+                    borderRadius: "14px",
+                    background: "#f8fafc",
+                    border: "1px solid #e2e8f0",
+                  }}
+                >
+                  <strong>{data.discussionPrompt.studentTwoName}</strong>
+                  <p style={{ marginBottom: 0 }}>{data.discussionPrompt.studentTwoPost}</p>
+                </div>
+                <div
+                  style={{
+                    padding: "16px",
+                    borderRadius: "14px",
+                    background: "#eef2ff",
+                    color: "#312e81",
+                  }}
+                >
+                  <strong>Question</strong>
+                  <p>{data.discussionPrompt.question}</p>
+                  <p style={{ marginBottom: 0 }}>{data.discussionPrompt.suggestedLength}</p>
                 </div>
               </div>
             </div>
-            {/* 右侧：写作区 */}
-
+            {/* Right column: textarea, word count, and submit button */}
             <div
               style={{
-                flex: "1 1 52%",
-                minWidth: "0",
-                height: "100%",
+                flex: "1 1 55%",
+                minWidth: "280px",
                 display: "flex",
                 flexDirection: "column",
-                overflow: "hidden",
-                boxSizing: "border-box",
               }}
             >
-              <div
-                style={{
-                  display: "flex",
-                  gap: "8px",
-                  marginBottom: "8px",
-                  flexShrink: 0,
-                }}
-              >
-                <button type="button" style={toolbarButtonStyle}>
-                  Cut
-                </button>
-                <button type="button" style={toolbarButtonStyle}>
-                  Paste
-                </button>
-                <button type="button" style={toolbarButtonStyle}>
-                  Undo
-                </button>
-                <button type="button" style={toolbarButtonStyle}>
-                  Redo
-                </button>
+
+              <div style={{ marginBottom: "10px" }}>
+                <button type="button" style={toolbarButtonStyle}>Cut</button>
+                <button type="button" style={toolbarButtonStyle}>Paste</button>
+                <button type="button" style={toolbarButtonStyle}>Undo</button>
+                <button type="button" style={toolbarButtonStyle}>Redo</button>
               </div>
+
               <textarea
                 value={discussionAnswer}
                 onChange={(event) => setDiscussionAnswer(event.target.value)}
                 placeholder="Write your discussion response here..."
                 style={{
                   width: "100%",
-                  flex: 1,
-                  minHeight: 0,
-                  padding: "14px",
-                  borderRadius: "14px",
+                  minHeight: "240px",
+                  padding: "16px",
+                  borderRadius: "16px",
                   border: "1px solid #cbd5e1",
                   fontSize: "15px",
-                  lineHeight: 1.6,
+                  lineHeight: 1.7,
                   boxSizing: "border-box",
-                  resize: "none",
-                  overflow: "auto",
                 }}
               />
-              <div
+              <p
                 style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  gap: "12px",
+                  color: "#64748b",
+                  fontWeight: 700,
                   marginTop: "8px",
-                  flexShrink: 0,
                 }}
               >
-                <p
-                  style={{
-                    color: "#64748b",
-                    fontWeight: 700,
-                    margin: 0,
-                  }}
-                >
-                  Word Count: {discussionWordCount}
-                </p>
-                <button
-                  type="button"
-                  onClick={handleManualSubmit}
-                  disabled={isSubmitting}
-                  style={{
-                    ...primaryButtonStyle,
-                    background: isSubmitting ? "#cbd5e1" : "#111827",
-                    cursor: isSubmitting ? "not-allowed" : "pointer",
-                    padding: "10px 18px",
-                  }}
-                >
-                  {isSubmitting ? "Submitting..." : "Submit Mock Test"}
-                </button>
-              </div>
+                Word Count: {discussionWordCount}
+              </p>
               {message && (
-                <p
-                  style={{
-                    color: "#be123c",
-                    fontWeight: 700,
-                    marginTop: "8px",
-                    marginBottom: 0,
-                    flexShrink: 0,
-                  }}
-                >
-                  {message}
-                </p>
+                <p style={{ color: "#be123c", fontWeight: 700 }}>{message}</p>
               )}
+              <button
+                type="button"
+                onClick={handleManualSubmit}
+                disabled={isSubmitting}
+                style={{
+                  ...primaryButtonStyle,
+                  background: isSubmitting ? "#cbd5e1" : "#111827",
+                  cursor: isSubmitting ? "not-allowed" : "pointer",
+                  marginTop: "12px",
+                }}
+              >
+                {isSubmitting ? "正在评分并生成报告..." : "提交完整模考（-10 points）"}
+              </button>
             </div>
           </div>
         </section>
       )}
+
     </>
+
   );
+
 }
 
 
@@ -6060,15 +5419,13 @@ function MockResultPage({
 }) {
   const cardStyle = {
     background: "white",
-    border: "none",
-    borderRadius: "0",
-    padding: "16px 28px",
-    marginBottom: "0",
-    boxShadow: "none",
-    height: "calc(100vh - 76px)",
-    boxSizing: "border-box" as const,
-    overflow: "hidden",
+    border: "1px solid #e2e8f0",
+    borderRadius: "20px",
+    padding: "24px",
+    marginBottom: "24px",
+    boxShadow: "0 10px 30px rgba(15, 23, 42, 0.06)",
   };
+
   const secondaryButtonStyle = {
     padding: "12px 18px",
     border: "1px solid #cbd5e1",
@@ -6106,7 +5463,7 @@ function MockResultPage({
             margin: "14px 0",
           }}
         >
-          {Number(result.finalScore).toFixed(1)} / 6.0
+          {result.finalScore.toFixed(1)} / 6.0
         </p>
 
         <p style={{ color: "#64748b", lineHeight: 1.8 }}>
@@ -6257,14 +5614,11 @@ function MockRecordsPage({
 }) {
   const cardStyle = {
     background: "white",
-    border: "none",
-    borderRadius: "0",
-    padding: "16px 28px",
-    marginBottom: "0",
-    boxShadow: "none",
-    height: "calc(100vh - 76px)",
-    boxSizing: "border-box" as const,
-    overflow: "hidden",
+    border: "1px solid #e2e8f0",
+    borderRadius: "20px",
+    padding: "24px",
+    marginBottom: "24px",
+    boxShadow: "0 10px 30px rgba(15, 23, 42, 0.06)",
   };
 
   return (
@@ -6367,14 +5721,11 @@ function MockRecordDetailPage({
 }) {
   const cardStyle = {
     background: "white",
-    border: "none",
-    borderRadius: "0",
-    padding: "16px 28px",
-    marginBottom: "0",
-    boxShadow: "none",
-    height: "calc(100vh - 76px)",
-    boxSizing: "border-box" as const,
-    overflow: "hidden",
+    border: "1px solid #e2e8f0",
+    borderRadius: "20px",
+    padding: "24px",
+    marginBottom: "24px",
+    boxShadow: "0 10px 30px rgba(15, 23, 42, 0.06)",
   };
 
 
@@ -6777,110 +6128,6 @@ function AnalyticsPage({
     borderRadius: "12px",
   });
 
-  // Prepare radar chart data based on knowledge point categories and user records.
-  // Each practice type has its own set of categories defined at the module level.
-  const sentenceCategories = useMemo(() => [...SENTENCE_KNOWLEDGE_CATEGORIES], []);
-  const emailCategories = useMemo(() => [...EMAIL_KNOWLEDGE_CATEGORIES], []);
-  const discussionCategories = useMemo(() => [...DISCUSSION_KNOWLEDGE_CATEGORIES], []);
-
-  // Compute aggregated knowledge mastery for the sentence practice.  Each record's
-  // sentence score is distributed across the categories with a simple weighting
-  // scheme: earlier categories receive slightly higher weight.  The resulting
-  // values are averaged over all records and capped at the maximum score (5).
-  const radarDataSentence = useMemo(() => {
-    if (!records || records.length === 0) {
-      return sentenceCategories.map((cat) => ({
-        subject: cat,
-        score: 0,
-        fullMark: 5,
-      }));
-    }
-    const sums: number[] = new Array(sentenceCategories.length).fill(0);
-    records.forEach((rec) => {
-      const baseScore =
-        typeof rec.sentence_score === "number"
-          ? rec.sentence_score
-          : Number(rec.sentence_score);
-      const n = sentenceCategories.length;
-      sentenceCategories.forEach((_, idx) => {
-        const score = isNaN(baseScore) ? 0 : baseScore;
-        sums[idx] += score * ((n - idx) / n);
-      });
-    });
-    return sentenceCategories.map((cat, idx) => ({
-      subject: cat,
-      score: sums[idx] / records.length,
-      fullMark: 5,
-    }));
-  }, [records, sentenceCategories]);
-
-  // Compute aggregated knowledge mastery for email writing.  Similar to the
-  // sentence calculation but using email scores.
-  const radarDataEmail = useMemo(() => {
-    if (!records || records.length === 0) {
-      return emailCategories.map((cat) => ({
-        subject: cat,
-        score: 0,
-        fullMark: 5,
-      }));
-    }
-    const sums: number[] = new Array(emailCategories.length).fill(0);
-    records.forEach((rec) => {
-      const baseScore = parseFloat(String(rec.email_score)) || 0;
-      const n = emailCategories.length;
-      emailCategories.forEach((_, idx) => {
-        const score = isNaN(baseScore) ? 0 : baseScore;
-        sums[idx] += score * ((n - idx) / n);
-      });
-    });
-    return emailCategories.map((cat, idx) => ({
-      subject: cat,
-      score: sums[idx] / records.length,
-      fullMark: 5,
-    }));
-  }, [records, emailCategories]);
-
-  // Compute aggregated knowledge mastery for academic discussion.
-  const radarDataDiscussion = useMemo(() => {
-    if (!records || records.length === 0) {
-      return discussionCategories.map((cat) => ({
-        subject: cat,
-        score: 0,
-        fullMark: 5,
-      }));
-    }
-    const sums: number[] = new Array(discussionCategories.length).fill(0);
-    records.forEach((rec) => {
-      const baseScore = parseFloat(String(rec.discussion_score)) || 0;
-      const n = discussionCategories.length;
-      discussionCategories.forEach((_, idx) => {
-        const score = isNaN(baseScore) ? 0 : baseScore;
-        sums[idx] += score * ((n - idx) / n);
-      });
-    });
-    return discussionCategories.map((cat, idx) => ({
-      subject: cat,
-      score: sums[idx] / records.length,
-      fullMark: 5,
-    }));
-  }, [records, discussionCategories]);
-
-  // Selected radar chart type: determines which dataset to display.
-  const [selectedRadar, setSelectedRadar] = useState<
-    "sentence" | "email" | "discussion"
-  >("sentence");
-
-  const currentRadarData :{
-    subject: string;
-    score: Number;
-    fullMark: Number;
-  }[] =
-    selectedRadar === "sentence"
-      ? radarDataSentence
-      : selectedRadar === "email"
-      ? radarDataEmail
-      : radarDataDiscussion;
-
   return (
     <>
       <button
@@ -6957,108 +6204,9 @@ function AnalyticsPage({
               <h2 style={{ marginTop: 0, marginBottom: "12px" }}>薄弱项分析</h2>
               {summary.suggestions.map((tip, idx) => (
                 <p key={idx} style={{ color: "#475569", lineHeight: 1.7 }}>
-              {tip}
-            </p>
-          ))}
-        </div>
-
-            {/* 知识点掌握情况雷达图：一次只展示一种练习类型 */}
-            <div style={{ marginTop: "32px" }}>
-              <h2 style={{ marginTop: 0, marginBottom: "12px" }}>知识点掌握情况</h2>
-              {/* 切换按钮：选择造句、邮件或讨论 */}
-              <div
-                style={{
-                  display: "flex",
-                  gap: "8px",
-                  marginBottom: "16px",
-                  flexWrap: "wrap",
-                }}
-              >
-                <button
-                  type="button"
-                  onClick={() => setSelectedRadar("sentence")}
-                  style={{
-                    padding: "6px 12px",
-                    borderRadius: "8px",
-                    border:
-                      selectedRadar === "sentence"
-                        ? "2px solid #6366f1"
-                        : "1px solid #cbd5e1",
-                    background:
-                      selectedRadar === "sentence" ? "#eef2ff" : "#ffffff",
-                    color: "#1e293b",
-                    cursor: "pointer",
-                  }}
-                >
-                  造句
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setSelectedRadar("email")}
-                  style={{
-                    padding: "6px 12px",
-                    borderRadius: "8px",
-                    border:
-                      selectedRadar === "email"
-                        ? "2px solid #8b5cf6"
-                        : "1px solid #cbd5e1",
-                    background:
-                      selectedRadar === "email" ? "#f5f3ff" : "#ffffff",
-                    color: "#1e293b",
-                    cursor: "pointer",
-                  }}
-                >
-                  邮件
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setSelectedRadar("discussion")}
-                  style={{
-                    padding: "6px 12px",
-                    borderRadius: "8px",
-                    border:
-                      selectedRadar === "discussion"
-                        ? "2px solid #22d3ee"
-                        : "1px solid #cbd5e1",
-                    background:
-                      selectedRadar === "discussion" ? "#ecfeff" : "#ffffff",
-                    color: "#1e293b",
-                    cursor: "pointer",
-                  }}
-                >
-                  讨论
-                </button>
-              </div>
-              {/* 雷达图容器 */}
-              <div style={{ width: "100%", height: "320px" }}>
-                <ResponsiveContainer width="100%" height="100%">
-                  <RadarChart data={currentRadarData}>
-                    <PolarGrid />
-                    <PolarAngleAxis dataKey="subject" />
-                    <PolarRadiusAxis angle={30} domain={[0, 5]} />
-                    <Radar
-                      name="掌握度"
-                      dataKey="score"
-                      stroke={
-                        selectedRadar === "sentence"
-                          ? "#6366f1"
-                          : selectedRadar === "email"
-                          ? "#8b5cf6"
-                          : "#22d3ee"
-                      }
-                      fill={
-                        selectedRadar === "sentence"
-                          ? "#6366f1"
-                          : selectedRadar === "email"
-                          ? "#8b5cf6"
-                          : "#22d3ee"
-                      }
-                      fillOpacity={0.4}
-                    />
-                    <Tooltip />
-                  </RadarChart>
-                </ResponsiveContainer>
-              </div>
+                  {tip}
+                </p>
+              ))}
             </div>
 
             {/* 成绩趋势折线图：展示每次完整模考的各项分数变化 */}
@@ -7292,9 +6440,6 @@ function getPageFromPath(): Page {
     return "discussion";
   if (path.includes("/full-mock-test")) 
     return "mock";
-
-  if (path.includes("/practice-sessions")) 
-    return "practice-sessions";
 
   // 新增对能力分析路径的识别
   if (path.includes("/analytics")) 
@@ -8137,101 +7282,6 @@ function QuestionSetContentPreview({ content }: { content: QuestionSetContent })
         return null;
       })}
     </div>
-  );
-}
-
-// A unified page that displays all locally recorded practice sessions. Each
-// entry shows the practice type, the duration, the achieved score (or
-// "未完成"), and the date. This allows users to get a quick overview of
-// how long they have spent on each practice and how they performed.
-function PracticeSessionsPage({
-  sessions,
-  setPage,
-}: {
-  sessions: PracticeSession[];
-  setPage: (page: Page) => void;
-}) {
-  function formatType(type: PracticeSession["type"]) {
-    if (type === "sentence") return "Build a Sentence";
-    if (type === "email") return "Email Writing";
-    if (type === "discussion") return "Academic Discussion";
-    if (type === "mock") return "Full Mock Test";
-    return type;
-  }
-
-  return (
-    <>
-      <button
-        type="button"
-        onClick={() => setPage("home")}
-        style={{
-          padding: "10px 16px",
-          border: "1px solid #cbd5e1",
-          borderRadius: "12px",
-          background: "white",
-          fontWeight: 700,
-          cursor: "pointer",
-          marginBottom: "24px",
-        }}
-      >
-        返回首页
-      </button>
-
-      <h2 style={{ fontSize: "28px", marginBottom: "10px" }}>
-        总练习记录
-      </h2>
-
-      <p style={{ color: "#64748b", marginBottom: "24px" }}>
-        显示所有练习的类型、耗时、得分和日期。
-      </p>
-
-      {sessions.length === 0 ? (
-        <p style={{ color: "#64748b" }}>暂无练习记录。</p>
-      ) : (
-        <div style={{ display: "grid", gap: "12px" }}>
-          {sessions.map((session) => (
-            <div
-              key={session.id}
-              style={{
-                width: "100%",
-                border: "1px solid #e2e8f0",
-                borderRadius: "18px",
-                background: "#f8fafc",
-                padding: "18px 20px",
-              }}
-            >
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "1.4fr 1fr 1fr 1.6fr",
-                  gap: "14px",
-                  alignItems: "center",
-                }}
-              >
-                <strong>{formatType(session.type)}</strong>
-                <span style={{ color: "#64748b", fontWeight: 700 }}>
-                  {formatDuration(session.duration)}
-                </span>
-                <span
-                  style={{
-                    fontWeight: 800,
-                    color:
-                      typeof session.score === "number"
-                        ? "#312e81"
-                        : "#be123c",
-                  }}
-                >
-                  {session.score}
-                </span>
-                <span style={{ color: "#64748b" }}>
-                  {new Date(session.date).toLocaleString()}
-                </span>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </>
   );
 }
 
