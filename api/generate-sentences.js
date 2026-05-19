@@ -308,29 +308,29 @@ function splitWordsIntoChunks(words) {
 function getDifficultySentenceConfig(level) {
   if (level === "Hard") {
     return {
-      targetWordMin: 8,
-      targetWordMax: 10,
-      desiredBlankMin: 7,
-      desiredBlankMax: 9,
+      targetWordMin: 6,
+      targetWordMax: 8,
+      desiredBlankMin: 5,
+      desiredBlankMax: 7,
       minFixedAnchors: 1,
     };
   }
 
   if (level === "Medium") {
     return {
-      targetWordMin: 7,
-      targetWordMax: 9,
-      desiredBlankMin: 6,
-      desiredBlankMax: 8,
+      targetWordMin: 6,
+      targetWordMax: 7,
+      desiredBlankMin: 5,
+      desiredBlankMax: 6,
       minFixedAnchors: 1,
     };
   }
 
   return {
-    targetWordMin: 6,
-    targetWordMax: 8,
+    targetWordMin: 5,
+    targetWordMax: 6,
     desiredBlankMin: 5,
-    desiredBlankMax: 7,
+    desiredBlankMax: 6,
     minFixedAnchors: 0,
   };
 }
