@@ -1,4 +1,5 @@
 import { GoogleGenAI } from "@google/genai";
+import { generateContentWithModelFallback } from "./gemini-helper.js";
 
 let currentDesignRules = {};
 
@@ -751,13 +752,15 @@ Return this exact JSON structure:
 }
 `;
 
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash-lite",
+    const { response, modelUsed } = await generateContentWithModelFallback(ai, {
       contents: prompt,
       config: {
         responseMimeType: "application/json",
+        temperature: 0.8,
       },
     });
+
+    console.log("Generate sentences model used:", modelUsed);
 
     const text = response.text || "";
 
