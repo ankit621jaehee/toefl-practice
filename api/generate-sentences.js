@@ -287,55 +287,6 @@ function splitWordsIntoChunks(words) {
   return chunks.map(cleanChunk).filter(Boolean);
 }
 
-function getDifficultyConfig(level) {
-  if (level === "Hard") {
-    return {
-      targetWordMin: 16,
-      targetWordMax: 22,
-      desiredBlankMin: 10,
-      desiredBlankMax: 12,
-      fixedEvery: 4,
-      minFixedAnchors: 3,
-    };
-  }
-
-  if (level === "Medium") {
-    return {
-      targetWordMin: 12,
-      targetWordMax: 18,
-      desiredBlankMin: 7,
-      desiredBlankMax: 9,
-      fixedEvery: 4,
-      minFixedAnchors: 3,
-    };
-  }
-
-  return {
-    targetWordMin: 8,
-    targetWordMax: 14,
-    desiredBlankMin: 4,
-    desiredBlankMax: 6,
-    fixedEvery: 3,
-    minFixedAnchors: 2,
-  };
-}
-
-function isPunctuationOnlyText(text) {
-  return /^[,.;:!?，。！？；：]+$/.test(String(text || "").trim());
-}
-
-function countBlankParts(parts) {
-  return parts.filter((part) => part.type === "blank").length;
-}
-
-function countMeaningfulFixedParts(parts) {
-  return parts.filter((part) => {
-    if (part.type !== "fixed") return false;
-    const text = String(part.text || "").trim();
-    return text.length > 1 && !isPunctuationOnlyText(text);
-  }).length;
-}
-
 function getDifficultySentenceConfig(level) {
   if (level === "Hard") {
     return {
@@ -382,6 +333,7 @@ function countMeaningfulFixedParts(parts) {
   }).length;
 }
 
+
 function buildPartsFromTarget(target, level = "Medium") {
   const punctuation = getEndPunctuation(target);
   const sentenceWithoutPunctuation = removeEndPunctuation(target);
@@ -417,43 +369,6 @@ function buildPartsFromTarget(target, level = "Medium") {
       answer: chunk,
     };
   });
-
-  // 如果句首是自然主语短语，可以 fixed。
-  // 例如：The textbook ____ / The article ____
-  if (parts.length >= 5 && parts[0].type === "blank") {
-    const firstText = parts[0].answer;
-    const firstWordCount = cleanChunk(firstText).split(/\s+/).length;
-
-    if (firstWordCount <= 2) {
-      convertBlankToFixed(0);
-    }
-  }
-
-  // 如果句尾是自然搭配短语，可以 fixed。
-  // 例如：for me / in class / on campus / during exams
-  const endingFixedCandidates = new Set([
-    "for me",
-    "for us",
-    "in class",
-    "after class",
-    "at the library",
-    "on campus",
-    "near the school",
-    "during exams",
-    "before class",
-    "after school",
-  ]);
-
-  const blankIndexes = getBlankIndexes();
-  const lastBlankIndex = blankIndexes[blankIndexes.length - 1];
-
-  if (
-    lastBlankIndex !== undefined &&
-    endingFixedCandidates.has(cleanChunk(parts[lastBlankIndex].answer))
-  ) {
-    convertBlankToFixed(lastBlankIndex);
-  }
-
 
   function getBlankIndexes() {
     return parts
@@ -495,7 +410,6 @@ function buildPartsFromTarget(target, level = "Medium") {
 
     if (blankIndexes.length < 2) return false;
 
-    // 优先合并相邻的 blank；如果没有相邻 blank，就合并前两个 blank。
     for (let i = 0; i < blankIndexes.length - 1; i += 1) {
       const first = blankIndexes[i];
       const second = blankIndexes[i + 1];
@@ -523,18 +437,42 @@ function buildPartsFromTarget(target, level = "Medium") {
     return true;
   }
 
-  // 1. 如果句子开头是逻辑词、疑问词、从句引导词，它已经会被 shouldPreferFixed 保留。
-  // 如果不是，也可以保留开头作为起步线索，但不要强制所有句子都这样。
+  // 1. 句首如果是自然短语，可以固定，类似真题中的 The textbook ____。
   if (parts.length >= 5 && parts[0].type === "blank") {
     const firstText = parts[0].answer;
-    const firstChunkIsShort = cleanChunk(firstText).split(/\s+/).length <= 1;
+    const firstWordCount = cleanChunk(firstText).split(/\s+/).length;
 
-    if (firstChunkIsShort) {
+    if (firstWordCount <= 2) {
       convertBlankToFixed(0);
     }
   }
 
-  // 2. 如果有逗号，逗号前后不能只有 blank。选择逗号附近最容易变成歧义的部分 fixed。
+  // 2. 句尾如果是真题常见给定短语，可以固定。
+  const endingFixedCandidates = new Set([
+    "for me",
+    "for us",
+    "in class",
+    "after class",
+    "at the library",
+    "on campus",
+    "near the school",
+    "during exams",
+    "before class",
+    "after school",
+  ]);
+
+  const blankIndexesForEnding = getBlankIndexes();
+  const lastBlankIndex =
+    blankIndexesForEnding[blankIndexesForEnding.length - 1];
+
+  if (
+    lastBlankIndex !== undefined &&
+    endingFixedCandidates.has(cleanChunk(parts[lastBlankIndex].answer))
+  ) {
+    convertBlankToFixed(lastBlankIndex);
+  }
+
+  // 3. 如果有逗号，逗号前后不能全靠盲猜，保留自然线索。
   if (sentenceWithoutPunctuation.includes(",")) {
     const beforeCommaText = sentenceWithoutPunctuation.split(",")[0].trim();
     const beforeCommaWordCount = beforeCommaText
@@ -576,8 +514,7 @@ function buildPartsFromTarget(target, level = "Medium") {
     }
   }
 
-  // 3. 如果 fixed 线索太少，就优先把“灵活/歧义高”的 blank 转 fixed；
-  // 如果没有这种，就转中间位置的 blank。
+  // 4. 如果 fixed 太少，只在必要时转一个自然线索，不机械插中间 fixed。
   while (countMeaningfulFixedParts(parts) < config.minFixedAnchors) {
     const blankIndexes = getBlankIndexes();
 
@@ -592,25 +529,22 @@ function buildPartsFromTarget(target, level = "Medium") {
       continue;
     }
 
-    const middleBlankIndex =
-      blankIndexes[Math.floor(blankIndexes.length / 2)];
-
-    convertBlankToFixed(middleBlankIndex);
+    // 不强制中间 fixed，只固定开头附近的自然短语
+    convertBlankToFixed(blankIndexes[0]);
   }
 
-  // 4. 如果空超过 7 个，就合并 blank，而不是盲目 fixed。
-  // 这样保留训练量，但避免空太碎。
+  // 5. 空太多就合并 blank，控制在 5–7 左右。
   while (countBlankParts(parts) > config.desiredBlankMax) {
     if (!mergeNeighborBlanks()) break;
   }
 
-  // 5. 如果空少于 5 个，尝试把不重要的 fixed 重新转成 blank。
-  // 但逻辑词、灵活状语、标点不能转。
+  // 6. 空太少时，只把不重要 fixed 转回 blank。
   while (countBlankParts(parts) < config.desiredBlankMin) {
     const fixedIndexes = getFixedIndexes();
 
     const convertibleFixedIndex = fixedIndexes.find((index) => {
       const text = parts[index].text;
+
       return (
         !shouldPreferFixed(text) &&
         !isPunctuationOnlyText(text) &&
@@ -630,7 +564,6 @@ function buildPartsFromTarget(target, level = "Medium") {
 
   return parts;
 }
-
 function getChunksFromParts(parts) {
   return parts
     .filter((part) => part.type === "blank")
@@ -693,6 +626,8 @@ export default async function handler(req, res) {
 
     const requestedCount = Number(count) || 5;
     const generatedCount = requestedCount + 3;
+    const seed =
+      randomSeed || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
     const prompt = `
 You are a TOEFL Build a Sentence exercise generator.
@@ -726,18 +661,16 @@ Example 4:
 A: What did Maria ask you about the book you're reading?
 B target: She wanted to know where she could buy a copy.
 
-Random seed: ${randomSeed}
+Random seed: ${seed}
 
 Important:
 - Generate ${count} completely new questions.
 - Do not reuse any of these target sentences:
-${excludeTargets?.join("\n")}
+${Array.isArray(excludeTargets) ? excludeTargets.join("\n") : ""}
 - Do not copy the examples.
 - Each question must have a different context, target sentence, and word bank.
 
 Rules:
-Rules:
-
 1. Speaker A should provide a natural dialogue context.
 2. Speaker B's target sentence should be a natural response.
 3. Difficulty is based mainly on the complexity of the target sentence, not on the number of blanks.
@@ -850,12 +783,19 @@ Return this exact JSON structure:
       );
     }
 
+    currentDesignRules = {};
+
     return res.status(200).json({
       questions: finalQuestions,
     });
-  } catch (error) {
-    return res.status(500).json({
-      error: error.message || "Failed to generate questions",
-    });
-  }
+
+
+    } catch (error) {
+      console.error("generate-sentences error:", error);
+      currentDesignRules = {};
+
+      return res.status(500).json({
+        error: error?.message || "Failed to generate questions",
+      });
+    }
 }
