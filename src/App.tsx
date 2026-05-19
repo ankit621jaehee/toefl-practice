@@ -612,21 +612,35 @@ async function generateQuestionsFromAPI(
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        count: remaining,
-        level,
-        topic,
-        randomSeed,
-        excludeTargets: Array.from(usedTargets),
-        knowledgeCategories: [
-          "从句",
-          "短语搭配",
-          "连词使用",
-          "句型结构",
-          "时态一致",
-        ],
-      }),
-    });
-
+      count: remaining,
+      level,
+      topic,
+      randomSeed,
+      excludeTargets: Array.from(usedTargets),
+      designRules: {
+        blankRange:
+          level === "Hard"
+            ? { min: 7, max: 8 }
+            : level === "Medium"
+            ? { min: 6, max: 7 }
+            : { min: 5, max: 6 },
+        minFixedParts:
+          level === "Hard" ? 3 : level === "Medium" ? 3 : 2,
+        requireCommaAnchor: true,
+        avoidOverBlanking: true,
+        fixedWhenAmbiguous: true,
+        ruleText:
+          "Keep about 5 to 7 blanks regardless of difficulty. Difficulty should come from sentence complexity, not the number of blanks. If a word or phrase is too flexible in position, likely to cause multiple valid answers, or needed as a clue for logic, keep it as fixed text.",
+      },
+      knowledgeCategories: [
+        "从句",
+        "短语搭配",
+        "连词使用",
+        "句型结构",
+        "时态一致",
+      ],
+    }),
+  })
     if (!response.ok) {
       const errorText = await response.text().catch(() => "");
       throw new Error(errorText || "API request failed");

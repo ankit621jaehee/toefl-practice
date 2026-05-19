@@ -1,5 +1,7 @@
 import { GoogleGenAI } from "@google/genai";
 
+let currentDesignRules = {};
+
 function getEndPunctuation(sentence) {
   const match = String(sentence || "").trim().match(/[.!?]$/);
   return match ? match[0] : ".";
@@ -26,6 +28,74 @@ function cleanChunk(chunk) {
     .trim()
     .toLowerCase();
 }
+
+const flexibleOrAmbiguousChunks = new Set([
+  "usually",
+  "often",
+  "sometimes",
+  "generally",
+  "probably",
+  "perhaps",
+  "maybe",
+  "actually",
+  "also",
+  "still",
+  "even",
+  "only",
+  "just",
+  "really",
+  "clearly",
+  "carefully",
+  "quickly",
+  "slowly",
+  "more clearly",
+  "more carefully",
+  "at the same time",
+  "in the future",
+  "in the past",
+  "for example",
+  "for instance",
+  "in fact",
+  "as a result",
+  "on the other hand",
+]);
+
+const logicAnchorChunks = new Set([
+  "although",
+  "because",
+  "since",
+  "while",
+  "whereas",
+  "however",
+  "therefore",
+  "instead",
+  "unless",
+  "even though",
+  "as long as",
+  "so that",
+  "rather than",
+  "not only",
+  "but also",
+]);
+
+function shouldPreferFixed(chunk) {
+  const normalized = cleanChunk(chunk);
+
+  if (!normalized) return false;
+
+  // 逻辑连接词保留为 fixed，给考生判断句子关系。
+  if (logicAnchorChunks.has(normalized)) return true;
+
+  // 位置灵活的副词/状语保留为 fixed，避免多个位置都说得通导致误判。
+  if (flexibleOrAmbiguousChunks.has(normalized)) return true;
+
+  // 很短的功能词信息量低，不适合作为空。
+  if (normalized.length <= 2) return true;
+
+  return false;
+}
+
+
 
 const nounPhraseStarters = new Set([
   "a",
@@ -99,56 +169,117 @@ function splitWordsIntoChunks(words) {
   const chunks = [];
   let index = 0;
 
+  const beVerbs = new Set(["am", "is", "are", "was", "were", "be", "been", "being"]);
+  const modalVerbs = new Set(["can", "could", "may", "might", "will", "would", "should", "must"]);
+  const whWords = new Set(["what", "when", "where", "why", "how", "whether", "if", "which", "who", "whom", "whose"]);
+  const prepositions = new Set([
+    "in",
+    "on",
+    "at",
+    "by",
+    "for",
+    "with",
+    "from",
+    "to",
+    "of",
+    "about",
+    "among",
+    "between",
+    "during",
+    "before",
+    "after",
+    "without",
+    "within",
+    "through",
+  ]);
+
   while (index < words.length) {
     const current = words[index]?.toLowerCase();
     const next = words[index + 1]?.toLowerCase();
+    const third = words[index + 2]?.toLowerCase();
 
-    // 保留自然名词短语：any assistance / the old city / a different department
-    const nounPhraseLength = isLikelyNounPhrase(words, index);
-    if (nounPhraseLength) {
-      chunks.push(words.slice(index, index + nounPhraseLength).join(" "));
-      index += nounPhraseLength;
+    if (!current) {
+      index += 1;
       continue;
     }
 
-    // 保留很常见的短语搭配，但不要太长
-    if (current === "to" && next) {
+    // wh-word / 从句引导词单独成块：why / whether / how / where
+    // 这样可以明确考宾语从句或嵌入问句结构。
+    if (whWords.has(current)) {
+      chunks.push(words[index]);
+      index += 1;
+      continue;
+    }
+
+    // 介词单独成块：among / with / in / for
+    // 不要总是绑成 among students，否则介词位置判断就被弱化了。
+    if (prepositions.has(current)) {
+      chunks.push(words[index]);
+      index += 1;
+      continue;
+    }
+
+    // be + V-ing / be + Ved：are becoming / was assigned
+    if (
+      beVerbs.has(current) &&
+      next &&
+      (next.endsWith("ing") || next.endsWith("ed"))
+    ) {
       chunks.push(words.slice(index, index + 2).join(" "));
       index += 2;
       continue;
     }
 
-    if (current === "will" && next === "be") {
-      chunks.push("will be");
+    // modal + verb：could explain / should consider
+    if (modalVerbs.has(current) && next) {
+      chunks.push(words.slice(index, index + 2).join(" "));
       index += 2;
       continue;
     }
 
-    if (current === "could" && next === "you") {
-      chunks.push("could you");
+    // more / less + adjective：more popular / less expensive
+    if ((current === "more" || current === "less") && next) {
+      chunks.push(words.slice(index, index + 2).join(" "));
       index += 2;
       continue;
     }
 
-    if (current === "can" && next === "you") {
-      chunks.push("can you");
+    // not only / but also 这种固定结构单独保留
+    if (current === "not" && next === "only") {
+      chunks.push("not only");
       index += 2;
       continue;
     }
 
-    if (current === "do" && next === "you") {
-      chunks.push("do you");
+    if (current === "but" && next === "also") {
+      chunks.push("but also");
       index += 2;
       continue;
     }
 
-    if (current === "did" && next === "you") {
-      chunks.push("did you");
+    // adjective + noun：local museums / public libraries
+    // 但不要把介词 + 名词绑起来。
+    if (commonAdjectives.has(current) && next) {
+      chunks.push(words.slice(index, index + 2).join(" "));
       index += 2;
       continue;
     }
 
-    // 其他情况尽量单词拆分
+    // article / determiner + noun：the article / a copy
+    // 这个可以保留为自然短语。
+    if (nounPhraseStarters.has(current) && next) {
+      // the local museums / a different department
+      if (third && commonAdjectives.has(next)) {
+        chunks.push(words.slice(index, index + 3).join(" "));
+        index += 3;
+        continue;
+      }
+
+      chunks.push(words.slice(index, index + 2).join(" "));
+      index += 2;
+      continue;
+    }
+
     chunks.push(words[index]);
     index += 1;
   }
@@ -156,7 +287,102 @@ function splitWordsIntoChunks(words) {
   return chunks.map(cleanChunk).filter(Boolean);
 }
 
-function buildPartsFromTarget(target) {
+function getDifficultyConfig(level) {
+  if (level === "Hard") {
+    return {
+      targetWordMin: 16,
+      targetWordMax: 22,
+      desiredBlankMin: 10,
+      desiredBlankMax: 12,
+      fixedEvery: 4,
+      minFixedAnchors: 3,
+    };
+  }
+
+  if (level === "Medium") {
+    return {
+      targetWordMin: 12,
+      targetWordMax: 18,
+      desiredBlankMin: 7,
+      desiredBlankMax: 9,
+      fixedEvery: 4,
+      minFixedAnchors: 3,
+    };
+  }
+
+  return {
+    targetWordMin: 8,
+    targetWordMax: 14,
+    desiredBlankMin: 4,
+    desiredBlankMax: 6,
+    fixedEvery: 3,
+    minFixedAnchors: 2,
+  };
+}
+
+function isPunctuationOnlyText(text) {
+  return /^[,.;:!?，。！？；：]+$/.test(String(text || "").trim());
+}
+
+function countBlankParts(parts) {
+  return parts.filter((part) => part.type === "blank").length;
+}
+
+function countMeaningfulFixedParts(parts) {
+  return parts.filter((part) => {
+    if (part.type !== "fixed") return false;
+    const text = String(part.text || "").trim();
+    return text.length > 1 && !isPunctuationOnlyText(text);
+  }).length;
+}
+
+function getDifficultySentenceConfig(level) {
+  if (level === "Hard") {
+    return {
+      targetWordMin: 14,
+      targetWordMax: 20,
+      desiredBlankMin: 5,
+      desiredBlankMax: 7,
+      minFixedAnchors: 1,
+    };
+  }
+
+  if (level === "Medium") {
+    return {
+      targetWordMin: 10,
+      targetWordMax: 16,
+      desiredBlankMin: 5,
+      desiredBlankMax: 7,
+      minFixedAnchors: 1,
+    };
+  }
+
+  return {
+    targetWordMin: 8,
+    targetWordMax: 12,
+    desiredBlankMin: 5,
+    desiredBlankMax: 6,
+    minFixedAnchors: 1,
+  };
+}
+
+function isPunctuationOnlyText(text) {
+  return /^[,.;:!?，。！？；：]+$/.test(String(text || "").trim());
+}
+
+function countBlankParts(parts) {
+  return parts.filter((part) => part.type === "blank").length;
+}
+
+function countMeaningfulFixedParts(parts) {
+  return parts.filter((part) => {
+    if (part.type !== "fixed") return false;
+    const text = String(part.text || "").trim();
+    return text.length > 1 && !isPunctuationOnlyText(text);
+  }).length;
+}
+
+function buildPartsFromTarget(target, level = "Medium") {
   const punctuation = getEndPunctuation(target);
   const sentenceWithoutPunctuation = removeEndPunctuation(target);
 
@@ -175,41 +401,227 @@ function buildPartsFromTarget(target) {
     ];
   }
 
-  const parts = [];
+  const config = getDifficultySentenceConfig(level);
+  const chunks = splitWordsIntoChunks(words);
 
-  // 保留 0–1 个开头已有词，避免白给太多
-  const firstWord = words[0];
-  const commonFixedStarters = [
-    "The",
-    "A",
-    "An",
-    "She",
-    "He",
-    "It",
-    "They",
-    "I",
-    "We",
-    "There",
-  ];
+  const parts = chunks.map((chunk) => {
+    if (shouldPreferFixed(chunk)) {
+      return {
+        type: "fixed",
+        text: chunk,
+      };
+    }
 
-  let blankWords = words;
-
-  if (commonFixedStarters.includes(firstWord) && words.length >= 8) {
-    parts.push({
-      type: "fixed",
-      text: firstWord,
-    });
-    blankWords = words.slice(1);
-  }
-
-  const chunks = splitWordsIntoChunks(blankWords);
-
-  chunks.forEach((chunk) => {
-    parts.push({
+    return {
       type: "blank",
       answer: chunk,
-    });
+    };
   });
+
+  // 如果句首是自然主语短语，可以 fixed。
+  // 例如：The textbook ____ / The article ____
+  if (parts.length >= 5 && parts[0].type === "blank") {
+    const firstText = parts[0].answer;
+    const firstWordCount = cleanChunk(firstText).split(/\s+/).length;
+
+    if (firstWordCount <= 2) {
+      convertBlankToFixed(0);
+    }
+  }
+
+  // 如果句尾是自然搭配短语，可以 fixed。
+  // 例如：for me / in class / on campus / during exams
+  const endingFixedCandidates = new Set([
+    "for me",
+    "for us",
+    "in class",
+    "after class",
+    "at the library",
+    "on campus",
+    "near the school",
+    "during exams",
+    "before class",
+    "after school",
+  ]);
+
+  const blankIndexes = getBlankIndexes();
+  const lastBlankIndex = blankIndexes[blankIndexes.length - 1];
+
+  if (
+    lastBlankIndex !== undefined &&
+    endingFixedCandidates.has(cleanChunk(parts[lastBlankIndex].answer))
+  ) {
+    convertBlankToFixed(lastBlankIndex);
+  }
+
+
+  function getBlankIndexes() {
+    return parts
+      .map((part, index) => (part.type === "blank" ? index : -1))
+      .filter((index) => index !== -1);
+  }
+
+  function getFixedIndexes() {
+    return parts
+      .map((part, index) => (part.type === "fixed" ? index : -1))
+      .filter((index) => index !== -1);
+  }
+
+  function convertBlankToFixed(index) {
+    if (!parts[index] || parts[index].type !== "blank") return;
+
+    parts[index] = {
+      type: "fixed",
+      text: parts[index].answer,
+    };
+  }
+
+  function convertFixedToBlank(index) {
+    if (!parts[index] || parts[index].type !== "fixed") return;
+
+    const text = parts[index].text;
+
+    if (shouldPreferFixed(text)) return;
+    if (isPunctuationOnlyText(text)) return;
+
+    parts[index] = {
+      type: "blank",
+      answer: text,
+    };
+  }
+
+  function mergeNeighborBlanks() {
+    const blankIndexes = getBlankIndexes();
+
+    if (blankIndexes.length < 2) return false;
+
+    // 优先合并相邻的 blank；如果没有相邻 blank，就合并前两个 blank。
+    for (let i = 0; i < blankIndexes.length - 1; i += 1) {
+      const first = blankIndexes[i];
+      const second = blankIndexes[i + 1];
+
+      if (second === first + 1) {
+        parts[first] = {
+          type: "blank",
+          answer: `${parts[first].answer} ${parts[second].answer}`,
+        };
+
+        parts.splice(second, 1);
+        return true;
+      }
+    }
+
+    const first = blankIndexes[0];
+    const second = blankIndexes[1];
+
+    parts[first] = {
+      type: "blank",
+      answer: `${parts[first].answer} ${parts[second].answer}`,
+    };
+
+    parts.splice(second, 1);
+    return true;
+  }
+
+  // 1. 如果句子开头是逻辑词、疑问词、从句引导词，它已经会被 shouldPreferFixed 保留。
+  // 如果不是，也可以保留开头作为起步线索，但不要强制所有句子都这样。
+  if (parts.length >= 5 && parts[0].type === "blank") {
+    const firstText = parts[0].answer;
+    const firstChunkIsShort = cleanChunk(firstText).split(/\s+/).length <= 1;
+
+    if (firstChunkIsShort) {
+      convertBlankToFixed(0);
+    }
+  }
+
+  // 2. 如果有逗号，逗号前后不能只有 blank。选择逗号附近最容易变成歧义的部分 fixed。
+  if (sentenceWithoutPunctuation.includes(",")) {
+    const beforeCommaText = sentenceWithoutPunctuation.split(",")[0].trim();
+    const beforeCommaWordCount = beforeCommaText
+      .split(/\s+/)
+      .filter(Boolean).length;
+
+    let runningWordCount = 0;
+    let beforeCommaPartIndex = -1;
+    let afterCommaPartIndex = -1;
+
+    for (let i = 0; i < parts.length; i += 1) {
+      const text =
+        parts[i].type === "blank" ? parts[i].answer : parts[i].text;
+
+      const wordCount = String(text || "")
+        .split(/\s+/)
+        .filter(Boolean).length;
+
+      if (runningWordCount < beforeCommaWordCount) {
+        beforeCommaPartIndex = i;
+      }
+
+      if (
+        runningWordCount >= beforeCommaWordCount &&
+        afterCommaPartIndex === -1
+      ) {
+        afterCommaPartIndex = i;
+      }
+
+      runningWordCount += wordCount;
+    }
+
+    if (beforeCommaPartIndex >= 0) {
+      convertBlankToFixed(beforeCommaPartIndex);
+    }
+
+    if (afterCommaPartIndex >= 0) {
+      convertBlankToFixed(afterCommaPartIndex);
+    }
+  }
+
+  // 3. 如果 fixed 线索太少，就优先把“灵活/歧义高”的 blank 转 fixed；
+  // 如果没有这种，就转中间位置的 blank。
+  while (countMeaningfulFixedParts(parts) < config.minFixedAnchors) {
+    const blankIndexes = getBlankIndexes();
+
+    if (blankIndexes.length <= config.desiredBlankMin) break;
+
+    const ambiguousBlankIndex = blankIndexes.find((index) =>
+      shouldPreferFixed(parts[index].answer)
+    );
+
+    if (ambiguousBlankIndex !== undefined) {
+      convertBlankToFixed(ambiguousBlankIndex);
+      continue;
+    }
+
+    const middleBlankIndex =
+      blankIndexes[Math.floor(blankIndexes.length / 2)];
+
+    convertBlankToFixed(middleBlankIndex);
+  }
+
+  // 4. 如果空超过 7 个，就合并 blank，而不是盲目 fixed。
+  // 这样保留训练量，但避免空太碎。
+  while (countBlankParts(parts) > config.desiredBlankMax) {
+    if (!mergeNeighborBlanks()) break;
+  }
+
+  // 5. 如果空少于 5 个，尝试把不重要的 fixed 重新转成 blank。
+  // 但逻辑词、灵活状语、标点不能转。
+  while (countBlankParts(parts) < config.desiredBlankMin) {
+    const fixedIndexes = getFixedIndexes();
+
+    const convertibleFixedIndex = fixedIndexes.find((index) => {
+      const text = parts[index].text;
+      return (
+        !shouldPreferFixed(text) &&
+        !isPunctuationOnlyText(text) &&
+        String(text || "").trim().length > 2
+      );
+    });
+
+    if (convertibleFixedIndex === undefined) break;
+
+    convertFixedToBlank(convertibleFixedIndex);
+  }
 
   parts.push({
     type: "fixed",
@@ -232,7 +644,7 @@ function normalizeQuestion(question, index, level, topic) {
       ? question.target.trim()
       : "I am not sure about it yet.";
 
-  const parts = buildPartsFromTarget(target);
+  const parts = buildPartsFromTarget(target, level);
   const chunks = getChunksFromParts(parts);
 
   return {
@@ -268,7 +680,17 @@ export default async function handler(req, res) {
       apiKey: process.env.GEMINI_API_KEY,
     });
 
-    const { count = 5, level = "Medium", topic = "Mixed" } = req.body || {};
+    const {
+      count = 5,
+      level = "Medium",
+      topic = "Mixed",
+      randomSeed,
+      excludeTargets = [],
+      designRules = {},
+    } = req.body || {};
+
+    currentDesignRules = designRules || {};
+
     const requestedCount = Number(count) || 5;
     const generatedCount = requestedCount + 3;
 
@@ -304,20 +726,48 @@ Example 4:
 A: What did Maria ask you about the book you're reading?
 B target: She wanted to know where she could buy a copy.
 
+Random seed: ${randomSeed}
+
+Important:
+- Generate ${count} completely new questions.
+- Do not reuse any of these target sentences:
+${excludeTargets?.join("\n")}
+- Do not copy the examples.
+- Each question must have a different context, target sentence, and word bank.
+
 Rules:
+Rules:
+
 1. Speaker A should provide a natural dialogue context.
 2. Speaker B's target sentence should be a natural response.
-3. B target should contain 8 to 14 words.
-4. B target should test useful grammar, word order, collocation, or logical connection.
-5. Mix these relationship types:
-   - question-answer
-   - statement-question
-   - statement-statement
-6. Avoid overly simple sentences like "What time does it start?"
-7. Avoid repeated sentence patterns.
-8. Do not include Chinese.
-9. Do not include markdown.
-10. Make every question different in topic and sentence pattern.
+3. Difficulty is based mainly on the complexity of the target sentence, not on the number of blanks.
+4. B target length and complexity should match the selected difficulty:
+   - Easy: 8 to 12 words. Use simple but natural responses.
+   - Medium: 10 to 16 words. Use useful collocations, embedded questions, simple relative clauses, or common academic/campus expressions.
+   - Hard: 14 to 20 words. Use more complex but still natural structures, such as relative clauses, embedded questions, comparisons, cause-effect phrases, or concession.
+5. The website will split the target sentence into about 5 to 7 blanks.
+6. Some words or phrases may remain fixed, just like real TOEFL sentence-building questions.
+7. Fixed text should appear naturally where it helps the student infer the sentence, such as the beginning, ending, or a short connector in the middle.
+8. Do not force fixed words into the middle of every sentence.
+9. Do not make the sentence all blanks except punctuation.
+10. Avoid childish, mechanical, or overly repetitive responses.
+11. Avoid responses that simply repeat Speaker A's wording without adding a natural answer.
+12. Do not include Chinese.
+13. Do not include markdown.
+14. Make every question different in topic and sentence pattern.
+15. Difficulty should mainly come from sentence complexity and naturalness, not simply from more blanks.
+16. Generate natural campus-conversation responses, similar to TOEFL sentence-building items.
+17. Avoid childish, overly direct, or mechanical responses.
+18. Do not generate sentences that are only simple location answers, such as "The textbook is where you left it."
+19. The target sentence should contain useful grammar or expression points, such as:
+    - none of + plural noun
+    - the reason why
+    - whether / if embedded questions
+    - relative clauses
+    - adjective + preposition combinations
+    - comparison structures
+    - cause-and-effect structures
+20. The website will split the sentence into blanks and fixed clues. The sentence should contain natural clue positions, such as sentence openings, endings, prepositional phrases, or clause anchors.
 
 Selected difficulty: ${level}
 Selected topic: ${topic}
