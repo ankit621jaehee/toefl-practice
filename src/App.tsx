@@ -542,32 +542,43 @@ function isValidPart(part: unknown): part is Part {
 }
 
 function normalizeQuestions(apiQuestions: Question[]) {
-  return apiQuestions.map((question, index) => {
-    const validParts = Array.isArray(question.parts)
-      ? question.parts.filter(isValidPart)
-      : [];
+  return apiQuestions
+    .map((question, index) => {
+      const validParts = Array.isArray(question.parts)
+        ? question.parts.filter(isValidPart)
+        : [];
 
-    const fallback = fallbackQuestions[index % fallbackQuestions.length];
-    const finalParts = validParts.length > 0 ? validParts : fallback.parts;
-    const splitParts = finalParts.flatMap(splitPunctuationFromPart);  
-    const finalPartsWithPunctuation = addPunctuationFromTarget(
-      splitParts,
-      question.target || fallback.target
-    );
+      if (
+        !question.target ||
+        !question.contextSentence ||
+        validParts.length === 0
+      ) {
+        return null;
+      }
 
-    return {
-      id: index + 1,
-      contextSpeaker: question.contextSpeaker || "A",
-      contextSentence: question.contextSentence || fallback.contextSentence,
-      answerSpeaker: question.answerSpeaker || "B",
-      target: question.target || fallback.target,
-      parts: finalPartsWithPunctuation,
-      chunks: getBlankAnswers({ ...fallback, parts: finalPartsWithPunctuation }),
-      explanation:
-        question.explanation ||
-        "This question tests sentence structure and logical connection between two speakers.",
-    };
-  });
+      const splitParts = validParts.flatMap(splitPunctuationFromPart);
+
+      const finalPartsWithPunctuation = dedupePunctuationParts(
+        addPunctuationFromTarget(splitParts, question.target)
+      );
+
+      return {
+        id: index + 1,
+        contextSpeaker: question.contextSpeaker || "A",
+        contextSentence: question.contextSentence,
+        answerSpeaker: question.answerSpeaker || "B",
+        target: question.target,
+        parts: finalPartsWithPunctuation,
+        chunks: getBlankAnswers({
+          ...question,
+          parts: finalPartsWithPunctuation,
+        }),
+        explanation:
+          question.explanation ||
+          "This question tests sentence structure and logical connection between two speakers.",
+      };
+    })
+    .filter((question): question is Question => question !== null);
 }
 
 async function generateQuestionsFromAPI(
@@ -575,6 +586,8 @@ async function generateQuestionsFromAPI(
   level: string,
   topic: string,
 ) {
+  const randomSeed = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
   const response = await fetch("/api/generate-sentences", {
     method: "POST",
     headers: {
@@ -584,6 +597,10 @@ async function generateQuestionsFromAPI(
       count,
       level,
       topic,
+      randomSeed,
+      excludeTargets: fallbackQuestions.map((q) => q.target),
+      instruction:
+        "Generate completely new Build-a-Sentence TOEFL-style questions. Do not reuse or imitate the sample fallback questions. Every question must be unique.",
       knowledgeCategories: [
         "从句",
         "短语搭配",
@@ -604,7 +621,13 @@ async function generateQuestionsFromAPI(
     throw new Error("Invalid API response");
   }
 
-  return normalizeQuestions(data.questions as Question[]);
+  const normalized = normalizeQuestions(data.questions as Question[]);
+
+  if (normalized.length < count) {
+    throw new Error("AI returned too few valid questions");
+  }
+
+  return normalized.slice(0, count);
 }
 
 async function generateEmailPromptWithAPI(level: string, topic: string) {
@@ -795,45 +818,81 @@ function addPunctuationFromTarget(parts: Part[], target: string): Part[] {
   const result: Part[] = [];
   let cursor = 0;
 
-  parts.forEach((part) => {
+  parts.forEach((part, partIndex) => {
     result.push(part);
 
-    const text =
-      part.type === "fixed"
-        ? part.text
-        : part.answer;
+    const text = part.type === "fixed" ? part.text : part.answer;
 
-    const index = target
-      .toLowerCase()
-      .indexOf(text.toLowerCase(), cursor);
+    const index = target.toLowerCase().indexOf(text.toLowerCase(), cursor);
 
     if (index === -1) return;
 
     cursor = index + text.length;
 
-    const punctuationMatch = target.slice(cursor).match(/^\s*([.,!?;:，。！？；：]+)/);
+    const punctuationMatch = target
+      .slice(cursor)
+      .match(/^\s*([.,!?;:，。！？；：]+)/);
 
-    if (punctuationMatch) {
-      const last = result[result.length - 1];
+    if (!punctuationMatch) return;
 
-      if (
-        !(
-          last?.type === "fixed" &&
-          /^[.,!?;:，。！？；：]+$/.test(last.text)
-        )
-      ) {
-        result.push({
-          type: "fixed",
-          text: punctuationMatch[1],
-        });
-      }
+    const last = result[result.length - 1];
+    const next = parts[partIndex + 1];
 
-      cursor += punctuationMatch[0].length;
+    const lastAlreadyHasPunctuation =
+      last?.type === "fixed" &&
+      /[.,!?;:，。！？；：]$/.test(last.text.trim());
+
+    const nextIsPunctuation =
+      next?.type === "fixed" && isPunctuationOnly(next.text);
+
+    if (!lastAlreadyHasPunctuation && !nextIsPunctuation) {
+      result.push({
+        type: "fixed",
+        text: punctuationMatch[1],
+      });
     }
+
+    cursor += punctuationMatch[0].length;
   });
+
+  return dedupePunctuationParts(result);
+}
+
+function isPunctuationOnly(text: string) {
+  return /^[.,!?;:，。！？；：]+$/.test(text.trim());
+}
+
+function dedupePunctuationParts(parts: Part[]): Part[] {
+  const result: Part[] = [];
+
+  for (const part of parts) {
+    const previous = result[result.length - 1];
+
+    if (
+      part.type === "fixed" &&
+      previous?.type === "fixed" &&
+      isPunctuationOnly(part.text) &&
+      isPunctuationOnly(previous.text)
+    ) {
+      previous.text = part.text;
+      continue;
+    }
+
+    if (
+      part.type === "fixed" &&
+      previous?.type === "fixed" &&
+      /[.,!?;:，。！？；：]$/.test(previous.text.trim()) &&
+      isPunctuationOnly(part.text)
+    ) {
+      continue;
+    }
+
+    result.push(part);
+  }
 
   return result;
 }
+
 
 function buildFullAnswerFromSlots(question: Question, slots: (Chunk | null)[]) {
   let blankIndex = 0;
@@ -850,7 +909,8 @@ function buildFullAnswerFromSlots(question: Question, slots: (Chunk | null)[]) {
       return slot?.text || "";
     })
     .join(" ")
-    .replace(/\s+([?.!,])/g, "$1")
+    .replace(/\s+([?.!,;:])/g, "$1")
+    .replace(/([?.!,;:])\1+/g, "$1")
     .trim();
 }
 
@@ -870,7 +930,9 @@ function renderFullAnswer(question: Question) {
       return part.answer;
     })
     .join(" ")
-    .replace(/\s+([?.!,])/g, "$1");
+    .replace(/\s+([?.!,;:])/g, "$1")
+    .replace(/([?.!,;:])\1+/g, "$1")
+    .trim();
 }
 
 function countWords(text: string) {
