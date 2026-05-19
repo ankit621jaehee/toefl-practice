@@ -6884,48 +6884,223 @@ function ImprovementBanner({ onOpen }: { onOpen: () => void }) {
   );
 }
 function ImprovementPage() {
-  const tools = [
+  const practiceTypes: {
+    id:
+      | "sentence_upgrade"
+      | "detail_expansion"
+      | "discussion_outline"
+      | "email_rewrite"
+      | "error_fix";
+    title: string;
+    desc: string;
+    tag: string;
+
+  }[] = [
     {
-      title: "写作提分模板",
-      tag: "Writing",
-      desc: "整理邮件写作和学术讨论的高分结构、常用句型和可替换表达。",
-      status: "即将开放",
+      id: "sentence_upgrade",
+      title: "句子升级练习",
+      desc: "把普通句子改写得更具体、更自然、更适合托福写作。",
+      tag: "Sentence Upgrade",
     },
     {
-      title: "口语素材急救包",
-      tag: "Speaking",
-      desc: "按照人物、地点、事件、观点四类积累可迁移素材，减少临场卡壳。",
-      status: "规划中",
+      id: "detail_expansion",
+      title: "Detail 增加练习",
+      desc: "给观点句补充原因、例子和具体细节。",
+      tag: "Detail Builder",
     },
     {
-      title: "听力跟读训练",
-      tag: "Listening",
-      desc: "用于练习 listen and repeat 的音群切分、重音模仿和信息复述。",
-      status: "规划中",
+      id: "discussion_outline",
+      title: "讨论简写框架训练",
+      desc: "练习 Academic Discussion 的立场、回应、原因、例子和收尾框架。",
+      tag: "Discussion Outline",
     },
     {
-      title: "阅读错题复盘",
-      tag: "Reading",
-      desc: "按题型记录错因，例如定位错误、逻辑误判、词义推断失败等。",
-      status: "规划中",
+      id: "email_rewrite",
+      title: "邮件写作改写练习",
+      desc: "把太短、太直接或不礼貌的邮件改写成得体版本。",
+      tag: "Email Rewrite",
     },
     {
-      title: "造句语法修复",
-      tag: "Build-a-Sentence",
-      desc: "针对词块顺序、固定搭配、大小写和语法结构进行专项训练。",
-      status: "规划中",
-    },
-    {
-      title: "一周提分计划",
-      tag: "Plan",
-      desc: "根据当前薄弱项生成短周期训练安排，让练习更像真正的备考系统。",
-      status: "规划中",
+      id: "error_fix",
+      title: "错误修复练习",
+      desc: "识别并修改写作中常见的语法和表达错误。",
+      tag: "Grammar Fix",
     },
   ];
+const [practiceType, setPracticeType] = useState("sentence_upgrade");
+const [generatedTask, setGeneratedTask] = useState<any>(null);
+const [isGenerating, setIsGenerating] = useState(false);
+const [generateError, setGenerateError] = useState("");
+const [userAnswer, setUserAnswer] = useState("");
+const [showReference, setShowReference] = useState(false);
 
+async function generateTask() {
+  try {
+
+    setIsGenerating(true);
+
+    setGenerateError("");
+
+    setGeneratedTask(null);
+
+    setUserAnswer("");
+
+    setShowReference(false);
+
+    const response = await fetch("/api/generate-improvement-task", {
+
+      method: "POST",
+
+      headers: {
+
+        "Content-Type": "application/json",
+
+      },
+
+      body: JSON.stringify({ type: practiceType }),
+
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+
+      throw new Error(data.error || "生成失败");
+
+    }
+
+    setGeneratedTask(data);
+
+  } catch (error: any) {
+
+    setGenerateError(error.message || "生成失败，请稍后再试");
+
+  } finally {
+    setIsGenerating(false);
+  }
+};
+
+function renderGeneratedTask() {
+  if (!generatedTask) return null;
+
+  if (generatedTask.type === "sentence_upgrade") {
+    return (
+      <div>
+        <TaskBlock label="原句" content={generatedTask.originalSentence} />
+        <TaskBlock label="任务" content={generatedTask.task} />
+      </div>
+    );
+  }
+
+  if (generatedTask.type === "detail_expansion") {
+    return (
+      <div>
+        <TaskBlock label="观点句" content={generatedTask.topicSentence} />
+        <TaskBlock label="任务" content={generatedTask.task} />
+      </div>
+    );
+  }
+
+  if (generatedTask.type === "discussion_outline") {
+    return (
+      <div>
+        <TaskBlock label="Professor" content={generatedTask.professorQuestion} />
+        <TaskBlock label="Student A" content={generatedTask.studentA} />
+        <TaskBlock label="Student B" content={generatedTask.studentB} />
+        <TaskBlock label="任务" content={generatedTask.task} />
+      </div>
+    );
+  }
+
+  if (generatedTask.type === "email_rewrite") {
+    return (
+      <div>
+        <TaskBlock label="原始邮件" content={generatedTask.badEmail} />
+        <TaskBlock label="任务" content={generatedTask.task} />
+      </div>
+    );
+  }
+
+  if (generatedTask.type === "error_fix") {
+    return (
+      <div>
+        <TaskBlock label="错误句" content={generatedTask.wrongSentence} />
+        <TaskBlock label="任务" content={generatedTask.task} />
+      </div>
+    );
+  }
+
+  return null;
+}
+
+function renderReference() {
+  if (!generatedTask || !showReference) return null;
+
+  if (generatedTask.type === "sentence_upgrade") {
+    return (
+      <ReferenceBox
+        title="参考升级版本"
+        main={generatedTask.upgradedVersion}
+        points={generatedTask.explanation}
+      />
+    );
+  }
+
+  if (generatedTask.type === "detail_expansion") {
+    return (
+      <ReferenceBox
+        title="参考展开"
+        main={generatedTask.sampleExpansion}
+        points={generatedTask.usefulMoves}
+      />
+    );
+  }
+
+  if (generatedTask.type === "discussion_outline") {
+    const outline = generatedTask.sampleOutline || {};
+    return (
+      <ReferenceBox
+        title="参考简写框架"
+        main={[
+          `Opinion: ${outline.opinion || ""}`,
+          `Connection: ${outline.connection || ""}`,
+          `Reason: ${outline.reason || ""}`,
+          `Example: ${outline.example || ""}`,
+          `Final idea: ${outline.finalIdea || ""}`,
+        ].join("\n")}
+        points={[
+          "先明确立场，不要一开始绕圈。",
+          "回应一位同学的观点，体现 discussion 感。",
+          "用 reason + example 把观点展开。",
+        ]}
+      />
+    );
+  }
+
+  if (generatedTask.type === "email_rewrite") {
+    return (
+      <ReferenceBox
+        title="参考改写邮件"
+        main={generatedTask.improvedEmail}
+        points={generatedTask.problems}
+      />
+    );
+  }
+
+  if (generatedTask.type === "error_fix") {
+    return (
+      <ReferenceBox
+        title="正确版本"
+        main={generatedTask.correctSentence}
+        points={[generatedTask.reason]}
+      />
+    );
+  }
+
+  return null;
+}
   return (
     <div>
-
       <section
         style={{
           borderRadius: "32px",
@@ -6969,9 +7144,191 @@ function ImprovementPage() {
             fontSize: "16px",
           }}
         >
-          二期将把网站从“练习工具”升级为“备考辅助系统”。这里会集中提供不同科目的提分工具、模板库、训练包和个性化建议。
+          提供不同科目的提分工具、模板库、训练包和个性化建议。
         </p>
       </section>
+        
+      <section
+        style={{
+          borderRadius: "30px",
+          background: "white",
+          border: "1px solid #e2e8f0",
+          padding: "30px",
+          boxShadow: "0 16px 40px rgba(15, 23, 42, 0.05)",
+          marginBottom: "28px",
+        }}
+      >
+        <p
+          style={{
+            margin: 0,
+            color: "#2563eb",
+            fontSize: "13px",
+            fontWeight: 900,
+            letterSpacing: "0.1em",
+            textTransform: "uppercase",
+          }}
+        >
+          AI Practice Generator
+        </p>
+
+        <h2
+          style={{
+            margin: "10px 0 0",
+            fontSize: "28px",
+            letterSpacing: "-0.04em",
+            color: "#0f172a",
+          }}
+        >
+          AI 写作练习生成器
+        </h2>
+
+        <p
+          style={{
+            color: "#64748b",
+            lineHeight: 1.8,
+            marginTop: "12px",
+            maxWidth: "780px",
+          }}
+        >
+          选择一种写作训练方式，让 AI 自动生成题目。你可以先自己作答，再查看参考答案和提分解析。
+        </p>
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))",
+            gap: "12px",
+            marginTop: "22px",
+          }}
+        >
+          {practiceTypes.map((item) => {
+            const active = practiceType === item.id;
+
+            return (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => {
+                  setPracticeType(item.id);
+                  setGeneratedTask(null);
+                  setUserAnswer("");
+                  setShowReference(false);
+                  setGenerateError("");
+                }}
+                style={{
+                  textAlign: "left",
+                  borderRadius: "20px",
+                  border: active ? "2px solid #2563eb" : "1px solid #e2e8f0",
+                  background: active ? "#eff6ff" : "#f8fafc",
+                  padding: "16px",
+                  cursor: "pointer",
+                }}
+              >
+                <p
+                  style={{
+                    margin: 0,
+                    color: active ? "#2563eb" : "#0f172a",
+                    fontWeight: 900,
+                  }}
+                >
+                  {item.title}
+                </p>
+                <p
+                  style={{
+                    margin: "8px 0 0",
+                    color: "#64748b",
+                    lineHeight: 1.6,
+                    fontSize: "13px",
+                  }}
+                >
+                  {item.desc}
+                </p>
+              </button>
+            );
+          })}
+        </div>
+
+        <button
+          type="button"
+          onClick={generateTask}
+          disabled={isGenerating}
+          style={{
+            marginTop: "22px",
+            border: "none",
+            borderRadius: "999px",
+            background: isGenerating ? "#94a3b8" : "#0f172a",
+            color: "white",
+            padding: "13px 22px",
+            fontWeight: 900,
+            cursor: isGenerating ? "not-allowed" : "pointer",
+            boxShadow: "0 12px 30px rgba(15, 23, 42, 0.18)",
+          }}
+        >
+          {isGenerating ? "AI 正在生成..." : "AI 生成练习题"}
+        </button>
+
+        {generateError && (
+          <p
+            style={{
+              marginTop: "14px",
+              color: "#dc2626",
+              fontWeight: 800,
+            }}
+          >
+            {generateError}
+          </p>
+        )}      
+
+        {generatedTask && (
+          <div
+            style={{
+              marginTop: "26px",
+              display: "grid",
+              gap: "18px",
+            }}
+          >
+            {renderGeneratedTask()}
+
+            <textarea
+              value={userAnswer}
+              onChange={(e) => setUserAnswer(e.target.value)}
+              placeholder="在这里写下你的答案或简写框架..."
+              style={{
+                width: "100%",
+                minHeight: "160px",
+                resize: "vertical",
+                borderRadius: "22px",
+                border: "1px solid #cbd5e1",
+                padding: "18px",
+                fontSize: "15px",
+                lineHeight: 1.7,
+                outline: "none",
+                boxSizing: "border-box",
+              }}
+            />
+
+            <button
+              type="button"
+              onClick={() => setShowReference(true)}
+              style={{
+                width: "fit-content",
+                border: "none",
+                borderRadius: "999px",
+                background: "#2563eb",
+                color: "white",
+                padding: "12px 18px",
+                fontWeight: 900,
+                cursor: "pointer",
+              }}
+            >
+              查看参考答案与解析
+            </button>
+
+            {renderReference()}
+          </div>
+        )}
+      </section>
+
 
       <div
         style={{
@@ -6980,7 +7337,7 @@ function ImprovementPage() {
           gap: "18px",
         }}
       >
-        {tools.map((tool) => (
+        {practiceTypes.map((tool) => (
           <div
             key={tool.title}
             style={{
@@ -7013,18 +7370,6 @@ function ImprovementPage() {
                 {tool.tag}
               </span>
 
-              <span
-                style={{
-                  borderRadius: "999px",
-                  background: "#f1f5f9",
-                  color: "#64748b",
-                  padding: "6px 10px",
-                  fontSize: "12px",
-                  fontWeight: 800,
-                }}
-              >
-                {tool.status}
-              </span>
             </div>
 
             <h2
@@ -7050,6 +7395,113 @@ function ImprovementPage() {
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+function TaskBlock({ label, content }: { label: string; content: string }) {
+  return (
+    <div
+      style={{
+        borderRadius: "22px",
+        background: "#f8fafc",
+        border: "1px solid #e2e8f0",
+        padding: "20px",
+        marginBottom: "12px",
+      }}
+    >
+      <p
+        style={{
+          margin: "0 0 8px",
+          color: "#64748b",
+          fontWeight: 900,
+          fontSize: "13px",
+        }}
+      >
+        {label}
+      </p>
+      <p
+        style={{
+          margin: 0,
+          color: "#0f172a",
+          fontSize: "17px",
+          lineHeight: 1.8,
+          whiteSpace: "pre-wrap",
+        }}
+      >
+        {content}
+      </p>
+    </div>
+  );
+}
+
+function ReferenceBox({
+  title,
+  main,
+  points,
+}: {
+  title: string;
+  main: string;
+  points?: string[];
+}) {
+  return (
+    <div
+      style={{
+        borderRadius: "24px",
+        background: "#eff6ff",
+        border: "1px solid #bfdbfe",
+        padding: "22px",
+      }}
+    >
+      <p
+        style={{
+          margin: "0 0 8px",
+          color: "#2563eb",
+          fontWeight: 900,
+        }}
+      >
+        {title}
+      </p>
+
+      <p
+        style={{
+          margin: 0,
+          color: "#0f172a",
+          fontSize: "16px",
+          lineHeight: 1.8,
+          fontWeight: 700,
+          whiteSpace: "pre-wrap",
+        }}
+      >
+        {main}
+      </p>
+
+      {points && points.length > 0 && (
+        <div style={{ marginTop: "18px" }}>
+          <p
+            style={{
+              margin: "0 0 8px",
+              color: "#0f172a",
+              fontWeight: 900,
+            }}
+          >
+            提分点
+          </p>
+
+          <ul
+            style={{
+              margin: 0,
+              paddingLeft: "20px",
+              color: "#334155",
+              lineHeight: 1.8,
+            }}
+          >
+            {points.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }
