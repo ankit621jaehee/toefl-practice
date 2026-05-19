@@ -85,7 +85,8 @@ type Page =
   | "ets-mock-practice"
   | "ets-mock-detail"
   | "analytics"
-  | "practice-sessions";
+  | "practice-sessions"
+  | "improvement";
 
 type Part =
   | {
@@ -1062,17 +1063,15 @@ function App() {
     if (hash === "records") {
 
       setPageState("records");
-
       return;
-
     }
-
     if (hash === "mock-records") {
-
       setPageState("mock-records");
-
       return;
-
+    }
+    if (hash === "improvement") {
+      setPageState("improvement");
+      return;
     }
 
     setPageState("home");
@@ -1231,7 +1230,7 @@ function App() {
   if (path === "/mock-records") return "mock-records";
 
   if (path === "/practice-sessions") return "practice-sessions";
-
+  if (path === "/improvement") return "improvement";
   return "home";
 
 });
@@ -1301,6 +1300,7 @@ function setPage(nextPage: Page) {
     // Unified practice session summary page
     "practice-sessions": "/practice-sessions",
 
+    improvement: "/improvement",
   };
 
   const nextPath = pathMap[nextPage];
@@ -2705,7 +2705,9 @@ async function submitMockTestWithAPI({
                 </div>
             </div>
 
+            <ImprovementBanner onOpen={() => window.open("/improvement", "_blank")} />
           </>
+
         )}
 
         {page === "sentence" && (
@@ -2964,6 +2966,8 @@ async function submitMockTestWithAPI({
             }}
           />
         )}
+
+        {page === "improvement" && <ImprovementPage />}
 
         {page === "analytics" && (
           <AnalyticsPage
@@ -6781,6 +6785,275 @@ function MockRecordDetailPage({
   );
 }
 
+function ImprovementBanner({ onOpen }: { onOpen: () => void }) {
+  return (
+    <section
+      style={{
+        marginTop: "36px",
+        borderRadius: "30px",
+        padding: "30px",
+        background:
+          "linear-gradient(135deg, #111827 0%, #1e293b 45%, #2563eb 100%)",
+        color: "white",
+        boxShadow: "0 24px 60px rgba(15, 23, 42, 0.22)",
+        overflow: "hidden",
+        position: "relative",
+      }}
+    >
+      <div
+        style={{
+          position: "absolute",
+          width: "220px",
+          height: "220px",
+          borderRadius: "999px",
+          background: "rgba(255,255,255,0.12)",
+          right: "-70px",
+          top: "-80px",
+        }}
+      />
+
+      <div
+        style={{
+          position: "absolute",
+          width: "140px",
+          height: "140px",
+          borderRadius: "999px",
+          background: "rgba(96, 165, 250, 0.28)",
+          right: "90px",
+          bottom: "-70px",
+        }}
+      />
+
+      <div
+        style={{
+          position: "relative",
+          display: "grid",
+          gridTemplateColumns: "1.4fr auto",
+          gap: "24px",
+          alignItems: "center",
+        }}
+      >
+        <div>
+          <p
+            style={{
+              margin: "0 0 10px",
+              fontSize: "20px",
+              fontWeight: 800,
+              letterSpacing: "0.20em",
+              textTransform: "uppercase",
+              color: "#bfdbfe",
+            }}
+          >
+            Improvement Toolbox
+          </p>
+
+
+
+          <p
+            style={{
+              margin: "14px 0 0",
+              maxWidth: "620px",
+              color: "#dbeafe",
+              lineHeight: 1.8,
+              fontSize: "14px",
+            }}
+          >
+            使用AI驱动的工具帮助提高新TOEFL写作能力。
+          </p>
+        </div>
+
+        <button
+          type="button"
+          onClick={onOpen}
+          style={{
+            border: "none",
+            borderRadius: "999px",
+            background: "white",
+            color: "#111827",
+            padding: "14px 22px",
+            fontWeight: 900,
+            cursor: "pointer",
+            boxShadow: "0 12px 30px rgba(15, 23, 42, 0.25)",
+            whiteSpace: "nowrap",
+          }}
+        >
+          进入提分百宝箱 →
+        </button>
+      </div>
+    </section>
+  );
+}
+function ImprovementPage() {
+  const tools = [
+    {
+      title: "写作提分模板",
+      tag: "Writing",
+      desc: "整理邮件写作和学术讨论的高分结构、常用句型和可替换表达。",
+      status: "即将开放",
+    },
+    {
+      title: "口语素材急救包",
+      tag: "Speaking",
+      desc: "按照人物、地点、事件、观点四类积累可迁移素材，减少临场卡壳。",
+      status: "规划中",
+    },
+    {
+      title: "听力跟读训练",
+      tag: "Listening",
+      desc: "用于练习 listen and repeat 的音群切分、重音模仿和信息复述。",
+      status: "规划中",
+    },
+    {
+      title: "阅读错题复盘",
+      tag: "Reading",
+      desc: "按题型记录错因，例如定位错误、逻辑误判、词义推断失败等。",
+      status: "规划中",
+    },
+    {
+      title: "造句语法修复",
+      tag: "Build-a-Sentence",
+      desc: "针对词块顺序、固定搭配、大小写和语法结构进行专项训练。",
+      status: "规划中",
+    },
+    {
+      title: "一周提分计划",
+      tag: "Plan",
+      desc: "根据当前薄弱项生成短周期训练安排，让练习更像真正的备考系统。",
+      status: "规划中",
+    },
+  ];
+
+  return (
+    <div>
+
+      <section
+        style={{
+          borderRadius: "32px",
+          padding: "34px",
+          background:
+            "linear-gradient(135deg, #f8fafc 0%, #eff6ff 55%, #eef2ff 100%)",
+          border: "1px solid #dbeafe",
+          marginBottom: "24px",
+        }}
+      >
+        <p
+          style={{
+            margin: "0 0 10px",
+            color: "#2563eb",
+            fontWeight: 900,
+            letterSpacing: "0.1em",
+            textTransform: "uppercase",
+            fontSize: "13px",
+          }}
+        >
+          Phase Two
+        </p>
+
+        <h1
+          style={{
+            margin: 0,
+            fontSize: "42px",
+            letterSpacing: "-0.05em",
+            color: "#0f172a",
+          }}
+        >
+          提分百宝箱
+        </h1>
+
+        <p
+          style={{
+            marginTop: "16px",
+            maxWidth: "760px",
+            color: "#475569",
+            lineHeight: 1.9,
+            fontSize: "16px",
+          }}
+        >
+          二期将把网站从“练习工具”升级为“备考辅助系统”。这里会集中提供不同科目的提分工具、模板库、训练包和个性化建议。
+        </p>
+      </section>
+
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
+          gap: "18px",
+        }}
+      >
+        {tools.map((tool) => (
+          <div
+            key={tool.title}
+            style={{
+              borderRadius: "24px",
+              border: "1px solid #e2e8f0",
+              background: "white",
+              padding: "24px",
+              boxShadow: "0 16px 40px rgba(15, 23, 42, 0.06)",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                gap: "12px",
+                alignItems: "center",
+                marginBottom: "16px",
+              }}
+            >
+              <span
+                style={{
+                  borderRadius: "999px",
+                  background: "#eff6ff",
+                  color: "#2563eb",
+                  padding: "6px 10px",
+                  fontSize: "12px",
+                  fontWeight: 900,
+                }}
+              >
+                {tool.tag}
+              </span>
+
+              <span
+                style={{
+                  borderRadius: "999px",
+                  background: "#f1f5f9",
+                  color: "#64748b",
+                  padding: "6px 10px",
+                  fontSize: "12px",
+                  fontWeight: 800,
+                }}
+              >
+                {tool.status}
+              </span>
+            </div>
+
+            <h2
+              style={{
+                margin: 0,
+                color: "#0f172a",
+                fontSize: "20px",
+                letterSpacing: "-0.03em",
+              }}
+            >
+              {tool.title}
+            </h2>
+
+            <p
+              style={{
+                color: "#64748b",
+                lineHeight: 1.8,
+                marginBottom: 0,
+              }}
+            >
+              {tool.desc}
+            </p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // 能力分析页面：汇总用户的完整模考记录，展示平均分、薄弱项和建议
 function AnalyticsPage({
   user,
@@ -7432,7 +7705,8 @@ function getPageFromPath(): Page {
   // 新增对能力分析路径的识别
   if (path.includes("/analytics")) 
     return "analytics";
-
+  if (path.includes("/improvement"))
+    return "improvement";
   return "home";
 }
 
