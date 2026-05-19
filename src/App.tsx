@@ -593,7 +593,11 @@ async function generateQuestionsFromAPI(
   topic: string
 ) {
   const collected: Question[] = [];
-  const usedTargets = new Set<string>();
+  const usedTargets = new Set<string>(
+    fallbackQuestions.map((q) =>
+      cleanDuplicatedPunctuation(q.target).toLowerCase()
+    )
+  );
   const maxAttempts = 4;
 
   for (let attempt = 0; attempt < maxAttempts && collected.length < count; attempt += 1) {
@@ -612,10 +616,7 @@ async function generateQuestionsFromAPI(
         level,
         topic,
         randomSeed,
-        excludeTargets: [
-          ...Array.from(usedTargets),
-          ...fallbackQuestions.map((q) => q.target),
-        ],
+        excludeTargets: Array.from(usedTargets),
         knowledgeCategories: [
           "从句",
           "短语搭配",
@@ -627,7 +628,8 @@ async function generateQuestionsFromAPI(
     });
 
     if (!response.ok) {
-      throw new Error("API request failed");
+      const errorText = await response.text().catch(() => "");
+      throw new Error(errorText || "API request failed");
     }
 
     const data = await response.json();
@@ -2224,7 +2226,7 @@ async function submitMockTestWithAPI({
 
       setApiMessage(message);
       alert(
-        `AI 生成题目失败：${message}\n\n这次不会自动使用本地例题，以免出现前几题重复的问题。`
+        `AI 生成题目失败：${message}`
       );
     } finally {
       setIsLoading(false);
