@@ -84,17 +84,34 @@ function shouldPreferFixed(chunk) {
 
   if (!normalized) return false;
 
-  // 逻辑连接词保留为 fixed，给考生判断句子关系。
-  if (logicAnchorChunks.has(normalized)) return true;
+  // 不要因为词短就 fixed。
+  // i / is / in / of / to 这些应该可以作为 blank，否则 fixed 会太散。
+  if (normalized.length <= 2) return false;
 
-  // 位置灵活的副词/状语保留为 fixed，避免多个位置都说得通导致误判。
+  // 位置很灵活的副词/状语可以 fixed，避免多答案。
   if (flexibleOrAmbiguousChunks.has(normalized)) return true;
 
-  // 很短的功能词信息量低，不适合作为空。
-  if (normalized.length <= 2) return true;
+  // 逻辑词不要全部自动 fixed。
+  // 只有比较长、明显作为句子线索的逻辑短语才 fixed。
+  const strongLogicAnchors = new Set([
+    "however",
+    "therefore",
+    "instead",
+    "even though",
+    "as long as",
+    "so that",
+    "rather than",
+    "not only",
+    "but also",
+    "on the other hand",
+    "as a result",
+  ]);
+
+  if (strongLogicAnchors.has(normalized)) return true;
 
   return false;
 }
+
 
 
 
@@ -292,9 +309,9 @@ function getDifficultySentenceConfig(level) {
   if (level === "Hard") {
     return {
       targetWordMin: 8,
-      targetWordMax: 12,
+      targetWordMax: 10,
       desiredBlankMin: 7,
-      desiredBlankMax: 11,
+      desiredBlankMax: 9,
       minFixedAnchors: 1,
     };
   }
@@ -302,10 +319,10 @@ function getDifficultySentenceConfig(level) {
   if (level === "Medium") {
     return {
       targetWordMin: 7,
-      targetWordMax: 10,
+      targetWordMax: 9,
       desiredBlankMin: 6,
       desiredBlankMax: 8,
-      minFixedAnchors: 0,
+      minFixedAnchors: 1,
     };
   }
 
@@ -313,7 +330,7 @@ function getDifficultySentenceConfig(level) {
     targetWordMin: 6,
     targetWordMax: 8,
     desiredBlankMin: 5,
-    desiredBlankMax: 8,
+    desiredBlankMax: 7,
     minFixedAnchors: 0,
   };
 }
@@ -547,20 +564,15 @@ function buildPartsFromTarget(target, level = "Medium") {
   // 4. 如果 fixed 太少，只在必要时转一个自然线索，不机械插中间 fixed。
   while (countMeaningfulFixedParts(parts) < config.minFixedAnchors) {
     const blankIndexes = getBlankIndexes();
-
     if (blankIndexes.length <= config.desiredBlankMin) break;
-
-    const ambiguousBlankIndex = blankIndexes.find((index) =>
-      shouldPreferFixed(parts[index].answer)
-    );
-
-    if (ambiguousBlankIndex !== undefined) {
-      convertBlankToFixed(ambiguousBlankIndex);
-      continue;
+    const firstBlankIndex = blankIndexes[0];
+    const firstText = parts[firstBlankIndex]?.answer || "";
+    const firstWordCount = cleanChunk(firstText).split(/\s+/).filter(Boolean).length;
+    // 只把句首的自然短语 fixed，不固定中间小词。
+    if (firstWordCount >= 2) {
+      convertBlankToFixed(firstBlankIndex);
     }
-
-    // 不强制中间 fixed，只固定开头附近的自然短语
-    convertBlankToFixed(blankIndexes[0]);
+    break;
   }
 
   // 5. 空太多就合并 blank，控制在 5–7 左右。
