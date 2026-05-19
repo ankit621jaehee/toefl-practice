@@ -433,40 +433,33 @@ function buildPartsFromTarget(target, level = "Medium") {
 
   function mergeNeighborBlanks() {
     const blankIndexes = getBlankIndexes();
-
     if (blankIndexes.length < 2) return false;
-
-    // 最多允许一个 blank 里有 3 个词。
-    // 避免出现 "announced that the facility will remain" 这种超长空。
     const maxWordsPerBlank = 3;
+    const blockedMergeWords = new Set([
+      "that",
+      "which",
+      "who",
+      "where",
+      "when",
+      "why",
+      "whether",
+      "if",
+      "because",
+      "although",
+      "since",
+      "while",
+    ]);
 
     for (let i = 0; i < blankIndexes.length - 1; i += 1) {
       const first = blankIndexes[i];
       const second = blankIndexes[i + 1];
-
       if (second !== first + 1) continue;
-
-      const mergedAnswer = `${parts[first].answer} ${parts[second].answer}`;
-      const blockedMergeWords = new Set([
-        "that",
-        "which",
-        "who",
-        "where",
-        "when",
-        "why",
-        "whether",
-        "if",
-        "because",
-        "although",
-      ]);
-
       const firstClean = cleanChunk(parts[first].answer);
       const secondClean = cleanChunk(parts[second].answer);
-
       if (blockedMergeWords.has(firstClean) || blockedMergeWords.has(secondClean)) {
         continue;
       }
-      
+      const mergedAnswer = `${parts[first].answer} ${parts[second].answer}`;
       const mergedWordCount = mergedAnswer
         .split(/\s+/)
         .filter(Boolean).length;
@@ -717,9 +710,9 @@ Rules:
 2. Speaker B's target sentence should be a natural response.
 3. Difficulty is based mainly on the complexity of the target sentence, not on the number of blanks.
 4. B target length and complexity should match the selected difficulty:
-   - Easy: 8 to 12 words. Use simple but natural responses.
-   - Medium: 10 to 16 words. Use useful collocations, embedded questions, simple relative clauses, or common academic/campus expressions.
-   - Hard: 14 to 20 words. Use more complex but still natural structures, such as relative clauses, embedded questions, comparisons, cause-effect phrases, or concession.
+   - Easy: 5 to 7 words. Use simple but natural responses.
+   - Medium: 6 to 9 words. Use useful collocations, embedded questions, simple relative clauses, or common academic/campus expressions.
+   - Hard: 7 to 11 words. Use more complex but still natural structures, such as relative clauses, embedded questions, comparisons, cause-effect phrases, or concession.
 5. The website will split the target sentence into about 5 to 7 blanks.
 6. Some words or phrases may remain fixed, just like real TOEFL sentence-building questions.
 7. Fixed text should appear naturally where it helps the student infer the sentence, such as the beginning, ending, or a short connector in the middle.
