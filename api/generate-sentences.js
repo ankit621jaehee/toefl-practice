@@ -309,7 +309,7 @@ function getDifficultySentenceConfig(level) {
   if (level === "Hard") {
     return {
       targetWordMin: 6,
-      targetWordMax: 8,
+      targetWordMax: 9,
       desiredBlankMin: 6,
       desiredBlankMax: 7,
       maxFixedAnchors: 2,
@@ -713,7 +713,7 @@ Rules:
    - Easy: 5 to 7 words. Use simple but natural responses.
    - Medium: 6 to 8 words. Use useful collocations, embedded questions, simple relative clauses, or common academic/campus expressions.
    - Hard: 7 to 9 words. Use more complex but still natural structures, such as relative clauses, embedded questions, comparisons, cause-effect phrases, or concession.
-5. The website will split the target sentence into about 5 to 7 blanks.
+5. The website will split the target sentence into about 5 to 8 blanks.
 6. Some words or phrases may remain fixed, just like real TOEFL sentence-building questions.
 7. Fixed text should appear naturally where it helps the student infer the sentence, such as the beginning, ending, or a short connector in the middle.
 8. Do not force fixed words into the middle of every sentence.
