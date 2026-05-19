@@ -308,11 +308,12 @@ function splitWordsIntoChunks(words) {
 function getDifficultySentenceConfig(level) {
   if (level === "Hard") {
     return {
-      targetWordMin: 6,
+      targetWordMin: 8,
       targetWordMax: 9,
-      desiredBlankMin: 6,
-      desiredBlankMax: 7,
+      desiredBlankMin: 7,
+      desiredBlankMax: 8,
       maxFixedAnchors: 2,
+      maxWordsPerBlank: 3,
     };
   }
 
@@ -320,21 +321,22 @@ function getDifficultySentenceConfig(level) {
     return {
       targetWordMin: 6,
       targetWordMax: 7,
-      desiredBlankMin: 5,
-      desiredBlankMax: 6,
+      desiredBlankMin: 6,
+      desiredBlankMax: 7,
       maxFixedAnchors: 1,
+      maxWordsPerBlank: 3,
     };
   }
 
   return {
     targetWordMin: 5,
     targetWordMax: 6,
-    desiredBlankMin: 5,
-    desiredBlankMax: 6,
-    maxFixedAnchors: 0,
+    desiredBlankMin: 4,
+    desiredBlankMax: 5,
+    maxFixedAnchors: 1,
+    maxWordsPerBlank: 3,
   };
 }
-
 function isPunctuationOnlyText(text) {
   return /^[,.;:!?，。！？；：]+$/.test(String(text || "").trim());
 }
@@ -414,7 +416,6 @@ function buildPartsFromTarget(target, level = "Medium") {
 
     const text = parts[index].text;
 
-    if (shouldPreferFixed(text)) return;
     if (isPunctuationOnlyText(text)) return;
 
     parts[index] = {
@@ -434,7 +435,7 @@ function buildPartsFromTarget(target, level = "Medium") {
   function mergeNeighborBlanks() {
     const blankIndexes = getBlankIndexes();
     if (blankIndexes.length < 2) return false;
-    const maxWordsPerBlank = 3;
+    const maxWordsPerBlank = config.maxWordsPerBlank || 3;
     const blockedMergeWords = new Set([
       "that",
       "which",
@@ -554,19 +555,36 @@ function buildPartsFromTarget(target, level = "Medium") {
     }
   }
 
-  // 4. 如果 fixed 太少，只在必要时转一个自然线索，不机械插中间 fixed。
-  while (countMeaningfulFixedParts(parts) < config.minFixedAnchors) {
-    const blankIndexes = getBlankIndexes();
-    if (blankIndexes.length <= config.desiredBlankMin) break;
-    const firstBlankIndex = blankIndexes[0];
-    const firstText = parts[firstBlankIndex]?.answer || "";
-    const firstWordCount = cleanChunk(firstText).split(/\s+/).filter(Boolean).length;
-    // 只把句首的自然短语 fixed，不固定中间小词。
-    if (firstWordCount >= 2) {
-      convertBlankToFixed(firstBlankIndex);
-    }
-    break;
+  while (countMeaningfulFixedParts(parts) > config.maxFixedAnchors) {
+    const fixedIndexes = getFixedIndexes();
+
+    const convertibleFixedIndex = fixedIndexes.find((index) => {
+      const text = parts[index].text;
+      const cleaned = cleanChunk(text);
+
+      if (isPunctuationOnlyText(text)) return false;
+
+      const protectedFixed = new Set([
+        "for me",
+        "for us",
+        "that is",
+        "there is",
+        "there are",
+        "in class",
+        "on campus",
+        "during exams",
+      ]);
+
+      if (protectedFixed.has(cleaned)) return false;
+
+      return true;
+    });
+
+    if (convertibleFixedIndex === undefined) break;
+
+    convertFixedToBlank(convertibleFixedIndex);
   }
+
 
   // 5. 空太多就合并 blank，控制在 5–7 左右。
   while (countBlankParts(parts) > config.desiredBlankMax) {
@@ -710,32 +728,22 @@ Rules:
 2. Speaker B's target sentence should be a natural response.
 3. Difficulty is based mainly on the complexity of the target sentence, not on the number of blanks.
 4. B target length and complexity should match the selected difficulty:
-   - Easy: 5 to 7 words. Use simple but natural responses.
-   - Medium: 6 to 8 words. Use useful collocations, embedded questions, simple relative clauses, or common academic/campus expressions.
-   - Hard: 7 to 9 words. Use more complex but still natural structures, such as relative clauses, embedded questions, comparisons, cause-effect phrases, or concession.
-5. The website will split the target sentence into about 5 to 8 blanks.
-6. Some words or phrases may remain fixed, just like real TOEFL sentence-building questions.
-7. Fixed text should appear naturally where it helps the student infer the sentence, such as the beginning, ending, or a short connector in the middle.
-8. Do not force fixed words into the middle of every sentence.
-9. Do not make the sentence all blanks except punctuation.
-10. Avoid childish, mechanical, or overly repetitive responses.
-11. Avoid responses that simply repeat Speaker A's wording without adding a natural answer.
-12. Do not include Chinese.
-13. Do not include markdown.
-14. Make every question different in topic and sentence pattern.
-15. Difficulty should mainly come from sentence complexity and naturalness, not simply from more blanks.
-16. Generate natural campus-conversation responses, similar to TOEFL sentence-building items.
-17. Avoid childish, overly direct, or mechanical responses.
-18. Do not generate sentences that are only simple location answers, such as "The textbook is where you left it."
-19. The target sentence should contain useful grammar or expression points, such as:
-    - none of + plural noun
-    - the reason why
-    - whether / if embedded questions
-    - relative clauses
-    - adjective + preposition combinations
-    - comparison structures
-    - cause-and-effect structures
-20. The website will split the sentence into blanks and fixed clues. The sentence should contain natural clue positions, such as sentence openings, endings, prepositional phrases, or clause anchors.
+   - Easy: 4 to 6 words. Use simple but natural responses.
+   - Medium: 5 to 7 words. Use useful collocations, embedded questions, or simple relative clauses.
+   - Hard: 8 to 10 words. Use compact but more complex structures, such as relative clauses, embedded questions, comparisons, or cause-effect phrases.
+5. For Hard difficulty, prefer compact sentences that can naturally be divided into 7 to 8 short blanks.
+6. Do not generate target sentences longer than 15 words.
+7. Avoid long clauses that would force many words into one blank.
+8. Avoid unnecessary adverbs like usually, often, actually, also, or generally unless they are essential to the meaning.
+9. Prefer sentence structures where each word or short phrase has a clear position.
+10. Some words or phrases may remain fixed only when they naturally help the student infer the sentence.
+11. Do not force fixed words into the middle of every sentence.
+12. Do not make the sentence all blanks except punctuation.
+13. Avoid childish, mechanical, or overly repetitive responses.
+14. Avoid responses that simply repeat Speaker A's wording without adding a natural answer.
+15. Do not include Chinese.
+16. Do not include markdown.
+17. Make every question different in topic and sentence pattern.
 
 Selected difficulty: ${level}
 Selected topic: ${topic}
