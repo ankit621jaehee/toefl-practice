@@ -541,7 +541,7 @@ function isValidPart(part: unknown): part is Part {
   return false;
 }
 
-function normalizeQuestions(apiQuestions: Question[]) {
+function normalizeQuestions(apiQuestions: Partial<Question>[]) {
   return apiQuestions
     .map((question, index) => {
       const validParts = Array.isArray(question.parts)
@@ -551,7 +551,8 @@ function normalizeQuestions(apiQuestions: Question[]) {
       if (
         !question.target ||
         !question.contextSentence ||
-        validParts.length === 0
+        validParts.length === 0 ||
+        validParts.filter((part) => part.type === "blank").length === 0
       ) {
         return null;
       }
@@ -567,11 +568,17 @@ function normalizeQuestions(apiQuestions: Question[]) {
         contextSpeaker: question.contextSpeaker || "A",
         contextSentence: question.contextSentence,
         answerSpeaker: question.answerSpeaker || "B",
-        target: question.target,
+        target: cleanDuplicatedPunctuation(question.target),
         parts: finalPartsWithPunctuation,
         chunks: getBlankAnswers({
-          ...question,
+          id: index + 1,
+          contextSpeaker: question.contextSpeaker || "A",
+          contextSentence: question.contextSentence,
+          answerSpeaker: question.answerSpeaker || "B",
+          target: question.target,
           parts: finalPartsWithPunctuation,
+          chunks: [],
+          explanation: question.explanation || "",
         }),
         explanation:
           question.explanation ||
@@ -580,54 +587,82 @@ function normalizeQuestions(apiQuestions: Question[]) {
     })
     .filter((question): question is Question => question !== null);
 }
-
 async function generateQuestionsFromAPI(
   count: number,
   level: string,
-  topic: string,
+  topic: string
 ) {
-  const randomSeed = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const collected: Question[] = [];
+  const usedTargets = new Set<string>();
+  const maxAttempts = 4;
 
-  const response = await fetch("/api/generate-sentences", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      count,
-      level,
-      topic,
-      randomSeed,
-      excludeTargets: fallbackQuestions.map((q) => q.target),
-      instruction:
-        "Generate completely new Build-a-Sentence TOEFL-style questions. Do not reuse or imitate the sample fallback questions. Every question must be unique.",
-      knowledgeCategories: [
-        "从句",
-        "短语搭配",
-        "连词使用",
-        "句型结构",
-        "时态一致",
-      ],
-    }),
-  });
+  for (let attempt = 0; attempt < maxAttempts && collected.length < count; attempt += 1) {
+    const remaining = count - collected.length;
+    const randomSeed = `${Date.now()}-${attempt}-${Math.random()
+      .toString(36)
+      .slice(2)}`;
 
-  if (!response.ok) {
-    throw new Error("API request failed");
+    const response = await fetch("/api/generate-sentences", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        count: remaining,
+        level,
+        topic,
+        randomSeed,
+        excludeTargets: [
+          ...Array.from(usedTargets),
+          ...fallbackQuestions.map((q) => q.target),
+        ],
+        knowledgeCategories: [
+          "从句",
+          "短语搭配",
+          "连词使用",
+          "句型结构",
+          "时态一致",
+        ],
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error("API request failed");
+    }
+
+    const data = await response.json();
+
+    if (!Array.isArray(data.questions)) {
+      throw new Error("Invalid API response");
+    }
+
+    const normalized = normalizeQuestions(data.questions as Partial<Question>[]);
+
+    for (const question of normalized) {
+      const targetKey = cleanDuplicatedPunctuation(question.target).toLowerCase();
+
+      if (!usedTargets.has(targetKey)) {
+        usedTargets.add(targetKey);
+
+        collected.push({
+          ...question,
+          id: collected.length + 1,
+          target: cleanDuplicatedPunctuation(question.target),
+          parts: dedupePunctuationParts(question.parts),
+        });
+      }
+
+      if (collected.length >= count) break;
+    }
   }
 
-  const data = await response.json();
-
-  if (!Array.isArray(data.questions)) {
-    throw new Error("Invalid API response");
+  if (collected.length < count) {
+    throw new Error(
+      `AI only generated ${collected.length} valid questions, but ${count} were requested.`
+    );
   }
 
-  const normalized = normalizeQuestions(data.questions as Question[]);
-
-  if (normalized.length < count) {
-    throw new Error("AI returned too few valid questions");
-  }
-
-  return normalized.slice(0, count);
+  return collected.slice(0, count);
 }
 
 async function generateEmailPromptWithAPI(level: string, topic: string) {
@@ -822,7 +857,6 @@ function addPunctuationFromTarget(parts: Part[], target: string): Part[] {
     result.push(part);
 
     const text = part.type === "fixed" ? part.text : part.answer;
-
     const index = target.toLowerCase().indexOf(text.toLowerCase(), cursor);
 
     if (index === -1) return;
@@ -860,6 +894,14 @@ function addPunctuationFromTarget(parts: Part[], target: string): Part[] {
 
 function isPunctuationOnly(text: string) {
   return /^[.,!?;:，。！？；：]+$/.test(text.trim());
+}
+
+function cleanDuplicatedPunctuation(text: string) {
+  return text
+    .replace(/\s+([.,!?;:，。！？；：])/g, "$1")
+    .replace(/([.!?。！？])\1+/g, "$1")
+    .replace(/([,;:，；：])\1+/g, "$1")
+    .trim();
 }
 
 function dedupePunctuationParts(parts: Part[]): Part[] {
@@ -909,10 +951,11 @@ function buildFullAnswerFromSlots(question: Question, slots: (Chunk | null)[]) {
       return slot?.text || "";
     })
     .join(" ")
-    .replace(/\s+([?.!,;:])/g, "$1")
-    .replace(/([?.!,;:])\1+/g, "$1")
+    .replace(/\s+([.,!?;:，。！？；：])/g, "$1")
+    .replace(/([.!?。！？])\1+/g, "$1")
+    .replace(/([,;:，；：])\1+/g, "$1")
     .trim();
-}
+  }
 
 function isQuestionCorrect(question: Question, slots: (Chunk | null)[]) {
   const userFullAnswer = buildFullAnswerFromSlots(question, slots);
@@ -924,15 +967,14 @@ function isQuestionCorrect(question: Question, slots: (Chunk | null)[]) {
 
 
 function renderFullAnswer(question: Question) {
-  return question.parts
-    .map((part) => {
-      if (part.type === "fixed") return part.text;
-      return part.answer;
-    })
-    .join(" ")
-    .replace(/\s+([?.!,;:])/g, "$1")
-    .replace(/([?.!,;:])\1+/g, "$1")
-    .trim();
+  return cleanDuplicatedPunctuation(
+    question.parts
+      .map((part) => {
+        if (part.type === "fixed") return part.text;
+        return part.answer;
+      })
+      .join(" ")
+  );
 }
 
 function countWords(text: string) {
@@ -2173,24 +2215,17 @@ async function submitMockTestWithAPI({
       setApiMessage("已成功由 Gemini 生成新题组。");
       setPage("sentence");
     } catch (error) {
-      const fallback = fallbackQuestions.slice(0, questionCount);
+      console.error(error);
 
-      // Attach a hidden knowledge category to each fallback question for consistency.
-      const processedFallback = (fallback as any[]).map((q) => ({
-        ...q,
-        knowledgeCategory: assignSentenceKnowledgeCategory(),
-      }));
-      setQuestions(processedFallback);
-      setSlotsByQuestion(createInitialSlots(processedFallback));
-      setBankOrders(createBankOrders(processedFallback));
-      setCurrentIndex(0);
-      setDragged(null);
-      setResults({});
-      setIsSubmitted(false);
-      setApiMessage(
-        "API 暂时不可用，已使用本地示例题。部署到 Vercel 并配置 Gemini API Key 后即可自动生成。"
+      const message =
+        error instanceof Error
+          ? error.message
+          : "AI 生成题目失败，请稍后再试。";
+
+      setApiMessage(message);
+      alert(
+        `AI 生成题目失败：${message}\n\n这次不会自动使用本地例题，以免出现前几题重复的问题。`
       );
-      setPage("sentence");
     } finally {
       setIsLoading(false);
     }
