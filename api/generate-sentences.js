@@ -291,30 +291,30 @@ function splitWordsIntoChunks(words) {
 function getDifficultySentenceConfig(level) {
   if (level === "Hard") {
     return {
-      targetWordMin: 14,
-      targetWordMax: 20,
-      desiredBlankMin: 5,
-      desiredBlankMax: 7,
+      targetWordMin: 8,
+      targetWordMax: 12,
+      desiredBlankMin: 7,
+      desiredBlankMax: 11,
       minFixedAnchors: 1,
     };
   }
 
   if (level === "Medium") {
     return {
-      targetWordMin: 10,
-      targetWordMax: 16,
-      desiredBlankMin: 5,
-      desiredBlankMax: 7,
-      minFixedAnchors: 1,
+      targetWordMin: 7,
+      targetWordMax: 10,
+      desiredBlankMin: 6,
+      desiredBlankMax: 8,
+      minFixedAnchors: 0,
     };
   }
 
   return {
-    targetWordMin: 8,
-    targetWordMax: 12,
+    targetWordMin: 6,
+    targetWordMax: 8,
     desiredBlankMin: 5,
-    desiredBlankMax: 6,
-    minFixedAnchors: 1,
+    desiredBlankMax: 8,
+    minFixedAnchors: 0,
   };
 }
 
@@ -406,36 +406,66 @@ function buildPartsFromTarget(target, level = "Medium") {
     };
   }
 
+  function getPartWordCount(part) {
+    const text = part.type === "blank" ? part.answer : part.text;
+
+    return String(text || "")
+      .split(/\s+/)
+      .filter(Boolean).length;
+  }
+
   function mergeNeighborBlanks() {
     const blankIndexes = getBlankIndexes();
 
     if (blankIndexes.length < 2) return false;
 
+    // 最多允许一个 blank 里有 3 个词。
+    // 避免出现 "announced that the facility will remain" 这种超长空。
+    const maxWordsPerBlank = 3;
+
     for (let i = 0; i < blankIndexes.length - 1; i += 1) {
       const first = blankIndexes[i];
       const second = blankIndexes[i + 1];
 
-      if (second === first + 1) {
-        parts[first] = {
-          type: "blank",
-          answer: `${parts[first].answer} ${parts[second].answer}`,
-        };
+      if (second !== first + 1) continue;
 
-        parts.splice(second, 1);
-        return true;
+      const mergedAnswer = `${parts[first].answer} ${parts[second].answer}`;
+      const blockedMergeWords = new Set([
+        "that",
+        "which",
+        "who",
+        "where",
+        "when",
+        "why",
+        "whether",
+        "if",
+        "because",
+        "although",
+      ]);
+
+      const firstClean = cleanChunk(parts[first].answer);
+      const secondClean = cleanChunk(parts[second].answer);
+
+      if (blockedMergeWords.has(firstClean) || blockedMergeWords.has(secondClean)) {
+        continue;
       }
+      
+      const mergedWordCount = mergedAnswer
+        .split(/\s+/)
+        .filter(Boolean).length;
+
+      if (mergedWordCount > maxWordsPerBlank) continue;
+
+      parts[first] = {
+        type: "blank",
+        answer: mergedAnswer,
+      };
+
+      parts.splice(second, 1);
+      return true;
     }
 
-    const first = blankIndexes[0];
-    const second = blankIndexes[1];
-
-    parts[first] = {
-      type: "blank",
-      answer: `${parts[first].answer} ${parts[second].answer}`,
-    };
-
-    parts.splice(second, 1);
-    return true;
+    return false;
   }
 
   // 1. 句首如果是自然短语，可以固定，类似真题中的 The textbook ____。
@@ -467,11 +497,10 @@ function buildPartsFromTarget(target, level = "Medium") {
     blankIndexesForEnding[blankIndexesForEnding.length - 1];
 
   if (
-    lastBlankIndex !== undefined &&
-    endingFixedCandidates.has(cleanChunk(parts[lastBlankIndex].answer))
-  ) {
-    convertBlankToFixed(lastBlankIndex);
-  }
+    lastBlankIndex !== undefined &
+    endingFixedCandidates.has(cleanChunk(parts[lastBlankIndex].answer))    ) {
+  convertBlankToFixed(lastBlankIndex);
+}
 
   // 3. 如果有逗号，逗号前后不能全靠盲猜，保留自然线索。
   if (sentenceWithoutPunctuation.includes(",")) {
