@@ -1036,7 +1036,8 @@ function App() {
   // are loaded when the authenticated user changes.
   const [hasPastExamAccess, setHasPastExamAccess] = useState(false);
   const [unlockedEtsMockIds, setUnlockedEtsMockIds] = useState<string[]>([]);
-
+  const [hasImprovementAccess, setHasImprovementAccess] = useState(false);
+  const [showImprovementContact, setShowImprovementContact] = useState(false);  
 
   useEffect(() => {
 
@@ -1372,12 +1373,13 @@ function setPage(nextPage: Page) {
     async function loadAccess() {
       if (!user) {
         setHasPastExamAccess(false);
+        setHasImprovementAccess(false);
         return;
       }
       try {
         const { data, error } = await supabase
           .from("profiles")
-          .select("past_exam_access")
+          .select("past_exam_access, improvement_access")
           .eq("id", user.id)
           .single();
         if (error || !data) {
@@ -1385,6 +1387,7 @@ function setPage(nextPage: Page) {
         } else {
           // Cast to any to avoid TypeScript complaining about unknown columns
           setHasPastExamAccess(!!(data as any).past_exam_access);
+          setHasImprovementAccess(!!(data as any).improvement_access);
         }
       } catch (_err) {
         setHasPastExamAccess(false);
@@ -2705,7 +2708,39 @@ async function submitMockTestWithAPI({
                 </div>
             </div>
 
-            <ImprovementBanner onOpen={() => window.open("/improvement", "_blank")} />
+            <ImprovementBanner
+              onOpen={() => {
+                if (!user) {
+                  alert("请先登录后再使用提分百宝箱。");
+                  return;
+                }
+
+                if (!hasImprovementAccess) {
+                  setShowImprovementContact(true);
+                  return;
+                }
+
+                window.open("/improvement", "_blank");
+              }}
+            />
+            {showImprovementContact && (
+              <div
+                style={{
+                  marginTop: "18px",
+                  borderRadius: "22px",
+                  border: "1px solid #bfdbfe",
+                  background: "#eff6ff",
+                  padding: "20px",
+                  color: "#1e3a8a",
+                  lineHeight: 1.8,
+                }}
+              >
+                <strong>提分百宝箱暂未授权</strong>
+                <p style={{ margin: "8px 0 0" }}>
+                  请联系客服获取使用权限。
+                </p>
+              </div>
+            )}
           </>
 
         )}
@@ -2967,7 +3002,15 @@ async function submitMockTestWithAPI({
           />
         )}
 
-        {page === "improvement" && <ImprovementPage />}
+        {page === "improvement" && (
+          <ImprovementPage
+            user={user}
+            points={points}
+            setPoints={setPoints}
+            hasImprovementAccess={hasImprovementAccess}
+            setShowPointsModal={setShowPointsModal}
+          />
+        )}
 
         {page === "analytics" && (
           <AnalyticsPage
@@ -6883,7 +6926,76 @@ function ImprovementBanner({ onOpen }: { onOpen: () => void }) {
     </section>
   );
 }
-function ImprovementPage() {
+function ImprovementPage({
+  user,
+  points,
+  setPoints,
+  hasImprovementAccess,
+  setShowPointsModal,
+}: {
+  user: User | null;
+  points: number;
+  setPoints: React.Dispatch<React.SetStateAction<number>>;
+  hasImprovementAccess: boolean;
+  setShowPointsModal: React.Dispatch<React.SetStateAction<boolean>>;
+}) {
+  if (!user || !hasImprovementAccess) {
+    return (
+      <div
+        style={{
+          borderRadius: "30px",
+          background: "#eff6ff",
+          border: "1px solid #bfdbfe",
+          padding: "34px",
+          color: "#1e3a8a",
+          lineHeight: 1.8,
+        }}
+      >
+        <p
+          style={{
+            margin: 0,
+            fontSize: "13px",
+            fontWeight: 900,
+            letterSpacing: "0.1em",
+            textTransform: "uppercase",
+            color: "#2563eb",
+          }}
+        >
+          Improvement Toolbox
+        </p>
+
+        <h1
+          style={{
+            margin: "10px 0 0",
+            color: "#0f172a",
+            fontSize: "36px",
+            letterSpacing: "-0.05em",
+          }}
+        >
+          提分百宝箱暂未授权
+        </h1>
+
+        <p style={{ marginTop: "16px", maxWidth: "760px" }}>
+          请联系客服获取使用权限。
+        </p>
+
+       <div
+          style={{
+            marginTop: "20px",
+            borderRadius: "20px",
+            background: "white",
+            border: "1px solid #dbeafe",
+            padding: "18px",
+            color: "#334155",
+          }}
+        >
+          <strong>获取方式：</strong>
+          <br />
+          请联系管理员开通 improvement_access 权限。
+        </div>
+     </div>
+    );
+  }
   const practiceTypes: {
     id:
       | "sentence_upgrade"
@@ -6933,6 +7045,9 @@ const [isGenerating, setIsGenerating] = useState(false);
 const [generateError, setGenerateError] = useState("");
 const [userAnswer, setUserAnswer] = useState("");
 const [showReference, setShowReference] = useState(false);
+const [isReviewing, setIsReviewing] = useState(false);
+const [reviewError, setReviewError] = useState("");
+const [aiReview, setAiReview] = useState<any>(null);
 
 async function generateTask() {
   try {
@@ -6979,6 +7094,71 @@ async function generateTask() {
     setIsGenerating(false);
   }
 };
+
+async function reviewUserAnswer() {
+  if (!user) {
+    alert("请先登录后再使用 AI 批改。");
+    return;
+  }
+
+  if (!generatedTask) {
+    setReviewError("请先生成一道练习题。");
+    return;
+  }
+
+  if (!userAnswer.trim()) {
+    setReviewError("请先输入你的答案。");
+    return;
+  }
+
+  if (points < 1) {
+    setShowPointsModal(true);
+    return;
+  }
+
+  try {
+    setIsReviewing(true);
+    setReviewError("");
+    setAiReview(null);
+
+    const newBalance = points - 1;
+    setPoints(newBalance);
+
+    const { error: pointError } = await supabase
+      .from("profiles")
+      .update({ points: newBalance })
+      .eq("id", user.id);
+
+    if (pointError) {
+      setPoints(points);
+      throw new Error(pointError.message);
+    }
+
+    const response = await fetch("/api/review-improvement-answer", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        type: generatedTask.type,
+        task: generatedTask,
+        userAnswer,
+      }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error || "AI 批改失败");
+    }
+
+    setAiReview(data);
+  } catch (error: any) {
+    setReviewError(error.message || "AI 批改失败，请稍后再试");
+  } finally {
+    setIsReviewing(false);
+  }
+}
 
 function renderGeneratedTask() {
   if (!generatedTask) return null;
@@ -7323,8 +7503,122 @@ function renderReference() {
             >
               查看参考答案与解析
             </button>
+            <button
+              type="button"
+              onClick={reviewUserAnswer}
+              disabled={isReviewing}
+              style={{
+                width: "fit-content",
+                border: "none",
+                borderRadius: "999px",
+                background: isReviewing ? "#94a3b8" : "#16a34a",
+                color: "white",
+                padding: "12px 18px",
+                fontWeight: 900,
+                cursor: isReviewing ? "not-allowed" : "pointer",
+              }}
+            >
+              {isReviewing ? "AI 正在批改..." : "消耗 1 积分 AI 批改"}
+            </button>
+
+
 
             {renderReference()}
+            {reviewError && (
+            <p
+              style={{
+                color: "#dc2626",
+                fontWeight: 800,
+                marginTop: "10px",
+              }}
+            >
+              {reviewError}
+            </p>
+          )}
+
+        {aiReview && (
+          <div
+            style={{
+              borderRadius: "24px",
+              background: "#f0fdf4",
+              border: "1px solid #bbf7d0",
+              padding: "22px",
+              marginTop: "16px",
+            }}
+          >
+            <p
+              style={{
+                margin: "0 0 8px",
+                color: "#16a34a",
+                fontWeight: 900,
+              }}
+            >
+              AI 完善点评
+            </p>
+
+            <p
+              style={{
+                color: "#0f172a",
+                lineHeight: 1.8,
+                fontWeight: 700,
+                whiteSpace: "pre-wrap",
+              }}
+            >
+              {aiReview.overallComment}
+            </p>
+
+            <div style={{ marginTop: "16px" }}>
+              <strong>优点：</strong>
+              <ul>
+                {aiReview.strengths?.map((item: string) => (
+                  <li key={item}>{item}</li>
+                ))}
+              </ul>
+            </div>
+
+            <div style={{ marginTop: "16px" }}>
+              <strong>需要改进：</strong>
+              <ul>
+                {aiReview.problems?.map((item: string) => (
+                  <li key={item}>{item}</li>
+                ))}
+              </ul>
+            </div>
+
+            <div style={{ marginTop: "16px" }}>
+              <strong>修改建议：</strong>
+              <ul>
+                {aiReview.suggestions?.map((item: string) => (
+                  <li key={item}>{item}</li>
+                ))}
+              </ul>
+            </div>
+
+            <div
+              style={{
+                marginTop: "18px",
+                borderRadius: "18px",
+                background: "white",
+                border: "1px solid #dcfce7",
+                padding: "16px",
+              }}
+            >
+              <strong>完善后的版本：</strong>
+              <p
+                style={{
+                  whiteSpace: "pre-wrap",
+                  lineHeight: 1.8,
+                  marginBottom: 0,
+                }}
+              >
+                {aiReview.improvedVersion}
+              </p>
+            </div>
+          </div>
+        )}
+
+
+
           </div>
         )}
       </section>
