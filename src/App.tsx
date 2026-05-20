@@ -87,7 +87,8 @@ type Page =
   | "analytics"
   | "practice-sessions"
   | "improvement"
-  | "improvement-records";
+  | "improvement-records"
+  | "improvement-record-detail";
 
 type Part =
   | {
@@ -1038,7 +1039,8 @@ function App() {
   const [hasPastExamAccess, setHasPastExamAccess] = useState(false);
   const [unlockedEtsMockIds, setUnlockedEtsMockIds] = useState<string[]>([]);
   const [hasImprovementAccess, setHasImprovementAccess] = useState(false);
-  const [showImprovementContact, setShowImprovementContact] = useState(false);  
+  const [showImprovementContact, setShowImprovementContact] = useState(false); 
+  const [selectedImprovementRecord, setSelectedImprovementRecord] = useState<any>(null); 
 
   useEffect(() => {
 
@@ -1233,6 +1235,7 @@ function App() {
 
   if (path === "/practice-sessions") return "practice-sessions";
   if (path === "/improvement") return "improvement";
+  if (path === "/improvement-record-detail") return "improvement-record-detail";
   if (path === "/improvement-records") return "improvement-records";
   return "home";
 
@@ -1305,6 +1308,7 @@ function setPage(nextPage: Page) {
 
     improvement: "/improvement",
     "improvement-records": "/improvement-records",
+    "improvement-record-detail": "/improvement-record-detail",
   };
 
   const nextPath = pathMap[nextPage];
@@ -3018,8 +3022,23 @@ async function submitMockTestWithAPI({
           <ImprovementRecordsPage
             user={user}
             onBack={() => setPage("improvement")}
+            onOpenRecord={(record) => {
+              setSelectedImprovementRecord(record);
+              setPage("improvement-record-detail");
+            }}
           />
         )}
+
+        {page === "improvement-record-detail" && (
+          <ImprovementRecordDetailPage
+            record={selectedImprovementRecord}
+            onBack={() => setPage("improvement-records")}
+          />
+        )}
+
+
+
+
         {page === "analytics" && (
           <AnalyticsPage
             user={user}
@@ -7793,9 +7812,11 @@ function renderReference() {
 function ImprovementRecordsPage({
   user,
   onBack,
+  onOpenRecord,
 }: {
   user: User | null;
   onBack: () => void;
+  onOpenRecord: (record: any) => void;
 }) {
   const [records, setRecords] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -7818,9 +7839,7 @@ function ImprovementRecordsPage({
           .eq("user_id", user.id)
           .order("created_at", { ascending: false });
 
-        if (error) {
-          throw error;
-        }
+        if (error) throw error;
 
         setRecords(data || []);
       } catch (error: any) {
@@ -7843,6 +7862,30 @@ function ImprovementRecordsPage({
     };
 
     return map[type] || type;
+  }
+
+  function getRecordPreview(record: any) {
+    if (record.practice_type === "sentence_upgrade") {
+      return record.task?.originalSentence || "句子升级练习记录";
+    }
+
+    if (record.practice_type === "detail_expansion") {
+      return record.task?.topicSentence || "Detail 增加练习记录";
+    }
+
+    if (record.practice_type === "discussion_outline") {
+      return record.task?.professorQuestion || "讨论简写框架训练记录";
+    }
+
+    if (record.practice_type === "email_rewrite") {
+      return record.task?.badEmail || "邮件写作改写练习记录";
+    }
+
+    if (record.practice_type === "error_fix") {
+      return record.task?.wrongSentence || "错误修复练习记录";
+    }
+
+    return "提分练习记录";
   }
 
   return (
@@ -7889,7 +7932,7 @@ function ImprovementRecordsPage({
             maxWidth: "760px",
           }}
         >
-          这里会保存你在提分百宝箱中完成的 AI 写作批改记录，包括题目、你的答案、AI 点评和完善版本。
+          这里显示你完成过的 AI 写作提分练习。点击任意一条记录，可以查看题目、你的答案、AI 点评和完善版本。
         </p>
 
         <button
@@ -7933,16 +7976,21 @@ function ImprovementRecordsPage({
         </div>
       )}
 
-      <div style={{ display: "grid", gap: "18px" }}>
+      <div style={{ display: "grid", gap: "14px" }}>
         {records.map((record) => (
-          <div
+          <button
             key={record.id}
+            type="button"
+            onClick={() => onOpenRecord(record)}
             style={{
-              borderRadius: "26px",
-              background: "white",
+              width: "100%",
+              textAlign: "left",
               border: "1px solid #e2e8f0",
-              padding: "24px",
-              boxShadow: "0 16px 40px rgba(15, 23, 42, 0.05)",
+              background: "white",
+              borderRadius: "24px",
+              padding: "20px",
+              cursor: "pointer",
+              boxShadow: "0 12px 32px rgba(15, 23, 42, 0.05)",
             }}
           >
             <div
@@ -7950,9 +7998,8 @@ function ImprovementRecordsPage({
                 display: "flex",
                 justifyContent: "space-between",
                 gap: "12px",
-                flexWrap: "wrap",
                 alignItems: "center",
-                marginBottom: "16px",
+                flexWrap: "wrap",
               }}
             >
               <span
@@ -7972,45 +8019,221 @@ function ImprovementRecordsPage({
                 style={{
                   color: "#64748b",
                   fontSize: "13px",
-                  fontWeight: 700,
+                  fontWeight: 800,
                 }}
               >
                 {new Date(record.created_at).toLocaleString()}
               </span>
             </div>
 
-            <div style={{ display: "grid", gap: "14px" }}>
-              <RecordBlock
-                title="我的答案"
-                content={record.user_answer || "未填写"}
-              />
+            <h2
+              style={{
+                margin: "14px 0 0",
+                color: "#0f172a",
+                fontSize: "18px",
+                letterSpacing: "-0.03em",
+              }}
+            >
+              {getRecordPreview(record)}
+            </h2>
 
-              <RecordBlock
-                title="AI 总体点评"
-                content={record.ai_review?.overallComment || "暂无点评"}
-              />
+            <p
+              style={{
+                margin: "10px 0 0",
+                color: "#64748b",
+                lineHeight: 1.7,
+              }}
+            >
+              {record.ai_review?.overallComment || "点击查看完整 AI 点评与完善版本。"}
+            </p>
 
-              <RecordBlock
-                title="完善后的版本"
-                content={record.ai_review?.improvedVersion || "暂无完善版本"}
-              />
-
-              {record.ai_review?.problems?.length > 0 && (
-                <RecordList
-                  title="需要改进"
-                  items={record.ai_review.problems}
-                />
-              )}
-
-              {record.ai_review?.suggestions?.length > 0 && (
-                <RecordList
-                  title="修改建议"
-                  items={record.ai_review.suggestions}
-                />
-              )}
-            </div>
-          </div>
+            <p
+              style={{
+                margin: "12px 0 0",
+                color: "#2563eb",
+                fontWeight: 900,
+              }}
+            >
+              查看详情 →
+            </p>
+          </button>
         ))}
+      </div>
+    </div>
+  );
+}
+
+function ImprovementRecordDetailPage({
+  record,
+  onBack,
+}: {
+  record: any;
+  onBack: () => void;
+}) {
+  if (!record) {
+    return (
+      <div
+        style={{
+          borderRadius: "24px",
+          background: "white",
+          border: "1px solid #e2e8f0",
+          padding: "24px",
+        }}
+      >
+        <p style={{ color: "#64748b", lineHeight: 1.8 }}>
+          没有选中的记录。请返回记录列表重新选择。
+        </p>
+
+        <button
+          type="button"
+          onClick={onBack}
+          style={{
+            border: "none",
+            borderRadius: "999px",
+            background: "#0f172a",
+            color: "white",
+            padding: "12px 18px",
+            fontWeight: 900,
+            cursor: "pointer",
+          }}
+        >
+          返回记录列表
+        </button>
+      </div>
+    );
+  }
+
+  function getPracticeTypeName(type: string) {
+    const map: Record<string, string> = {
+      sentence_upgrade: "句子升级练习",
+      detail_expansion: "Detail 增加练习",
+      discussion_outline: "讨论简写框架训练",
+      email_rewrite: "邮件写作改写练习",
+      error_fix: "错误修复练习",
+    };
+
+    return map[type] || type;
+  }
+
+  function getTaskText(record: any) {
+    const task = record.task || {};
+
+    if (record.practice_type === "sentence_upgrade") {
+      return `原句：${task.originalSentence || ""}\n任务：${task.task || ""}`;
+    }
+
+    if (record.practice_type === "detail_expansion") {
+      return `观点句：${task.topicSentence || ""}\n任务：${task.task || ""}`;
+    }
+
+    if (record.practice_type === "discussion_outline") {
+      return `Professor：${task.professorQuestion || ""}\n\nStudent A：${task.studentA || ""}\n\nStudent B：${task.studentB || ""}\n\n任务：${task.task || ""}`;
+    }
+
+    if (record.practice_type === "email_rewrite") {
+      return `原始邮件：\n${task.badEmail || ""}\n\n任务：${task.task || ""}`;
+    }
+
+    if (record.practice_type === "error_fix") {
+      return `错误句：${task.wrongSentence || ""}\n任务：${task.task || ""}`;
+    }
+
+    return JSON.stringify(task, null, 2);
+  }
+
+  return (
+    <div>
+      <section
+        style={{
+          borderRadius: "32px",
+          padding: "34px",
+          background:
+            "linear-gradient(135deg, #f8fafc 0%, #eff6ff 55%, #eef2ff 100%)",
+          border: "1px solid #dbeafe",
+          marginBottom: "24px",
+        }}
+      >
+        <p
+          style={{
+            margin: "0 0 10px",
+            color: "#2563eb",
+            fontWeight: 900,
+            letterSpacing: "0.1em",
+            textTransform: "uppercase",
+            fontSize: "13px",
+          }}
+        >
+          Record Detail
+        </p>
+
+        <h1
+          style={{
+            margin: 0,
+            fontSize: "38px",
+            letterSpacing: "-0.05em",
+            color: "#0f172a",
+          }}
+        >
+          {getPracticeTypeName(record.practice_type)}
+        </h1>
+
+        <p
+          style={{
+            marginTop: "12px",
+            color: "#64748b",
+            fontWeight: 800,
+          }}
+        >
+          {new Date(record.created_at).toLocaleString()} · 消耗 {record.points_cost || 1} 积分
+        </p>
+
+        <button
+          type="button"
+          onClick={onBack}
+          style={{
+            marginTop: "18px",
+            border: "none",
+            borderRadius: "999px",
+            background: "#0f172a",
+            color: "white",
+            padding: "12px 18px",
+            fontWeight: 900,
+            cursor: "pointer",
+          }}
+        >
+          返回记录列表
+        </button>
+      </section>
+
+      <div style={{ display: "grid", gap: "16px" }}>
+        <RecordBlock title="练习题目" content={getTaskText(record)} />
+
+        <RecordBlock
+          title="我的答案"
+          content={record.user_answer || "未填写"}
+        />
+
+        <RecordBlock
+          title="AI 总体点评"
+          content={record.ai_review?.overallComment || "暂无点评"}
+        />
+
+        {record.ai_review?.strengths?.length > 0 && (
+          <RecordList title="优点" items={record.ai_review.strengths} />
+        )}
+
+        {record.ai_review?.problems?.length > 0 && (
+          <RecordList title="需要改进" items={record.ai_review.problems} />
+        )}
+
+        {record.ai_review?.suggestions?.length > 0 && (
+          <RecordList title="修改建议" items={record.ai_review.suggestions} />
+        )}
+
+        <RecordBlock
+          title="完善后的版本"
+          content={record.ai_review?.improvedVersion || "暂无完善版本"}
+        />
       </div>
     </div>
   );
@@ -8853,6 +9076,8 @@ function getPageFromPath(): Page {
   // 新增对能力分析路径的识别
   if (path.includes("/analytics")) 
     return "analytics";
+  if (path.includes("/improvement-record-detail"))
+    return "improvement-record-detail";
   if (path.includes("/improvement-records"))
     return "improvement-records";
   if (path.includes("/improvement"))
