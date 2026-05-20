@@ -7147,12 +7147,27 @@ async function reviewUserAnswer() {
     });
 
     const data = await response.json();
-
     if (!response.ok) {
       throw new Error(data.error || "AI 批改失败");
     }
-
     setAiReview(data);
+    const { error: recordError } = await supabase
+      .from("improvement_records")
+      .insert({
+        user_id: user.id,
+        practice_type: generatedTask.type,
+        task: generatedTask,
+        user_answer: userAnswer,
+        reference_answer: generatedTask,
+        ai_review: data,
+        points_cost: 1,
+      });
+
+    if (recordError) {
+      console.error("保存提分练习记录失败：", recordError);
+    }
+
+
   } catch (error: any) {
     setReviewError(error.message || "AI 批改失败，请稍后再试");
   } finally {
