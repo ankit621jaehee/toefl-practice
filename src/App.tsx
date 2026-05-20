@@ -7740,6 +7740,8 @@ function renderReference() {
         )}
       </section>
 
+      <TopicVocabularyBuilder />
+
 
       <div
         style={{
@@ -7809,6 +7811,425 @@ function renderReference() {
     </div>
   );
 }
+
+function TopicVocabularyBuilder() {
+  const vocabularySections = [
+    {
+      title: "器材词汇",
+      subtitle: "Equipment",
+      items: [
+        {
+          term: "treadmill",
+          meaning: "跑步机",
+          example: "The treadmill is not working properly.",
+        },
+        {
+          term: "elliptical machine",
+          meaning: "椭圆机",
+          example: "The elliptical machine is easier on the knees than running.",
+        },
+        {
+          term: "stationary bike",
+          meaning: "固定自行车 / 动感单车",
+          example: "I usually warm up on the stationary bike for ten minutes.",
+        },
+        {
+          term: "rowing machine",
+          meaning: "划船机",
+          example: "The rowing machine can help strengthen the back and arms.",
+        },
+        {
+          term: "dumbbell",
+          meaning: "哑铃",
+          example: "The dumbbells are placed next to the weight bench.",
+        },
+        {
+          term: "barbell",
+          meaning: "杠铃",
+          example: "He was using a barbell for strength training.",
+        },
+        {
+          term: "weight bench",
+          meaning: "举重凳",
+          example: "The weight bench is adjustable.",
+        },
+        {
+          term: "resistance band",
+          meaning: "弹力带",
+          example: "Resistance bands are useful for stretching and light exercise.",
+        },
+        {
+          term: "locker",
+          meaning: "储物柜",
+          example: "I put my bag in the locker before working out.",
+        },
+      ],
+    },
+    {
+      title: "常见问题",
+      subtitle: "Common Problems",
+      items: [
+        {
+          term: "out of order",
+          meaning: "出故障，无法使用",
+          example: "The treadmill is out of order.",
+        },
+        {
+          term: "not working properly",
+          meaning: "无法正常工作",
+          example: "The screen is not working properly.",
+        },
+        {
+          term: "make a strange noise",
+          meaning: "发出奇怪的声音",
+          example: "The machine keeps making a strange noise.",
+        },
+        {
+          term: "screen is frozen",
+          meaning: "屏幕卡住了",
+          example: "The screen is frozen, so I cannot change the settings.",
+        },
+        {
+          term: "seat is loose",
+          meaning: "座椅松动",
+          example: "The seat is loose and feels unsafe.",
+        },
+        {
+          term: "handle is damaged",
+          meaning: "把手损坏",
+          example: "The handle is damaged and needs to be repaired.",
+        },
+        {
+          term: "needs maintenance",
+          meaning: "需要维修 / 保养",
+          example: "I think this equipment needs maintenance.",
+        },
+        {
+          term: "too crowded",
+          meaning: "太拥挤",
+          example: "The fitness center is too crowded in the evening.",
+        },
+        {
+          term: "no available lockers",
+          meaning: "没有可用储物柜",
+          example: "There are no available lockers right now.",
+        },
+      ],
+    },
+    {
+      title: "实用表达",
+      subtitle: "Useful Expressions",
+      items: [
+        {
+          term: "I would like to report a problem with this machine.",
+          meaning: "我想反馈这台机器的问题。",
+          example: "I would like to report a problem with this machine. It stopped suddenly while I was using it.",
+        },
+        {
+          term: "Could you show me how to adjust the seat?",
+          meaning: "你能告诉我怎么调节座椅吗？",
+          example: "Could you show me how to adjust the seat? It feels too low for me.",
+        },
+        {
+          term: "Is there another machine I can use?",
+          meaning: "还有别的机器可以用吗？",
+          example: "This treadmill is not working. Is there another machine I can use?",
+        },
+        {
+          term: "The equipment needs to be repaired.",
+          meaning: "这个设备需要维修。",
+          example: "The equipment needs to be repaired because the handle is damaged.",
+        },
+        {
+          term: "I cannot open my locker.",
+          meaning: "我打不开我的储物柜。",
+          example: "I cannot open my locker. Could someone help me reset the lock?",
+        },
+      ],
+    },
+  ];
+
+  const practiceQuestions = [
+    {
+      question: "The treadmill is ________, so students cannot use it.",
+      answer: "out of order",
+      options: ["out of order", "on campus", "in advance", "required"],
+      explanation: "out of order 表示设备出故障、无法使用。",
+    },
+    {
+      question: "The machine keeps making a ________ noise.",
+      answer: "strange",
+      options: ["strange", "regular", "quiet", "formal"],
+      explanation: "make a strange noise 表示发出奇怪的声音。",
+    },
+    {
+      question: "I put my backpack in the ________ before exercising.",
+      answer: "locker",
+      options: ["locker", "barbell", "screen", "membership"],
+      explanation: "locker 是储物柜，常见于健身房、图书馆和宿舍场景。",
+    },
+  ];
+
+  const [selectedSection, setSelectedSection] = useState("器材词汇");
+  const [selectedAnswer, setSelectedAnswer] = useState("");
+  const [practiceMessage, setPracticeMessage] = useState("");
+
+  const activeSection =
+    vocabularySections.find((section) => section.title === selectedSection) ||
+    vocabularySections[0];
+
+  const currentQuestion = practiceQuestions[0];
+
+  function checkPracticeAnswer(option: string) {
+    setSelectedAnswer(option);
+
+    if (option === currentQuestion.answer) {
+      setPracticeMessage(`回答正确！${currentQuestion.explanation}`);
+    } else {
+      setPracticeMessage(`再想想。提示：${currentQuestion.explanation}`);
+    }
+  }
+
+  return (
+    <section
+      style={{
+        borderRadius: "30px",
+        background: "white",
+        border: "1px solid #e2e8f0",
+        padding: "30px",
+        boxShadow: "0 16px 40px rgba(15, 23, 42, 0.05)",
+        marginBottom: "28px",
+      }}
+    >
+      <p
+        style={{
+          margin: 0,
+          color: "#2563eb",
+          fontSize: "13px",
+          fontWeight: 900,
+          letterSpacing: "0.1em",
+          textTransform: "uppercase",
+        }}
+      >
+        Topic Vocabulary Builder
+      </p>
+
+      <h2
+        style={{
+          margin: "10px 0 0",
+          fontSize: "30px",
+          letterSpacing: "-0.04em",
+          color: "#0f172a",
+        }}
+      >
+        专题词汇积累
+      </h2>
+
+      <p
+        style={{
+          color: "#64748b",
+          lineHeight: 1.8,
+          marginTop: "12px",
+          maxWidth: "820px",
+        }}
+      >
+        根据近期托福校园生活类场景，积累可直接用于听力、口语和写作的专题词汇。本期专题为
+        <strong style={{ color: "#0f172a" }}> Fitness Center / Gym 健身房场景</strong>，
+        覆盖器材、常见故障、服务咨询和实用表达。
+      </p>
+
+      <div
+        style={{
+          display: "flex",
+          gap: "10px",
+          flexWrap: "wrap",
+          marginTop: "22px",
+        }}
+      >
+        {vocabularySections.map((section) => {
+          const active = section.title === selectedSection;
+
+          return (
+            <button
+              key={section.title}
+              type="button"
+              onClick={() => setSelectedSection(section.title)}
+              style={{
+                border: active ? "2px solid #2563eb" : "1px solid #e2e8f0",
+                background: active ? "#eff6ff" : "#f8fafc",
+                color: active ? "#2563eb" : "#334155",
+                borderRadius: "999px",
+                padding: "10px 14px",
+                fontWeight: 900,
+                cursor: "pointer",
+              }}
+            >
+              {section.title}
+            </button>
+          );
+        })}
+      </div>
+
+      <div
+        style={{
+          marginTop: "24px",
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+          gap: "14px",
+        }}
+      >
+        {activeSection.items.map((item) => (
+          <div
+            key={item.term}
+            style={{
+              borderRadius: "22px",
+              background: "#f8fafc",
+              border: "1px solid #e2e8f0",
+              padding: "18px",
+            }}
+          >
+            <p
+              style={{
+                margin: 0,
+                color: "#2563eb",
+                fontWeight: 900,
+                fontSize: "13px",
+              }}
+            >
+              {activeSection.subtitle}
+            </p>
+
+            <h3
+              style={{
+                margin: "8px 0 0",
+                color: "#0f172a",
+                fontSize: "20px",
+                letterSpacing: "-0.03em",
+              }}
+            >
+              {item.term}
+            </h3>
+
+            <p
+              style={{
+                margin: "8px 0 0",
+                color: "#334155",
+                fontWeight: 800,
+              }}
+            >
+              {item.meaning}
+            </p>
+
+            <p
+              style={{
+                margin: "12px 0 0",
+                color: "#64748b",
+                lineHeight: 1.7,
+                fontSize: "14px",
+              }}
+            >
+              {item.example}
+            </p>
+          </div>
+        ))}
+      </div>
+
+      <div
+        style={{
+          marginTop: "28px",
+          borderRadius: "26px",
+          background: "#0f172a",
+          color: "white",
+          padding: "24px",
+        }}
+      >
+        <p
+          style={{
+            margin: 0,
+            color: "#93c5fd",
+            fontSize: "13px",
+            fontWeight: 900,
+            letterSpacing: "0.1em",
+            textTransform: "uppercase",
+          }}
+        >
+          Mini Practice
+        </p>
+
+        <h3
+          style={{
+            margin: "10px 0 0",
+            fontSize: "24px",
+            letterSpacing: "-0.04em",
+          }}
+        >
+          场景词汇小练习
+        </h3>
+
+        <p
+          style={{
+            margin: "14px 0 0",
+            color: "#dbeafe",
+            lineHeight: 1.8,
+          }}
+        >
+          {currentQuestion.question}
+        </p>
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+            gap: "12px",
+            marginTop: "18px",
+          }}
+        >
+          {currentQuestion.options.map((option) => {
+            const selected = selectedAnswer === option;
+
+            return (
+              <button
+                key={option}
+                type="button"
+                onClick={() => checkPracticeAnswer(option)}
+                style={{
+                  borderRadius: "18px",
+                  border: selected
+                    ? "2px solid #93c5fd"
+                    : "1px solid rgba(255,255,255,0.18)",
+                  background: selected
+                    ? "rgba(147,197,253,0.18)"
+                    : "rgba(255,255,255,0.08)",
+                  color: "white",
+                  padding: "14px",
+                  fontWeight: 800,
+                  cursor: "pointer",
+                  textAlign: "left",
+                }}
+              >
+                {option}
+              </button>
+            );
+          })}
+        </div>
+
+        {practiceMessage && (
+          <p
+            style={{
+              margin: "16px 0 0",
+              color: selectedAnswer === currentQuestion.answer ? "#bbf7d0" : "#fecaca",
+              lineHeight: 1.7,
+              fontWeight: 800,
+            }}
+          >
+            {practiceMessage}
+          </p>
+        )}
+      </div>
+    </section>
+  );
+}
+
 function ImprovementRecordsPage({
   user,
   onBack,
