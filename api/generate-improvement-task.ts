@@ -1,4 +1,5 @@
 import { GoogleGenAI } from "@google/genai";
+import { generateContentWithModelFallback } from "./gemini-helper.js";
 
 const ai = new GoogleGenAI({
   apiKey: process.env.GEMINI_API_KEY,
@@ -121,14 +122,15 @@ export default async function handler(req: any, res: any) {
       return res.status(400).json({ error: "Invalid practice type" });
     }
 
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
+    const { response, modelUsed } = await generateContentWithModelFallback(ai, {
       contents: prompts[type],
       config: {
         temperature: 0.8,
         responseMimeType: "application/json",
       },
     });
+
+    console.log("Gemini model used:", modelUsed);
 
     const text = response.text;
 
