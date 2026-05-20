@@ -86,7 +86,8 @@ type Page =
   | "ets-mock-detail"
   | "analytics"
   | "practice-sessions"
-  | "improvement";
+  | "improvement"
+  | "improvement-records";
 
 type Part =
   | {
@@ -1232,6 +1233,7 @@ function App() {
 
   if (path === "/practice-sessions") return "practice-sessions";
   if (path === "/improvement") return "improvement";
+  if (path === "/improvement-records") return "improvement-records";
   return "home";
 
 });
@@ -1302,6 +1304,7 @@ function setPage(nextPage: Page) {
     "practice-sessions": "/practice-sessions",
 
     improvement: "/improvement",
+    "improvement-records": "/improvement-records",
   };
 
   const nextPath = pathMap[nextPage];
@@ -3011,7 +3014,12 @@ async function submitMockTestWithAPI({
             setShowPointsModal={setShowPointsModal}
           />
         )}
-
+        {page === "improvement-records" && (
+          <ImprovementRecordsPage
+            user={user}
+            onBack={() => setPage("improvement")}
+          />
+        )}
         {page === "analytics" && (
           <AnalyticsPage
             user={user}
@@ -7342,7 +7350,82 @@ function renderReference() {
           提供不同科目的提分工具、模板库、训练包和个性化建议。
         </p>
       </section>
-        
+      
+      <section
+        style={{
+          borderRadius: "26px",
+          background: "white",
+          border: "1px solid #e2e8f0",
+          padding: "22px",
+          marginBottom: "28px",
+          boxShadow: "0 14px 36px rgba(15, 23, 42, 0.05)",
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          gap: "18px",
+          flexWrap: "wrap",
+        }}
+      >
+        <div>
+          <p
+            style={{
+              margin: "0 0 8px",
+              color: "#2563eb",
+              fontSize: "13px",
+              fontWeight: 900,
+              letterSpacing: "0.08em",
+              textTransform: "uppercase",
+            }}
+          >
+            Practice History
+          </p>
+
+          <h2
+            style={{
+              margin: 0,
+              color: "#0f172a",
+              fontSize: "24px",
+              letterSpacing: "-0.04em",
+            }}
+          >
+            我的提分练习记录
+          </h2>
+
+          <p
+            style={{
+              margin: "10px 0 0",
+              color: "#64748b",
+              lineHeight: 1.7,
+            }}
+          >
+            查看你的练习记录。
+          </p>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => {
+            window.location.href = "/improvement-records";
+          }}
+          style={{
+            border: "none",
+            borderRadius: "999px",
+            background: "#0f172a",
+            color: "white",
+            padding: "13px 20px",
+            fontWeight: 900,
+            cursor: "pointer",
+            whiteSpace: "nowrap",
+            boxShadow: "0 12px 28px rgba(15, 23, 42, 0.18)",
+          }}
+        >
+          查看记录 →
+        </button>
+      </section>
+
+
+
+
       <section
         style={{
           borderRadius: "30px",
@@ -7707,7 +7790,311 @@ function renderReference() {
     </div>
   );
 }
+function ImprovementRecordsPage({
+  user,
+  onBack,
+}: {
+  user: User | null;
+  onBack: () => void;
+}) {
+  const [records, setRecords] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [message, setMessage] = useState("");
 
+  useEffect(() => {
+    async function loadRecords() {
+      if (!user) {
+        setMessage("请先登录后查看提分练习记录。");
+        return;
+      }
+
+      try {
+        setIsLoading(true);
+        setMessage("");
+
+        const { data, error } = await supabase
+          .from("improvement_records")
+          .select("*")
+          .eq("user_id", user.id)
+          .order("created_at", { ascending: false });
+
+        if (error) {
+          throw error;
+        }
+
+        setRecords(data || []);
+      } catch (error: any) {
+        setMessage(error.message || "加载提分记录失败。");
+      } finally {
+        setIsLoading(false);
+      }
+    }
+
+    loadRecords();
+  }, [user]);
+
+  function getPracticeTypeName(type: string) {
+    const map: Record<string, string> = {
+      sentence_upgrade: "句子升级练习",
+      detail_expansion: "Detail 增加练习",
+      discussion_outline: "讨论简写框架训练",
+      email_rewrite: "邮件写作改写练习",
+      error_fix: "错误修复练习",
+    };
+
+    return map[type] || type;
+  }
+
+  return (
+    <div>
+      <section
+        style={{
+          borderRadius: "32px",
+          padding: "34px",
+          background:
+            "linear-gradient(135deg, #f8fafc 0%, #eff6ff 55%, #eef2ff 100%)",
+          border: "1px solid #dbeafe",
+          marginBottom: "24px",
+        }}
+      >
+        <p
+          style={{
+            margin: "0 0 10px",
+            color: "#2563eb",
+            fontWeight: 900,
+            letterSpacing: "0.1em",
+            textTransform: "uppercase",
+            fontSize: "13px",
+          }}
+        >
+          Improvement Records
+        </p>
+
+        <h1
+          style={{
+            margin: 0,
+            fontSize: "40px",
+            letterSpacing: "-0.05em",
+            color: "#0f172a",
+          }}
+        >
+          提分练习记录
+        </h1>
+
+        <p
+          style={{
+            marginTop: "14px",
+            color: "#475569",
+            lineHeight: 1.8,
+            maxWidth: "760px",
+          }}
+        >
+          这里会保存你在提分百宝箱中完成的 AI 写作批改记录，包括题目、你的答案、AI 点评和完善版本。
+        </p>
+
+        <button
+          type="button"
+          onClick={onBack}
+          style={{
+            marginTop: "18px",
+            border: "none",
+            borderRadius: "999px",
+            background: "#0f172a",
+            color: "white",
+            padding: "12px 18px",
+            fontWeight: 900,
+            cursor: "pointer",
+          }}
+        >
+          返回提分百宝箱
+        </button>
+      </section>
+
+      {isLoading && (
+        <p style={{ color: "#64748b", fontWeight: 700 }}>正在加载记录...</p>
+      )}
+
+      {message && (
+        <p style={{ color: "#dc2626", fontWeight: 800 }}>{message}</p>
+      )}
+
+      {!isLoading && !message && records.length === 0 && (
+        <div
+          style={{
+            borderRadius: "24px",
+            background: "white",
+            border: "1px solid #e2e8f0",
+            padding: "24px",
+            color: "#64748b",
+            lineHeight: 1.8,
+          }}
+        >
+          暂时还没有提分练习记录。完成一次 AI 批改后，记录会自动出现在这里。
+        </div>
+      )}
+
+      <div style={{ display: "grid", gap: "18px" }}>
+        {records.map((record) => (
+          <div
+            key={record.id}
+            style={{
+              borderRadius: "26px",
+              background: "white",
+              border: "1px solid #e2e8f0",
+              padding: "24px",
+              boxShadow: "0 16px 40px rgba(15, 23, 42, 0.05)",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                gap: "12px",
+                flexWrap: "wrap",
+                alignItems: "center",
+                marginBottom: "16px",
+              }}
+            >
+              <span
+                style={{
+                  borderRadius: "999px",
+                  background: "#eff6ff",
+                  color: "#2563eb",
+                  padding: "6px 12px",
+                  fontSize: "12px",
+                  fontWeight: 900,
+                }}
+              >
+                {getPracticeTypeName(record.practice_type)}
+              </span>
+
+              <span
+                style={{
+                  color: "#64748b",
+                  fontSize: "13px",
+                  fontWeight: 700,
+                }}
+              >
+                {new Date(record.created_at).toLocaleString()}
+              </span>
+            </div>
+
+            <div style={{ display: "grid", gap: "14px" }}>
+              <RecordBlock
+                title="我的答案"
+                content={record.user_answer || "未填写"}
+              />
+
+              <RecordBlock
+                title="AI 总体点评"
+                content={record.ai_review?.overallComment || "暂无点评"}
+              />
+
+              <RecordBlock
+                title="完善后的版本"
+                content={record.ai_review?.improvedVersion || "暂无完善版本"}
+              />
+
+              {record.ai_review?.problems?.length > 0 && (
+                <RecordList
+                  title="需要改进"
+                  items={record.ai_review.problems}
+                />
+              )}
+
+              {record.ai_review?.suggestions?.length > 0 && (
+                <RecordList
+                  title="修改建议"
+                  items={record.ai_review.suggestions}
+                />
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function RecordBlock({
+  title,
+  content,
+}: {
+  title: string;
+  content: string;
+}) {
+  return (
+    <div
+      style={{
+        borderRadius: "18px",
+        background: "#f8fafc",
+        border: "1px solid #e2e8f0",
+        padding: "16px",
+      }}
+    >
+      <p
+        style={{
+          margin: "0 0 8px",
+          color: "#0f172a",
+          fontWeight: 900,
+        }}
+      >
+        {title}
+      </p>
+      <p
+        style={{
+          margin: 0,
+          color: "#475569",
+          lineHeight: 1.8,
+          whiteSpace: "pre-wrap",
+        }}
+      >
+        {content}
+      </p>
+    </div>
+  );
+}
+
+function RecordList({
+  title,
+  items,
+}: {
+  title: string;
+  items: string[];
+}) {
+  return (
+    <div
+      style={{
+        borderRadius: "18px",
+        background: "#f8fafc",
+        border: "1px solid #e2e8f0",
+        padding: "16px",
+      }}
+    >
+      <p
+        style={{
+          margin: "0 0 8px",
+          color: "#0f172a",
+          fontWeight: 900,
+        }}
+      >
+        {title}
+      </p>
+      <ul
+        style={{
+          margin: 0,
+          paddingLeft: "20px",
+          color: "#475569",
+          lineHeight: 1.8,
+        }}
+      >
+        {items.map((item) => (
+          <li key={item}>{item}</li>
+        ))}
+      </ul>
+    </div>
+  );
+}
 function TaskBlock({ label, content }: { label: string; content: string }) {
   return (
     <div
@@ -8466,6 +8853,8 @@ function getPageFromPath(): Page {
   // 新增对能力分析路径的识别
   if (path.includes("/analytics")) 
     return "analytics";
+  if (path.includes("/improvement-records"))
+    return "improvement-records";
   if (path.includes("/improvement"))
     return "improvement";
   return "home";
