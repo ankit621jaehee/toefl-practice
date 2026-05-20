@@ -88,7 +88,9 @@ type Page =
   | "practice-sessions"
   | "improvement"
   | "improvement-records"
-  | "improvement-record-detail";
+  | "improvement-record-detail"
+  | "improvement-vocabulary"
+  | "improvement-vocabulary-detail";
 
 type Part =
   | {
@@ -1041,6 +1043,7 @@ function App() {
   const [hasImprovementAccess, setHasImprovementAccess] = useState(false);
   const [showImprovementContact, setShowImprovementContact] = useState(false); 
   const [selectedImprovementRecord, setSelectedImprovementRecord] = useState<any>(null); 
+  const [selectedVocabularyTopic, setSelectedVocabularyTopic] = useState<any>(null);
 
   useEffect(() => {
 
@@ -1234,6 +1237,11 @@ function App() {
   if (path === "/mock-records") return "mock-records";
 
   if (path === "/practice-sessions") return "practice-sessions";
+  if (path === "/improvement-vocabulary-detail")
+    return "improvement-vocabulary-detail";
+
+  if (path === "/improvement-vocabulary")
+    return "improvement-vocabulary";
   if (path === "/improvement") return "improvement";
   if (path === "/improvement-record-detail") return "improvement-record-detail";
   if (path === "/improvement-records") return "improvement-records";
@@ -1309,6 +1317,8 @@ function setPage(nextPage: Page) {
     improvement: "/improvement",
     "improvement-records": "/improvement-records",
     "improvement-record-detail": "/improvement-record-detail",
+    "improvement-vocabulary": "/improvement-vocabulary",
+    "improvement-vocabulary-detail": "/improvement-vocabulary-detail",
   };
 
   const nextPath = pathMap[nextPage];
@@ -3036,6 +3046,22 @@ async function submitMockTestWithAPI({
           />
         )}
 
+        {page === "improvement-vocabulary" && (
+          <ImprovementVocabularyPage
+            onBack={() => setPage("improvement")}
+            onOpenTopic={(topic) => {
+              setSelectedVocabularyTopic(topic);
+              setPage("improvement-vocabulary-detail");
+            }}
+          />
+        )}
+
+        {page === "improvement-vocabulary-detail" && (
+          <ImprovementVocabularyDetailPage
+            topic={selectedVocabularyTopic}
+            onBack={() => setPage("improvement-vocabulary")}
+          />
+        )}
 
 
 
@@ -7733,15 +7759,84 @@ function renderReference() {
             </div>
           </div>
         )}
+        </div>
+      )}
+    </section>
 
 
+      {/* 专题词汇积累入口 */}
+      <section
+        style={{
+          borderRadius: "26px",
+          background: "white",
+          border: "1px solid #e2e8f0",
+          padding: "22px",
+          marginBottom: "28px",
+          boxShadow: "0 14px 36px rgba(15, 23, 42, 0.05)",
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          gap: "18px",
+          flexWrap: "wrap",
+        }}
+      >
+        <div>
+          <p
+            style={{
+              margin: "0 0 8px",
+              color: "#2563eb",
+              fontSize: "13px",
+              fontWeight: 900,
+              letterSpacing: "0.08em",
+              textTransform: "uppercase",
+            }}
+          >
+            Topic Vocabulary Builder
+          </p>
 
-          </div>
-        )}
+          <h2
+            style={{
+              margin: 0,
+              color: "#0f172a",
+              fontSize: "24px",
+              letterSpacing: "-0.04em",
+            }}
+          >
+            专题词汇积累
+          </h2>
+
+          <p
+            style={{
+              margin: "10px 0 0",
+              color: "#64748b",
+              lineHeight: 1.7,
+              maxWidth: "720px",
+            }}
+          >
+            按专题整理词汇包。
+          </p>
+        </div>
+
+        <button
+          type="button"
+            onClick={() => {
+            window.location.href = "/improvement-vocabulary";
+          }}
+          style={{
+            border: "none",
+            borderRadius: "999px",
+            background: "#0f172a",
+            color: "white",
+            padding: "13px 20px",
+            fontWeight: 900,
+            cursor: "pointer",
+            whiteSpace: "nowrap",
+            boxShadow: "0 12px 28px rgba(15, 23, 42, 0.18)",
+          }}
+        >
+          查看专题词汇 →
+        </button>
       </section>
-
-      <TopicVocabularyBuilder />
-
 
       <div
         style={{
@@ -7812,421 +7907,482 @@ function renderReference() {
   );
 }
 
-function TopicVocabularyBuilder() {
-  const vocabularySections = [
-    {
-      title: "器材词汇",
-      subtitle: "Equipment",
-      items: [
-        {
-          term: "treadmill",
-          meaning: "跑步机",
-          example: "The treadmill is not working properly.",
-        },
-        {
-          term: "elliptical machine",
-          meaning: "椭圆机",
-          example: "The elliptical machine is easier on the knees than running.",
-        },
-        {
-          term: "stationary bike",
-          meaning: "固定自行车 / 动感单车",
-          example: "I usually warm up on the stationary bike for ten minutes.",
-        },
-        {
-          term: "rowing machine",
-          meaning: "划船机",
-          example: "The rowing machine can help strengthen the back and arms.",
-        },
-        {
-          term: "dumbbell",
-          meaning: "哑铃",
-          example: "The dumbbells are placed next to the weight bench.",
-        },
-        {
-          term: "barbell",
-          meaning: "杠铃",
-          example: "He was using a barbell for strength training.",
-        },
-        {
-          term: "weight bench",
-          meaning: "举重凳",
-          example: "The weight bench is adjustable.",
-        },
-        {
-          term: "resistance band",
-          meaning: "弹力带",
-          example: "Resistance bands are useful for stretching and light exercise.",
-        },
-        {
-          term: "locker",
-          meaning: "储物柜",
-          example: "I put my bag in the locker before working out.",
-        },
-      ],
-    },
-    {
-      title: "常见问题",
-      subtitle: "Common Problems",
-      items: [
-        {
-          term: "out of order",
-          meaning: "出故障，无法使用",
-          example: "The treadmill is out of order.",
-        },
-        {
-          term: "not working properly",
-          meaning: "无法正常工作",
-          example: "The screen is not working properly.",
-        },
-        {
-          term: "make a strange noise",
-          meaning: "发出奇怪的声音",
-          example: "The machine keeps making a strange noise.",
-        },
-        {
-          term: "screen is frozen",
-          meaning: "屏幕卡住了",
-          example: "The screen is frozen, so I cannot change the settings.",
-        },
-        {
-          term: "seat is loose",
-          meaning: "座椅松动",
-          example: "The seat is loose and feels unsafe.",
-        },
-        {
-          term: "handle is damaged",
-          meaning: "把手损坏",
-          example: "The handle is damaged and needs to be repaired.",
-        },
-        {
-          term: "needs maintenance",
-          meaning: "需要维修 / 保养",
-          example: "I think this equipment needs maintenance.",
-        },
-        {
-          term: "too crowded",
-          meaning: "太拥挤",
-          example: "The fitness center is too crowded in the evening.",
-        },
-        {
-          term: "no available lockers",
-          meaning: "没有可用储物柜",
-          example: "There are no available lockers right now.",
-        },
-      ],
-    },
-    {
-      title: "实用表达",
-      subtitle: "Useful Expressions",
-      items: [
-        {
-          term: "I would like to report a problem with this machine.",
-          meaning: "我想反馈这台机器的问题。",
-          example: "I would like to report a problem with this machine. It stopped suddenly while I was using it.",
-        },
-        {
-          term: "Could you show me how to adjust the seat?",
-          meaning: "你能告诉我怎么调节座椅吗？",
-          example: "Could you show me how to adjust the seat? It feels too low for me.",
-        },
-        {
-          term: "Is there another machine I can use?",
-          meaning: "还有别的机器可以用吗？",
-          example: "This treadmill is not working. Is there another machine I can use?",
-        },
-        {
-          term: "The equipment needs to be repaired.",
-          meaning: "这个设备需要维修。",
-          example: "The equipment needs to be repaired because the handle is damaged.",
-        },
-        {
-          term: "I cannot open my locker.",
-          meaning: "我打不开我的储物柜。",
-          example: "I cannot open my locker. Could someone help me reset the lock?",
-        },
-      ],
-    },
-  ];
+function ImprovementVocabularyPage({
+  onBack,
+  onOpenTopic,
+}: {
+  onBack: () => void;
+  onOpenTopic: (topic: any) => void;
+}) {
+  const [topics, setTopics] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [message, setMessage] = useState("");
 
-  const practiceQuestions = [
-    {
-      question: "The treadmill is ________, so students cannot use it.",
-      answer: "out of order",
-      options: ["out of order", "on campus", "in advance", "required"],
-      explanation: "out of order 表示设备出故障、无法使用。",
-    },
-    {
-      question: "The machine keeps making a ________ noise.",
-      answer: "strange",
-      options: ["strange", "regular", "quiet", "formal"],
-      explanation: "make a strange noise 表示发出奇怪的声音。",
-    },
-    {
-      question: "I put my backpack in the ________ before exercising.",
-      answer: "locker",
-      options: ["locker", "barbell", "screen", "membership"],
-      explanation: "locker 是储物柜，常见于健身房、图书馆和宿舍场景。",
-    },
-  ];
+  useEffect(() => {
+    async function loadTopics() {
+      try {
+        setIsLoading(true);
+        setMessage("");
 
-  const [selectedSection, setSelectedSection] = useState("器材词汇");
-  const [selectedAnswer, setSelectedAnswer] = useState("");
-  const [practiceMessage, setPracticeMessage] = useState("");
+        const { data, error } = await supabase
+          .from("vocabulary_topics")
+          .select("*")
+          .order("created_at", { ascending: false });
 
-  const activeSection =
-    vocabularySections.find((section) => section.title === selectedSection) ||
-    vocabularySections[0];
+        if (error) throw error;
 
-  const currentQuestion = practiceQuestions[0];
-
-  function checkPracticeAnswer(option: string) {
-    setSelectedAnswer(option);
-
-    if (option === currentQuestion.answer) {
-      setPracticeMessage(`回答正确！${currentQuestion.explanation}`);
-    } else {
-      setPracticeMessage(`再想想。提示：${currentQuestion.explanation}`);
+        setTopics(data || []);
+      } catch (error: any) {
+        setMessage(error.message || "加载专题词汇失败。");
+      } finally {
+        setIsLoading(false);
+      }
     }
-  }
+
+    loadTopics();
+  }, []);
 
   return (
-    <section
-      style={{
-        borderRadius: "30px",
-        background: "white",
-        border: "1px solid #e2e8f0",
-        padding: "30px",
-        boxShadow: "0 16px 40px rgba(15, 23, 42, 0.05)",
-        marginBottom: "28px",
-      }}
-    >
-      <p
+    <div>
+      <section
         style={{
-          margin: 0,
-          color: "#2563eb",
-          fontSize: "13px",
-          fontWeight: 900,
-          letterSpacing: "0.1em",
-          textTransform: "uppercase",
-        }}
-      >
-        Topic Vocabulary Builder
-      </p>
-
-      <h2
-        style={{
-          margin: "10px 0 0",
-          fontSize: "30px",
-          letterSpacing: "-0.04em",
-          color: "#0f172a",
-        }}
-      >
-        专题词汇积累
-      </h2>
-
-      <p
-        style={{
-          color: "#64748b",
-          lineHeight: 1.8,
-          marginTop: "12px",
-          maxWidth: "820px",
-        }}
-      >
-        根据近期托福校园生活类场景，积累可直接用于听力、口语和写作的专题词汇。本期专题为
-        <strong style={{ color: "#0f172a" }}> Fitness Center / Gym 健身房场景</strong>，
-        覆盖器材、常见故障、服务咨询和实用表达。
-      </p>
-
-      <div
-        style={{
-          display: "flex",
-          gap: "10px",
-          flexWrap: "wrap",
-          marginTop: "22px",
-        }}
-      >
-        {vocabularySections.map((section) => {
-          const active = section.title === selectedSection;
-
-          return (
-            <button
-              key={section.title}
-              type="button"
-              onClick={() => setSelectedSection(section.title)}
-              style={{
-                border: active ? "2px solid #2563eb" : "1px solid #e2e8f0",
-                background: active ? "#eff6ff" : "#f8fafc",
-                color: active ? "#2563eb" : "#334155",
-                borderRadius: "999px",
-                padding: "10px 14px",
-                fontWeight: 900,
-                cursor: "pointer",
-              }}
-            >
-              {section.title}
-            </button>
-          );
-        })}
-      </div>
-
-      <div
-        style={{
-          marginTop: "24px",
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
-          gap: "14px",
-        }}
-      >
-        {activeSection.items.map((item) => (
-          <div
-            key={item.term}
-            style={{
-              borderRadius: "22px",
-              background: "#f8fafc",
-              border: "1px solid #e2e8f0",
-              padding: "18px",
-            }}
-          >
-            <p
-              style={{
-                margin: 0,
-                color: "#2563eb",
-                fontWeight: 900,
-                fontSize: "13px",
-              }}
-            >
-              {activeSection.subtitle}
-            </p>
-
-            <h3
-              style={{
-                margin: "8px 0 0",
-                color: "#0f172a",
-                fontSize: "20px",
-                letterSpacing: "-0.03em",
-              }}
-            >
-              {item.term}
-            </h3>
-
-            <p
-              style={{
-                margin: "8px 0 0",
-                color: "#334155",
-                fontWeight: 800,
-              }}
-            >
-              {item.meaning}
-            </p>
-
-            <p
-              style={{
-                margin: "12px 0 0",
-                color: "#64748b",
-                lineHeight: 1.7,
-                fontSize: "14px",
-              }}
-            >
-              {item.example}
-            </p>
-          </div>
-        ))}
-      </div>
-
-      <div
-        style={{
-          marginTop: "28px",
-          borderRadius: "26px",
-          background: "#0f172a",
-          color: "white",
-          padding: "24px",
+          borderRadius: "32px",
+          padding: "34px",
+          background:
+            "linear-gradient(135deg, #f8fafc 0%, #eff6ff 55%, #eef2ff 100%)",
+          border: "1px solid #dbeafe",
+          marginBottom: "24px",
         }}
       >
         <p
           style={{
-            margin: 0,
-            color: "#93c5fd",
-            fontSize: "13px",
+            margin: "0 0 10px",
+            color: "#2563eb",
             fontWeight: 900,
             letterSpacing: "0.1em",
             textTransform: "uppercase",
+            fontSize: "13px",
           }}
         >
-          Mini Practice
+          Topic Vocabulary Builder
         </p>
 
-        <h3
+        <h1
           style={{
-            margin: "10px 0 0",
-            fontSize: "24px",
-            letterSpacing: "-0.04em",
+            margin: 0,
+            fontSize: "40px",
+            letterSpacing: "-0.05em",
+            color: "#0f172a",
           }}
         >
-          场景词汇小练习
-        </h3>
+          专题词汇积累
+        </h1>
 
         <p
           style={{
-            margin: "14px 0 0",
-            color: "#dbeafe",
+            marginTop: "14px",
+            color: "#475569",
             lineHeight: 1.8,
+            maxWidth: "760px",
           }}
         >
-          {currentQuestion.question}
+          按托福真题和校园生活场景整理专题词汇包。点击专题后可查看具体词汇、搭配和场景例句。
         </p>
 
-        <div
+        <button
+          type="button"
+          onClick={onBack}
           style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-            gap: "12px",
             marginTop: "18px",
+            border: "none",
+            borderRadius: "999px",
+            background: "#0f172a",
+            color: "white",
+            padding: "12px 18px",
+            fontWeight: 900,
+            cursor: "pointer",
           }}
         >
-          {currentQuestion.options.map((option) => {
-            const selected = selectedAnswer === option;
+          返回提分百宝箱
+        </button>
+      </section>
 
-            return (
-              <button
-                key={option}
-                type="button"
-                onClick={() => checkPracticeAnswer(option)}
-                style={{
-                  borderRadius: "18px",
-                  border: selected
-                    ? "2px solid #93c5fd"
-                    : "1px solid rgba(255,255,255,0.18)",
-                  background: selected
-                    ? "rgba(147,197,253,0.18)"
-                    : "rgba(255,255,255,0.08)",
-                  color: "white",
-                  padding: "14px",
-                  fontWeight: 800,
-                  cursor: "pointer",
-                  textAlign: "left",
-                }}
-              >
-                {option}
-              </button>
-            );
-          })}
+      {isLoading && (
+        <p style={{ color: "#64748b", fontWeight: 800 }}>正在加载专题...</p>
+      )}
+
+      {message && (
+        <p style={{ color: "#dc2626", fontWeight: 800 }}>{message}</p>
+      )}
+
+      {!isLoading && !message && topics.length === 0 && (
+        <div
+          style={{
+            borderRadius: "24px",
+            background: "white",
+            border: "1px solid #e2e8f0",
+            padding: "24px",
+            color: "#64748b",
+          }}
+        >
+          暂时还没有专题词汇包。
         </div>
+      )}
 
-        {practiceMessage && (
-          <p
+      <div style={{ display: "grid", gap: "14px" }}>
+        {topics.map((topic) => (
+          <button
+            key={topic.id}
+            type="button"
+            onClick={() => onOpenTopic(topic)}
             style={{
-              margin: "16px 0 0",
-              color: selectedAnswer === currentQuestion.answer ? "#bbf7d0" : "#fecaca",
-              lineHeight: 1.7,
-              fontWeight: 800,
+              width: "100%",
+              textAlign: "left",
+              border: "1px solid #e2e8f0",
+              background: "white",
+              borderRadius: "24px",
+              padding: "22px",
+              cursor: "pointer",
+              boxShadow: "0 12px 32px rgba(15, 23, 42, 0.05)",
             }}
           >
-            {practiceMessage}
-          </p>
-        )}
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                gap: "12px",
+                alignItems: "center",
+                flexWrap: "wrap",
+              }}
+            >
+              <span
+                style={{
+                  borderRadius: "999px",
+                  background: "#eff6ff",
+                  color: "#2563eb",
+                  padding: "6px 12px",
+                  fontSize: "12px",
+                  fontWeight: 900,
+                }}
+              >
+                {topic.chinese_title}
+              </span>
+
+              <span
+                style={{
+                  color: "#64748b",
+                  fontSize: "13px",
+                  fontWeight: 800,
+                }}
+              >
+                {topic.date || "未标注时间"}
+              </span>
+            </div>
+
+            <h2
+              style={{
+                margin: "14px 0 0",
+                color: "#0f172a",
+                fontSize: "22px",
+                letterSpacing: "-0.04em",
+              }}
+            >
+              {topic.title}
+            </h2>
+
+            <p
+              style={{
+                margin: "10px 0 0",
+                color: "#64748b",
+                lineHeight: 1.7,
+              }}
+            >
+              关联考试场次：{topic.exam_session || "暂无"}
+            </p>
+
+            <p
+              style={{
+                margin: "8px 0 0",
+                color: "#64748b",
+                lineHeight: 1.7,
+              }}
+            >
+              {topic.description}
+            </p>
+
+            <p
+              style={{
+                margin: "14px 0 0",
+                color: "#2563eb",
+                fontWeight: 900,
+              }}
+            >
+              查看专题详情 →
+            </p>
+          </button>
+        ))}
       </div>
-    </section>
+    </div>
+  );
+}
+
+function ImprovementVocabularyDetailPage({
+  topic,
+  onBack,
+}: {
+  topic: any;
+  onBack: () => void;
+}) {
+  const [items, setItems] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [message, setMessage] = useState("");
+
+  useEffect(() => {
+    async function loadItems() {
+      if (!topic?.id) {
+        setMessage("没有选中的专题。请返回专题目录重新选择。");
+        return;
+      }
+
+      try {
+        setIsLoading(true);
+        setMessage("");
+
+        const { data, error } = await supabase
+          .from("vocabulary_items")
+          .select("*")
+          .eq("topic_id", topic.id)
+          .order("created_at", { ascending: true });
+
+        if (error) throw error;
+
+        setItems(data || []);
+      } catch (error: any) {
+        setMessage(error.message || "加载专题词汇详情失败。");
+      } finally {
+        setIsLoading(false);
+      }
+    }
+
+    loadItems();
+  }, [topic]);
+
+  const groupedItems = items.reduce((groups: Record<string, any[]>, item) => {
+    const key = item.section_title || "其他";
+    if (!groups[key]) groups[key] = [];
+    groups[key].push(item);
+    return groups;
+  }, {});
+
+  if (!topic) {
+    return (
+      <div
+        style={{
+          borderRadius: "24px",
+          background: "white",
+          border: "1px solid #e2e8f0",
+          padding: "24px",
+        }}
+      >
+        <p style={{ color: "#64748b", lineHeight: 1.8 }}>
+          没有选中的专题。请返回专题词汇目录重新选择。
+        </p>
+
+        <button
+          type="button"
+          onClick={onBack}
+          style={{
+            border: "none",
+            borderRadius: "999px",
+            background: "#0f172a",
+            color: "white",
+            padding: "12px 18px",
+            fontWeight: 900,
+            cursor: "pointer",
+          }}
+        >
+          返回专题目录
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <section
+        style={{
+          borderRadius: "32px",
+          padding: "34px",
+          background:
+            "linear-gradient(135deg, #f8fafc 0%, #eff6ff 55%, #eef2ff 100%)",
+          border: "1px solid #dbeafe",
+          marginBottom: "24px",
+        }}
+      >
+        <p
+          style={{
+            margin: "0 0 10px",
+            color: "#2563eb",
+            fontWeight: 900,
+            letterSpacing: "0.1em",
+            textTransform: "uppercase",
+            fontSize: "13px",
+          }}
+        >
+          Vocabulary Topic Detail
+        </p>
+
+        <h1
+          style={{
+            margin: 0,
+            fontSize: "40px",
+            letterSpacing: "-0.05em",
+            color: "#0f172a",
+          }}
+        >
+          {topic.title}
+        </h1>
+
+        <p
+          style={{
+            marginTop: "10px",
+            color: "#64748b",
+            fontWeight: 800,
+          }}
+        >
+          {topic.chinese_title} · {topic.date} · {topic.exam_session}
+        </p>
+
+        <p
+          style={{
+            marginTop: "14px",
+            color: "#475569",
+            lineHeight: 1.8,
+            maxWidth: "780px",
+          }}
+        >
+          {topic.description}
+        </p>
+
+        <button
+          type="button"
+          onClick={onBack}
+          style={{
+            marginTop: "18px",
+            border: "none",
+            borderRadius: "999px",
+            background: "#0f172a",
+            color: "white",
+            padding: "12px 18px",
+            fontWeight: 900,
+            cursor: "pointer",
+          }}
+        >
+          返回专题目录
+        </button>
+      </section>
+
+      {isLoading && (
+        <p style={{ color: "#64748b", fontWeight: 800 }}>正在加载词汇...</p>
+      )}
+
+      {message && (
+        <p style={{ color: "#dc2626", fontWeight: 800 }}>{message}</p>
+      )}
+
+      {!isLoading && !message && items.length === 0 && (
+        <div
+          style={{
+            borderRadius: "24px",
+            background: "white",
+            border: "1px solid #e2e8f0",
+            padding: "24px",
+            color: "#64748b",
+          }}
+        >
+          这个专题下暂时还没有词汇。
+        </div>
+      )}
+
+      <div style={{ display: "grid", gap: "22px" }}>
+        {Object.entries(groupedItems).map(([sectionTitle, sectionItems]) => (
+          <section
+            key={sectionTitle}
+            style={{
+              borderRadius: "28px",
+              background: "white",
+              border: "1px solid #e2e8f0",
+              padding: "26px",
+              boxShadow: "0 14px 36px rgba(15, 23, 42, 0.05)",
+            }}
+          >
+            <h2
+              style={{
+                margin: 0,
+                color: "#0f172a",
+                fontSize: "26px",
+                letterSpacing: "-0.04em",
+              }}
+            >
+              {sectionTitle}
+            </h2>
+
+            <div
+              style={{
+                marginTop: "18px",
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+                gap: "14px",
+              }}
+            >
+              {(sectionItems as any[]).map((item) => (
+                <div
+                  key={item.id}
+                  style={{
+                    borderRadius: "20px",
+                    background: "#f8fafc",
+                    border: "1px solid #e2e8f0",
+                    padding: "18px",
+                  }}
+                >
+                  <h3
+                    style={{
+                      margin: 0,
+                      color: "#2563eb",
+                      fontSize: "20px",
+                      letterSpacing: "-0.03em",
+                    }}
+                  >
+                    {item.term}
+                  </h3>
+
+                  <p
+                    style={{
+                      margin: "8px 0 0",
+                      color: "#0f172a",
+                      fontWeight: 900,
+                    }}
+                  >
+                    {item.meaning}
+                  </p>
+
+                  <p
+                    style={{
+                      margin: "12px 0 0",
+                      color: "#64748b",
+                      lineHeight: 1.7,
+                      fontSize: "14px",
+                    }}
+                  >
+                    {item.example}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </section>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -9497,6 +9653,11 @@ function getPageFromPath(): Page {
   // 新增对能力分析路径的识别
   if (path.includes("/analytics")) 
     return "analytics";
+  if (path.includes("/improvement-vocabulary-detail"))
+    return "improvement-vocabulary-detail";
+
+  if (path.includes("/improvement-vocabulary"))
+    return "improvement-vocabulary";
   if (path.includes("/improvement-record-detail"))
     return "improvement-record-detail";
   if (path.includes("/improvement-records"))
