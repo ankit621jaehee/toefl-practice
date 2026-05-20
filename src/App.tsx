@@ -8336,53 +8336,272 @@ function ImprovementVocabularyDetailPage({
               }}
             >
               {(sectionItems as any[]).map((item) => (
-                <div
-                  key={item.id}
-                  style={{
-                    borderRadius: "20px",
-                    background: "#f8fafc",
-                    border: "1px solid #e2e8f0",
-                    padding: "18px",
-                  }}
-                >
-                  <h3
-                    style={{
-                      margin: 0,
-                      color: "#2563eb",
-                      fontSize: "20px",
-                      letterSpacing: "-0.03em",
-                    }}
-                  >
-                    {item.term}
-                  </h3>
-
-                  <p
-                    style={{
-                      margin: "8px 0 0",
-                      color: "#0f172a",
-                      fontWeight: 900,
-                    }}
-                  >
-                    {item.meaning}
-                  </p>
-
-                  <p
-                    style={{
-                      margin: "12px 0 0",
-                      color: "#64748b",
-                      lineHeight: 1.7,
-                      fontSize: "14px",
-                    }}
-                  >
-                    {item.example}
-                  </p>
-                </div>
+                <VocabularyItemCard key={item.id} item={item} />
               ))}
             </div>
           </section>
         ))}
       </div>
     </div>
+  );
+}
+
+function VocabularyItemCard({ item }: { item: any }) {
+  const [isOpen, setIsOpen] = useState(false);
+
+  const collocations = Array.isArray(item.collocations)
+    ? item.collocations
+    : [];
+
+  return (
+    <button
+      type="button"
+      onClick={() => setIsOpen((value) => !value)}
+      style={{
+        width: "100%",
+        textAlign: "left",
+        borderRadius: "18px",
+        background: isOpen ? "#eff6ff" : "#f8fafc",
+        border: isOpen ? "1px solid #bfdbfe" : "1px solid #e2e8f0",
+        padding: "16px",
+        cursor: "pointer",
+        transition: "all 0.18s ease",
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          gap: "12px",
+          alignItems: "center",
+        }}
+      >
+        <div>
+          <h3
+            style={{
+              margin: 0,
+              color: "#2563eb",
+              fontSize: "18px",
+              letterSpacing: "-0.03em",
+            }}
+          >
+            {item.term}
+          </h3>
+
+          <p
+            style={{
+              margin: "6px 0 0",
+              color: "#0f172a",
+              fontWeight: 900,
+              fontSize: "14px",
+            }}
+          >
+            {item.meaning}
+          </p>
+        </div>
+
+        <span
+          style={{
+            color: "#64748b",
+            fontSize: "13px",
+            fontWeight: 900,
+            whiteSpace: "nowrap",
+          }}
+        >
+          {isOpen ? "收起 ↑" : "展开 ↓"}
+        </span>
+      </div>
+
+      {isOpen && (
+        <div
+          style={{
+            marginTop: "16px",
+            borderTop: "1px solid #dbeafe",
+            paddingTop: "14px",
+          }}
+        >
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
+              gap: "10px",
+              marginBottom: "14px",
+            }}
+          >
+            <div
+              style={{
+                borderRadius: "14px",
+                background: "white",
+                border: "1px solid #dbeafe",
+                padding: "12px",
+              }}
+            >
+              <p
+                style={{
+                  margin: 0,
+                  color: "#64748b",
+                  fontSize: "12px",
+                  fontWeight: 900,
+                }}
+              >
+                英文
+              </p>
+              <p
+                style={{
+                  margin: "6px 0 0",
+                  color: "#0f172a",
+                  fontWeight: 900,
+                }}
+              >
+                {item.term}
+              </p>
+            </div>
+
+            <div
+              style={{
+                borderRadius: "14px",
+                background: "white",
+                border: "1px solid #dbeafe",
+                padding: "12px",
+              }}
+            >
+              <p
+                style={{
+                  margin: 0,
+                  color: "#64748b",
+                  fontSize: "12px",
+                  fontWeight: 900,
+                }}
+              >
+                词性
+              </p>
+              <p
+                style={{
+                  margin: "6px 0 0",
+                  color: "#0f172a",
+                  fontWeight: 900,
+                }}
+              >
+                {item.part_of_speech || "phrase"}
+              </p>
+            </div>
+
+            <div
+              style={{
+                borderRadius: "14px",
+                background: "white",
+                border: "1px solid #dbeafe",
+                padding: "12px",
+              }}
+            >
+              <p
+                style={{
+                  margin: 0,
+                  color: "#64748b",
+                  fontSize: "12px",
+                  fontWeight: 900,
+                }}
+              >
+                中文
+              </p>
+              <p
+                style={{
+                  margin: "6px 0 0",
+                  color: "#0f172a",
+                  fontWeight: 900,
+                }}
+              >
+                {item.meaning}
+              </p>
+            </div>
+          </div>
+
+          <div
+            style={{
+              borderRadius: "16px",
+              background: "white",
+              border: "1px solid #dbeafe",
+              padding: "14px",
+              marginBottom: "12px",
+            }}
+          >
+            <p
+              style={{
+                margin: "0 0 8px",
+                color: "#0f172a",
+                fontWeight: 900,
+              }}
+            >
+              例句
+            </p>
+            <p
+              style={{
+                margin: 0,
+                color: "#475569",
+                lineHeight: 1.8,
+              }}
+            >
+              {item.example || "暂无例句"}
+            </p>
+          </div>
+
+          <div
+            style={{
+              borderRadius: "16px",
+              background: "white",
+              border: "1px solid #dbeafe",
+              padding: "14px",
+            }}
+          >
+            <p
+              style={{
+                margin: "0 0 8px",
+                color: "#0f172a",
+                fontWeight: 900,
+              }}
+            >
+              短语搭配
+            </p>
+
+            {collocations.length > 0 ? (
+              <div
+                style={{
+                  display: "flex",
+                  flexWrap: "wrap",
+                  gap: "8px",
+                }}
+              >
+                {collocations.map((phrase: string) => (
+                  <span
+                    key={phrase}
+                    style={{
+                      borderRadius: "999px",
+                      background: "#f1f5f9",
+                      color: "#334155",
+                      padding: "6px 10px",
+                      fontSize: "13px",
+                      fontWeight: 800,
+                    }}
+                  >
+                    {phrase}
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <p
+                style={{
+                  margin: 0,
+                  color: "#64748b",
+                  lineHeight: 1.7,
+                }}
+              >
+                暂无短语搭配
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+    </button>
   );
 }
 
