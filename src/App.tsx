@@ -327,7 +327,7 @@ function formatDuration(seconds: number): string {
 
 
 const sampleEmailPrompt: EmailPrompt = {
-  title: "Email Writing Practice",
+  title: "Extended Email Practice",
   scenario:
     "You received an email from your professor about missing a class presentation. Your professor says that the presentation was an important part of your final grade.",
   task: "Write a reply to your professor.",
@@ -793,7 +793,7 @@ async function scoreEmailWritingWithAPI(prompt: unknown, answer: string) {
   const data = await response.json();
 
   if (!response.ok) {
-    throw new Error(data.error || "Failed to score email writing");
+    throw new Error(data.error || "Failed to score Extended Email");
   }
 
   return data as WritingFeedback & {
@@ -1769,7 +1769,7 @@ function buildMockTestDataFromQuestionSet(questionSet: QuestionSet) {
   }
 
   if (!emailTask || emailTask.type !== "email") {
-    throw new Error("This mock test does not contain an Email Writing task.");
+    throw new Error("This mock test does not contain an Extended Email task.");
   }
 
   if (!discussionTask || discussionTask.type !== "discussion") {
@@ -2606,7 +2606,7 @@ async function submitMockTestWithAPI({
               </div>
 
               <div style={cardStyle}>
-                <h2 style={{ marginTop: 0 }}>Email Writing</h2>
+                <h2 style={{ marginTop: 0 }}>Extended Email</h2>
                 <p style={{ color: "#64748b", lineHeight: 1.7 }}>
                   练习 TOEFL 邮件写作。进入后自动随机生成邮件写作题，并提供 AI
                   评分。
@@ -2656,7 +2656,7 @@ async function submitMockTestWithAPI({
               <div style={cardStyle}>
                 <h2 style={{ marginTop: 0 }}>Full Mock Test</h2>
                 <p style={{ color: "#64748b", lineHeight: 1.7 }}>
-                  完整完成 Build a Sentence、Email Writing 和 Academic Discussion，最后获得新 TOEFL 6 分制总分、知识点分析和备考建议。
+                  完整完成 Build a Sentence、Extended Email 和 Academic Discussion，最后获得新 TOEFL 6 分制总分、知识点分析和备考建议。
                 </p>
                 <p style={{ color: "#475569", fontWeight: 700 }}>
                   完整模考消耗：10 points
@@ -4428,7 +4428,7 @@ function PracticeRecordsPage({
   onOpenRecord: (record: PracticeRecord) => void;
 }) {
   function formatPracticeType(type: string) {
-    if (type === "email") return "Email Writing";
+    if (type === "email") return "Extended Email";
     if (type === "discussion") return "Academic Discussion";
     return type;
   }
@@ -4711,7 +4711,7 @@ function PracticeRecordDetailPage({
   onClose: () => void;
 }) {
   function formatPracticeType(type: string) {
-    if (type === "email") return "Email Writing";
+    if (type === "email") return "Extended Email";
     if (type === "discussion") return "Academic Discussion";
     return type;
   }
@@ -5876,7 +5876,7 @@ function MockTestPage({
 
                       ? "下一题"
 
-                      : "Next: Email Writing"}
+                      : "Next: Extended Email"}
 
                   </button>
 
@@ -5908,7 +5908,7 @@ function MockTestPage({
 
       {mockPart === "email" && (
         <section style={cardStyle}>
-          <h2 style={{ margin: "0 0 10px 0" }}>Part 2 Email Writing</h2>
+          <h2 style={{ margin: "0 0 10px 0" }}>Part 2 Extended Email</h2>
 
           <div
             style={{
@@ -6343,7 +6343,7 @@ function MockResultPage({
         </p>
 
         <p style={{ color: "#64748b", lineHeight: 1.8 }}>
-          这是根据 Build a Sentence 25%、Email Writing 35%、Academic Discussion
+          这是根据 Build a Sentence 25%、Extended Email 35%、Academic Discussion
           40% 折算出的新 TOEFL 6 分制模考总分。
         </p>
 
@@ -6378,7 +6378,7 @@ function MockResultPage({
               border: "1px solid #e2e8f0",
             }}
           >
-            <strong>Email Writing</strong>
+            <strong>Extended Email</strong>
             <p style={{ fontSize: "24px", fontWeight: 900 }}>
               {result.emailScore}
             </p>
@@ -6435,7 +6435,7 @@ function MockResultPage({
       </section>
 
       <section style={cardStyle}>
-        <h2 style={{ marginTop: 0 }}>Email Writing Feedback</h2>
+        <h2 style={{ marginTop: 0 }}>Extended Email Feedback</h2>
 
         <FeedbackBox
           score={result.emailFeedback.score}
@@ -6651,7 +6651,7 @@ function MockRecordDetailPage({
         <div style={{ color: "#64748b", lineHeight: 1.8 }}>
           <div>时间：{new Date(record.created_at).toLocaleString()}</div>
           <div>Build a Sentence：{Number(record.sentence_score).toFixed(1)} / 5.0</div>
-          <div>Email Writing：{record.email_score}</div>
+          <div>Extended Email：{record.email_score}</div>
           <div>Academic Discussion：{record.discussion_score}</div>
           <div>消耗积分：{record.points_spent} points</div>
         </div>
@@ -6740,7 +6740,7 @@ function MockRecordDetailPage({
       </section>
 
       <section style={cardStyle}>
-        <h2 style={{ marginTop: 0 }}>Part 2 Email Writing</h2>
+        <h2 style={{ marginTop: 0 }}>Part 2 Extended Email</h2>
 
         <p style={{ color: "#64748b", lineHeight: 1.8 }}>
           {record.email_prompt.scenario}
@@ -9387,7 +9387,7 @@ function AnalyticsPage({
     }));
   }, [records, sentenceCategories]);
 
-  // Compute aggregated knowledge mastery for email writing.  Similar to the
+  // Compute aggregated knowledge mastery for Extended Email.  Similar to the
   // sentence calculation but using email scores.
   const radarDataEmail = useMemo(() => {
     if (!records || records.length === 0) {
@@ -10736,7 +10736,7 @@ function PracticeSessionsPage({
 }) {
   function formatType(type: PracticeSession["type"]) {
     if (type === "sentence") return "Build a Sentence";
-    if (type === "email") return "Email Writing";
+    if (type === "email") return "Extended Email";
     if (type === "discussion") return "Academic Discussion";
     if (type === "mock") return "Full Mock Test";
     return type;
