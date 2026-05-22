@@ -130,9 +130,45 @@ function splitWordsIntoChunks(words) {
   const chunks = [];
   let index = 0;
 
-  const beVerbs = new Set(["am", "is", "are", "was", "were", "be", "been", "being"]);
-  const modalVerbs = new Set(["can", "could", "may", "might", "will", "would", "should", "must"]);
-  const whWords = new Set(["what", "when", "where", "why", "how", "whether", "if", "which", "who", "whom", "whose"]);
+  const beVerbs = new Set([
+    "am",
+    "is",
+    "are",
+    "was",
+    "were",
+    "be",
+    "been",
+    "being",
+  ]);
+
+  const modalVerbs = new Set([
+    "can",
+    "could",
+    "may",
+    "might",
+    "will",
+    "would",
+    "should",
+    "must",
+  ]);
+
+  const whWords = new Set([
+    "what",
+    "when",
+    "where",
+    "why",
+    "how",
+    "whether",
+    "if",
+    "which",
+    "who",
+    "whom",
+    "whose",
+    "that",
+  ]);
+
+  const comparisonWords = new Set(["than", "as"]);
+
   const prepositions = new Set([
     "in",
     "on",
@@ -153,122 +189,116 @@ function splitWordsIntoChunks(words) {
     "within",
     "through",
   ]);
-  const adverbialPrepPhrases = new Set([
-  "on campus",
-  "in class",
-  "after class",
-  "before class",
-  "during class",
-  "during the lecture",
-  "after school",
-  "before school",
-  "at school",
-  "at the library",
-  "in the library",
-  "at the bookstore",
-  "in the cafeteria",
-  "at the gym",
-  "in the gym",
-  "at the front desk",
-  "in the morning",
-  "in the afternoon",
-  "in the evening",
-  "at night",
-  "on weekends",
-  "during the meeting",
-  "after the meeting",
-  "before the exam",
-  "during the exam",
-]);
 
-const verbPrepCollocationVerbs = new Set([
-  "result",
-  "depend",
-  "rely",
-  "focus",
-  "insist",
-  "agree",
-  "apply",
-  "participate",
-  "contribute",
-  "respond",
-  "refer",
-  "belong",
-  "lead",
-  "listen",
-  "talk",
-  "speak",
-  "look",
-  "ask",
-  "wait",
-  "prepare",
-  "apologize",
-  "complain",
-]);
+  const adverbialPrepPhrases = new Set([
+    "on campus",
+    "in class",
+    "after class",
+    "before class",
+    "during class",
+    "during the lecture",
+    "after school",
+    "before school",
+    "at school",
+    "at the library",
+    "in the library",
+    "at the bookstore",
+    "in the cafeteria",
+    "at the gym",
+    "in the gym",
+    "at the front desk",
+    "in the morning",
+    "in the afternoon",
+    "in the evening",
+    "at night",
+    "on weekends",
+    "during the meeting",
+    "after the meeting",
+    "before the exam",
+    "during the exam",
+  ]);
+
   while (index < words.length) {
     const current = words[index]?.toLowerCase();
     const next = words[index + 1]?.toLowerCase();
-    const third = words[index + 2]?.toLowerCase();
 
     if (!current) {
       index += 1;
       continue;
     }
 
+    // that / which / who / whether 等从句引导词单独切
     if (whWords.has(current)) {
       chunks.push(words[index]);
       index += 1;
       continue;
     }
 
-    if (prepositions.has(current)) {
-  const twoWordPhrase = [words[index], words[index + 1]]
-    .filter(Boolean)
-    .join(" ")
-    .toLowerCase();
+    // than / as 单独切，避免 than the students 被吞成一块
+    if (comparisonWords.has(current)) {
+      chunks.push(words[index]);
+      index += 1;
+      continue;
+    }
 
-  const threeWordPhrase = [words[index], words[index + 1], words[index + 2]]
-    .filter(Boolean)
-    .join(" ")
-    .toLowerCase();
+    // be 动词单独切：is / working, was / assigned
+    if (beVerbs.has(current)) {
+      chunks.push(words[index]);
+      index += 1;
+      continue;
+    }
 
-  // 1. 地点/时间/场景状语短语可以合并
-  // 例如 on campus / in class / at the library / during the lecture
-  if (adverbialPrepPhrases.has(threeWordPhrase)) {
-    chunks.push(words.slice(index, index + 3).join(" "));
-    index += 3;
-    continue;
-  }
-
-  if (adverbialPrepPhrases.has(twoWordPhrase)) {
-    chunks.push(words.slice(index, index + 2).join(" "));
-    index += 2;
-    continue;
-  }
-
-  // 2. 其他介词默认单独切
-  // 例如 result / in / a problem
-  // depend / on / the weather
-  // interested / in / the program
-  chunks.push(words[index]);
-  index += 1;
-  continue;
-}
-
-
-
+    // 情态动词单独切：could / explain, will / be / available
     if (modalVerbs.has(current)) {
       chunks.push(words[index]);
       index += 1;
       continue;
     }
 
-    if ((current === "more" || current === "less") && next) {
-      chunks.push(words.slice(index, index + 2).join(" "));
-      index += 2;
+    // more / less 单独切：more / effective
+    if (current === "more" || current === "less") {
+      chunks.push(words[index]);
+      index += 1;
       continue;
     }
 
+    // 谓语动词单独切：missed / the lecture
+    if (isLikelyVerb(current)) {
+      chunks.push(words[index]);
+      index += 1;
+      continue;
+    }
+
+    // 介词：固定状语短语合并；其他介词单独切
+    if (prepositions.has(current)) {
+      const twoWordPhrase = [words[index], words[index + 1]]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+
+      const threeWordPhrase = [words[index], words[index + 1], words[index + 2]]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+
+      if (adverbialPrepPhrases.has(threeWordPhrase)) {
+        chunks.push(words.slice(index, index + 3).join(" "));
+        index += 3;
+        continue;
+      }
+
+      if (adverbialPrepPhrases.has(twoWordPhrase)) {
+        chunks.push(words.slice(index, index + 2).join(" "));
+        index += 2;
+        continue;
+      }
+
+      chunks.push(words[index]);
+      index += 1;
+      continue;
+    }
+
+    // not only / but also 保留为结构块
     if (current === "not" && next === "only") {
       chunks.push("not only");
       index += 2;
@@ -281,24 +311,21 @@ const verbPrepCollocationVerbs = new Set([
       continue;
     }
 
-    if (commonAdjectives.has(current) && next) {
-      chunks.push(words.slice(index, index + 2).join(" "));
-      index += 2;
+    // 常见形容词单独切，避免 important lecture 永远绑定
+    if (commonAdjectives.has(current)) {
+      chunks.push(words[index]);
+      index += 1;
       continue;
     }
 
-    if (nounPhraseStarters.has(current) && next) {
-      if (third && commonAdjectives.has(next)) {
-        chunks.push(words.slice(index, index + 3).join(" "));
-        index += 3;
-        continue;
-      }
-
-      chunks.push(words.slice(index, index + 2).join(" "));
-      index += 2;
+    // 冠词 / 限定词单独切，避免 the important 这种错误块
+    if (nounPhraseStarters.has(current)) {
+      chunks.push(words[index]);
+      index += 1;
       continue;
     }
 
+    // 普通词 fallback，必须有
     chunks.push(words[index]);
     index += 1;
   }
@@ -306,6 +333,76 @@ const verbPrepCollocationVerbs = new Set([
   return chunks.map(cleanChunk).filter(Boolean);
 }
 
+function isLikelyVerb(word) {
+  const value = String(word || "").toLowerCase();
+
+  const commonVerbs = new Set([
+    "miss",
+    "missed",
+    "attend",
+    "attended",
+    "review",
+    "reviewed",
+    "explain",
+    "explained",
+    "share",
+    "shared",
+    "send",
+    "sent",
+    "ask",
+    "asked",
+    "tell",
+    "told",
+    "help",
+    "helped",
+    "catch",
+    "caught",
+    "submit",
+    "submitted",
+    "complete",
+    "completed",
+    "prepare",
+    "prepared",
+    "make",
+    "made",
+    "take",
+    "took",
+    "give",
+    "gave",
+    "receive",
+    "received",
+    "provide",
+    "provided",
+    "suggest",
+    "suggested",
+    "improve",
+    "improved",
+    "need",
+    "needed",
+    "want",
+    "wanted",
+    "know",
+    "knew",
+    "think",
+    "thought",
+    "believe",
+    "believed",
+    "prefer",
+    "preferred",
+    "choose",
+    "chose",
+    "visit",
+    "visited",
+    "contact",
+    "contacted",
+  ]);
+
+  if (commonVerbs.has(value)) return true;
+
+  if (value.endsWith("ed") || value.endsWith("ing")) return true;
+
+  return false;
+}
 function getDifficultySentenceConfig(level) {
   if (level === "Hard") {
     return {
@@ -421,7 +518,11 @@ function buildPartsFromTarget(target, level = "Medium") {
   "although",
   "since",
   "while",
+// 比较结构
 
+  "than",
+
+  "as",
   // 介词不要和后面的名词合并
   "in",
   "on",
@@ -462,6 +563,31 @@ function buildPartsFromTarget(target, level = "Medium") {
   "should",
   "must",
 
+  "a",
+
+  "an",
+
+  "the",
+
+  "this",
+
+  "that",
+
+  "these",
+
+  "those",
+
+  "my",
+
+  "your",
+
+  "his",
+
+  "her",
+
+  "our",
+
+  "their",
   // 比较结构不要合并
   "more",
   "less",
@@ -475,6 +601,9 @@ function buildPartsFromTarget(target, level = "Medium") {
 
       const firstClean = cleanChunk(parts[first].answer);
       const secondClean = cleanChunk(parts[second].answer);
+      if (isLikelyVerb(firstClean) || isLikelyVerb(secondClean)) {
+  continue;
+}
 
       if (blockedMergeWords.has(firstClean) || blockedMergeWords.has(secondClean)) {
         continue;
