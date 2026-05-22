@@ -170,11 +170,18 @@ function splitWordsIntoChunks(words) {
       continue;
     }
 
-    if (prepositions.has(current)) {
-      chunks.push(words[index]);
-      index += 1;
-      continue;
-    }
+    if (prepositions.has(current) && next) {
+        if (third && nounPhraseStarters.has(next)) {
+            chunks.push(words.slice(index, index + 3).join(" "));
+            index += 3;
+            continue;
+        }
+
+        chunks.push(words.slice(index, index + 2).join(" "));
+        index += 2;
+        continue;
+        }
+
 
     if (
       beVerbs.has(current) &&
@@ -240,8 +247,8 @@ function getDifficultySentenceConfig(level) {
     return {
       desiredBlankMin: 7,
       desiredBlankMax: 8,
-      maxFixedAnchors: 2,
-      maxWordsPerBlank: 3,
+      maxFixedAnchors: 1,
+      maxWordsPerBlank: 2,
     };
   }
 
@@ -250,7 +257,7 @@ function getDifficultySentenceConfig(level) {
       desiredBlankMin: 6,
       desiredBlankMax: 7,
       maxFixedAnchors: 1,
-      maxWordsPerBlank: 3,
+      maxWordsPerBlank: 2,
     };
   }
 
@@ -258,7 +265,7 @@ function getDifficultySentenceConfig(level) {
     desiredBlankMin: 4,
     desiredBlankMax: 5,
     maxFixedAnchors: 1,
-    maxWordsPerBlank: 3,
+    maxWordsPerBlank: 2,
   };
 }
 

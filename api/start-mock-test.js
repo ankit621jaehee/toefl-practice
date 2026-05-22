@@ -222,12 +222,76 @@ export default async function handler(req, res) {
 
     const { level = "Medium", topic = "Mixed" } = req.body || {};
     const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-    const sentenceQuestions = await generateBuildSentenceQuestions({
-      ai,
-      count: 10,
-      level,
-      topic,
-    });
+    
+function getRandomInt(min, max) {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+function getMockSentenceDistribution() {
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const easyCount = getRandomInt(3, 5);
+    const mediumCount = getRandomInt(2, 3);
+    const hardCount = 10 - easyCount - mediumCount;
+
+    if (hardCount >= 2 && hardCount <= 4) {
+      return {
+        easyCount,
+        mediumCount,
+        hardCount,
+      };
+    }
+  }
+
+  return {
+    easyCount: 4,
+    mediumCount: 3,
+    hardCount: 3,
+  };
+}
+
+function shuffleArray(array) {
+  return [...array].sort(() => Math.random() - 0.5);
+}
+
+const { easyCount, mediumCount, hardCount } = getMockSentenceDistribution();
+
+const easyQuestions = await generateBuildSentenceQuestions({
+  ai,
+  count: easyCount,
+  level: "Easy",
+  topic,
+});
+
+const mediumQuestions = await generateBuildSentenceQuestions({
+  ai,
+  count: mediumCount,
+  level: "Medium",
+  topic,
+  excludeTargets: easyQuestions.map((q) => q.target),
+});
+
+const hardQuestions = await generateBuildSentenceQuestions({
+  ai,
+  count: hardCount,
+  level: "Hard",
+  topic,
+  excludeTargets: [
+    ...easyQuestions.map((q) => q.target),
+    ...mediumQuestions.map((q) => q.target),
+  ],
+});
+
+const sentenceQuestions = shuffleArray([
+  ...easyQuestions,
+  ...mediumQuestions,
+  ...hardQuestions,
+]).map((question, index) => ({
+  ...question,
+  id: index + 1,
+}));
+
+
+
     const prompt = `
 You are creating a complete TOEFL-style mock test.
 
