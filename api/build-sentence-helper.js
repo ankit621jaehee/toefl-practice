@@ -153,7 +153,58 @@ function splitWordsIntoChunks(words) {
     "within",
     "through",
   ]);
+  const adverbialPrepPhrases = new Set([
+  "on campus",
+  "in class",
+  "after class",
+  "before class",
+  "during class",
+  "during the lecture",
+  "after school",
+  "before school",
+  "at school",
+  "at the library",
+  "in the library",
+  "at the bookstore",
+  "in the cafeteria",
+  "at the gym",
+  "in the gym",
+  "at the front desk",
+  "in the morning",
+  "in the afternoon",
+  "in the evening",
+  "at night",
+  "on weekends",
+  "during the meeting",
+  "after the meeting",
+  "before the exam",
+  "during the exam",
+]);
 
+const verbPrepCollocationVerbs = new Set([
+  "result",
+  "depend",
+  "rely",
+  "focus",
+  "insist",
+  "agree",
+  "apply",
+  "participate",
+  "contribute",
+  "respond",
+  "refer",
+  "belong",
+  "lead",
+  "listen",
+  "talk",
+  "speak",
+  "look",
+  "ask",
+  "wait",
+  "prepare",
+  "apologize",
+  "complain",
+]);
   while (index < words.length) {
     const current = words[index]?.toLowerCase();
     const next = words[index + 1]?.toLowerCase();
@@ -170,32 +221,45 @@ function splitWordsIntoChunks(words) {
       continue;
     }
 
-    if (prepositions.has(current) && next) {
-        if (third && nounPhraseStarters.has(next)) {
-            chunks.push(words.slice(index, index + 3).join(" "));
-            index += 3;
-            continue;
-        }
+    if (prepositions.has(current)) {
+  const twoWordPhrase = [words[index], words[index + 1]]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
 
-        chunks.push(words.slice(index, index + 2).join(" "));
-        index += 2;
-        continue;
-        }
+  const threeWordPhrase = [words[index], words[index + 1], words[index + 2]]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+
+  // 1. 地点/时间/场景状语短语可以合并
+  // 例如 on campus / in class / at the library / during the lecture
+  if (adverbialPrepPhrases.has(threeWordPhrase)) {
+    chunks.push(words.slice(index, index + 3).join(" "));
+    index += 3;
+    continue;
+  }
+
+  if (adverbialPrepPhrases.has(twoWordPhrase)) {
+    chunks.push(words.slice(index, index + 2).join(" "));
+    index += 2;
+    continue;
+  }
+
+  // 2. 其他介词默认单独切
+  // 例如 result / in / a problem
+  // depend / on / the weather
+  // interested / in / the program
+  chunks.push(words[index]);
+  index += 1;
+  continue;
+}
 
 
-    if (
-      beVerbs.has(current) &&
-      next &&
-      (next.endsWith("ing") || next.endsWith("ed"))
-    ) {
-      chunks.push(words.slice(index, index + 2).join(" "));
-      index += 2;
-      continue;
-    }
 
-    if (modalVerbs.has(current) && next) {
-      chunks.push(words.slice(index, index + 2).join(" "));
-      index += 2;
+    if (modalVerbs.has(current)) {
+      chunks.push(words[index]);
+      index += 1;
       continue;
     }
 
@@ -345,19 +409,63 @@ function buildPartsFromTarget(target, level = "Medium") {
 
     const maxWordsPerBlank = config.maxWordsPerBlank || 3;
     const blockedMergeWords = new Set([
-      "that",
-      "which",
-      "who",
-      "where",
-      "when",
-      "why",
-      "whether",
-      "if",
-      "because",
-      "although",
-      "since",
-      "while",
-    ]);
+  "that",
+  "which",
+  "who",
+  "where",
+  "when",
+  "why",
+  "whether",
+  "if",
+  "because",
+  "although",
+  "since",
+  "while",
+
+  // 介词不要和后面的名词合并
+  "in",
+  "on",
+  "at",
+  "by",
+  "for",
+  "with",
+  "from",
+  "to",
+  "of",
+  "about",
+  "among",
+  "between",
+  "during",
+  "before",
+  "after",
+  "without",
+  "within",
+  "through",
+
+  // 谓语 / 系动词不要和表语或 V-ing 合并
+  "am",
+  "is",
+  "are",
+  "was",
+  "were",
+  "be",
+  "been",
+  "being",
+
+  // 情态动词不要和动词合并
+  "can",
+  "could",
+  "may",
+  "might",
+  "will",
+  "would",
+  "should",
+  "must",
+
+  // 比较结构不要合并
+  "more",
+  "less",
+]);
 
     for (let i = 0; i < blankIndexes.length - 1; i += 1) {
       const first = blankIndexes[i];
@@ -573,6 +681,8 @@ Rules:
 13. Do not include Chinese.
 14. Do not include markdown.
 15. Make every question different in topic and sentence pattern.
+16. The target sentence should allow verbs, be-verbs, prepositions, and complements to be tested separately.
+17. Avoid target sentences that rely on long fixed phrases where several words must stay together.
 
 Selected difficulty: ${level}
 Selected topic: ${topic}

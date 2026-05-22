@@ -6,7 +6,6 @@ import {
   type ReactNode,
   type CSSProperties,
 } from "react";
-// Import chart components from recharts for ability analysis trends
 import {
   LineChart,
   Line,
