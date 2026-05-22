@@ -6280,6 +6280,10 @@ function MockTestPage({
   );
 }
 
+function roundToHalf(value: number | string | null | undefined) {
+  return Math.round(Number(value || 0) * 2) / 2;
+}
+
 
 
 function MockResultPage({
@@ -6562,7 +6566,7 @@ function MockRecordsPage({
               </span>
 
               <strong style={{ color: "#312e81" }}>
-                Final {Number(record.final_score).toFixed(1)} / 6.0
+                Final {roundToHalf(record.final_score).toFixed(1)} / 6.0
               </strong>
 
               <span>Sentence {Number(record.sentence_score).toFixed(1)} / 5.0</span>
@@ -6607,7 +6611,7 @@ function MockRecordDetailPage({
     boxShadow: "none",
     height: "calc(100vh - 76px)",
     boxSizing: "border-box" as const,
-    overflow: "hidden",
+    overflow: "visible",
   };
 
 
@@ -6645,7 +6649,7 @@ function MockRecordDetailPage({
             margin: "14px 0",
           }}
         >
-          {Number(record.final_score).toFixed(1)} / 6.0
+          {roundToHalf(record.final_score).toFixed(1)} / 6.0
         </p>
 
         <div style={{ color: "#64748b", lineHeight: 1.8 }}>

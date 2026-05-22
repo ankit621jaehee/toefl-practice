@@ -1,7 +1,4 @@
-import { GoogleGenAI } from "@google/genai";
 import { generateContentWithModelFallback } from "./gemini-helper.js";
-import { generateBuildSentenceQuestions } from "./build-sentence-helper.js";
-let currentDesignRules = {};
 
 function getEndPunctuation(sentence) {
   const match = String(sentence || "").trim().match(/[.!?]$/);
@@ -61,38 +58,14 @@ const flexibleOrAmbiguousChunks = new Set([
   "on the other hand",
 ]);
 
-const logicAnchorChunks = new Set([
-  "although",
-  "because",
-  "since",
-  "while",
-  "whereas",
-  "however",
-  "therefore",
-  "instead",
-  "unless",
-  "even though",
-  "as long as",
-  "so that",
-  "rather than",
-  "not only",
-  "but also",
-]);
-
 function shouldPreferFixed(chunk) {
   const normalized = cleanChunk(chunk);
 
   if (!normalized) return false;
-
-  // 不要因为词短就 fixed。
-  // i / is / in / of / to 这些应该可以作为 blank，否则 fixed 会太散。
   if (normalized.length <= 2) return false;
 
-  // 位置很灵活的副词/状语可以 fixed，避免多答案。
   if (flexibleOrAmbiguousChunks.has(normalized)) return true;
 
-  // 逻辑词不要全部自动 fixed。
-  // 只有比较长、明显作为句子线索的逻辑短语才 fixed。
   const strongLogicAnchors = new Set([
     "however",
     "therefore",
@@ -107,13 +80,8 @@ function shouldPreferFixed(chunk) {
     "as a result",
   ]);
 
-  if (strongLogicAnchors.has(normalized)) return true;
-
-  return false;
+  return strongLogicAnchors.has(normalized);
 }
-
-
-
 
 const nounPhraseStarters = new Set([
   "a",
@@ -158,31 +126,6 @@ const commonAdjectives = new Set([
   "useful",
 ]);
 
-function isLikelyNounPhrase(words, index) {
-  const current = words[index]?.toLowerCase();
-  const next = words[index + 1]?.toLowerCase();
-  const third = words[index + 2]?.toLowerCase();
-
-  if (!current || !next) return false;
-
-  // any assistance / some data / the cabins / a copy
-  if (nounPhraseStarters.has(current)) {
-    // the old city / a different department
-    if (third && commonAdjectives.has(next)) {
-      return 3;
-    }
-
-    return 2;
-  }
-
-  // old city / quiet area / different department
-  if (commonAdjectives.has(current)) {
-    return 2;
-  }
-
-  return false;
-}
-
 function splitWordsIntoChunks(words) {
   const chunks = [];
   let index = 0;
@@ -221,23 +164,18 @@ function splitWordsIntoChunks(words) {
       continue;
     }
 
-    // wh-word / 从句引导词单独成块：why / whether / how / where
-    // 这样可以明确考宾语从句或嵌入问句结构。
     if (whWords.has(current)) {
       chunks.push(words[index]);
       index += 1;
       continue;
     }
 
-    // 介词单独成块：among / with / in / for
-    // 不要总是绑成 among students，否则介词位置判断就被弱化了。
     if (prepositions.has(current)) {
       chunks.push(words[index]);
       index += 1;
       continue;
     }
 
-    // be + V-ing / be + Ved：are becoming / was assigned
     if (
       beVerbs.has(current) &&
       next &&
@@ -248,21 +186,18 @@ function splitWordsIntoChunks(words) {
       continue;
     }
 
-    // modal + verb：could explain / should consider
     if (modalVerbs.has(current) && next) {
       chunks.push(words.slice(index, index + 2).join(" "));
       index += 2;
       continue;
     }
 
-    // more / less + adjective：more popular / less expensive
     if ((current === "more" || current === "less") && next) {
       chunks.push(words.slice(index, index + 2).join(" "));
       index += 2;
       continue;
     }
 
-    // not only / but also 这种固定结构单独保留
     if (current === "not" && next === "only") {
       chunks.push("not only");
       index += 2;
@@ -275,18 +210,13 @@ function splitWordsIntoChunks(words) {
       continue;
     }
 
-    // adjective + noun：local museums / public libraries
-    // 但不要把介词 + 名词绑起来。
     if (commonAdjectives.has(current) && next) {
       chunks.push(words.slice(index, index + 2).join(" "));
       index += 2;
       continue;
     }
 
-    // article / determiner + noun：the article / a copy
-    // 这个可以保留为自然短语。
     if (nounPhraseStarters.has(current) && next) {
-      // the local museums / a different department
       if (third && commonAdjectives.has(next)) {
         chunks.push(words.slice(index, index + 3).join(" "));
         index += 3;
@@ -308,8 +238,6 @@ function splitWordsIntoChunks(words) {
 function getDifficultySentenceConfig(level) {
   if (level === "Hard") {
     return {
-      targetWordMin: 8,
-      targetWordMax: 9,
       desiredBlankMin: 7,
       desiredBlankMax: 8,
       maxFixedAnchors: 2,
@@ -319,8 +247,6 @@ function getDifficultySentenceConfig(level) {
 
   if (level === "Medium") {
     return {
-      targetWordMin: 6,
-      targetWordMax: 7,
       desiredBlankMin: 6,
       desiredBlankMax: 7,
       maxFixedAnchors: 1,
@@ -329,14 +255,13 @@ function getDifficultySentenceConfig(level) {
   }
 
   return {
-    targetWordMin: 5,
-    targetWordMax: 6,
     desiredBlankMin: 4,
     desiredBlankMax: 5,
     maxFixedAnchors: 1,
     maxWordsPerBlank: 3,
   };
 }
+
 function isPunctuationOnlyText(text) {
   return /^[,.;:!?，。！？；：]+$/.test(String(text || "").trim());
 }
@@ -352,7 +277,6 @@ function countMeaningfulFixedParts(parts) {
     return text.length > 1 && !isPunctuationOnlyText(text);
   }).length;
 }
-
 
 function buildPartsFromTarget(target, level = "Medium") {
   const punctuation = getEndPunctuation(target);
@@ -378,16 +302,10 @@ function buildPartsFromTarget(target, level = "Medium") {
 
   const parts = chunks.map((chunk) => {
     if (shouldPreferFixed(chunk)) {
-      return {
-        type: "fixed",
-        text: chunk,
-      };
+      return { type: "fixed", text: chunk };
     }
 
-    return {
-      type: "blank",
-      answer: chunk,
-    };
+    return { type: "blank", answer: chunk };
   });
 
   function getBlankIndexes() {
@@ -404,37 +322,20 @@ function buildPartsFromTarget(target, level = "Medium") {
 
   function convertBlankToFixed(index) {
     if (!parts[index] || parts[index].type !== "blank") return;
-
-    parts[index] = {
-      type: "fixed",
-      text: parts[index].answer,
-    };
+    parts[index] = { type: "fixed", text: parts[index].answer };
   }
 
   function convertFixedToBlank(index) {
     if (!parts[index] || parts[index].type !== "fixed") return;
-
     const text = parts[index].text;
-
     if (isPunctuationOnlyText(text)) return;
-
-    parts[index] = {
-      type: "blank",
-      answer: text,
-    };
-  }
-
-  function getPartWordCount(part) {
-    const text = part.type === "blank" ? part.answer : part.text;
-
-    return String(text || "")
-      .split(/\s+/)
-      .filter(Boolean).length;
+    parts[index] = { type: "blank", answer: text };
   }
 
   function mergeNeighborBlanks() {
     const blankIndexes = getBlankIndexes();
     if (blankIndexes.length < 2) return false;
+
     const maxWordsPerBlank = config.maxWordsPerBlank || 3;
     const blockedMergeWords = new Set([
       "that",
@@ -454,16 +355,18 @@ function buildPartsFromTarget(target, level = "Medium") {
     for (let i = 0; i < blankIndexes.length - 1; i += 1) {
       const first = blankIndexes[i];
       const second = blankIndexes[i + 1];
+
       if (second !== first + 1) continue;
+
       const firstClean = cleanChunk(parts[first].answer);
       const secondClean = cleanChunk(parts[second].answer);
+
       if (blockedMergeWords.has(firstClean) || blockedMergeWords.has(secondClean)) {
         continue;
       }
+
       const mergedAnswer = `${parts[first].answer} ${parts[second].answer}`;
-      const mergedWordCount = mergedAnswer
-        .split(/\s+/)
-        .filter(Boolean).length;
+      const mergedWordCount = mergedAnswer.split(/\s+/).filter(Boolean).length;
 
       if (mergedWordCount > maxWordsPerBlank) continue;
 
@@ -479,79 +382,12 @@ function buildPartsFromTarget(target, level = "Medium") {
     return false;
   }
 
-  // 1. 句首如果是自然短语，可以固定，类似真题中的 The textbook ____。
   if (parts.length >= 5 && parts[0].type === "blank") {
     const firstText = parts[0].answer;
     const firstWordCount = cleanChunk(firstText).split(/\s+/).length;
 
     if (firstWordCount <= 2) {
       convertBlankToFixed(0);
-    }
-  }
-
-  // 2. 句尾如果是真题常见给定短语，可以固定。
-  const endingFixedCandidates = new Set([
-    "for me",
-    "for us",
-    "in class",
-    "after class",
-    "at the library",
-    "on campus",
-    "near the school",
-    "during exams",
-    "before class",
-    "after school",
-  ]);
-
-  const blankIndexesForEnding = getBlankIndexes();
-  const lastBlankIndex =
-    blankIndexesForEnding[blankIndexesForEnding.length - 1];
-
-  if (
-    lastBlankIndex !== undefined &
-    endingFixedCandidates.has(cleanChunk(parts[lastBlankIndex].answer))    ) {
-  convertBlankToFixed(lastBlankIndex);
-}
-
-  // 3. 如果有逗号，逗号前后不能全靠盲猜，保留自然线索。
-  if (sentenceWithoutPunctuation.includes(",")) {
-    const beforeCommaText = sentenceWithoutPunctuation.split(",")[0].trim();
-    const beforeCommaWordCount = beforeCommaText
-      .split(/\s+/)
-      .filter(Boolean).length;
-
-    let runningWordCount = 0;
-    let beforeCommaPartIndex = -1;
-    let afterCommaPartIndex = -1;
-
-    for (let i = 0; i < parts.length; i += 1) {
-      const text =
-        parts[i].type === "blank" ? parts[i].answer : parts[i].text;
-
-      const wordCount = String(text || "")
-        .split(/\s+/)
-        .filter(Boolean).length;
-
-      if (runningWordCount < beforeCommaWordCount) {
-        beforeCommaPartIndex = i;
-      }
-
-      if (
-        runningWordCount >= beforeCommaWordCount &&
-        afterCommaPartIndex === -1
-      ) {
-        afterCommaPartIndex = i;
-      }
-
-      runningWordCount += wordCount;
-    }
-
-    if (beforeCommaPartIndex >= 0) {
-      convertBlankToFixed(beforeCommaPartIndex);
-    }
-
-    if (afterCommaPartIndex >= 0) {
-      convertBlankToFixed(afterCommaPartIndex);
     }
   }
 
@@ -575,9 +411,7 @@ function buildPartsFromTarget(target, level = "Medium") {
         "during exams",
       ]);
 
-      if (protectedFixed.has(cleaned)) return false;
-
-      return true;
+      return !protectedFixed.has(cleaned);
     });
 
     if (convertibleFixedIndex === undefined) break;
@@ -585,13 +419,10 @@ function buildPartsFromTarget(target, level = "Medium") {
     convertFixedToBlank(convertibleFixedIndex);
   }
 
-
-  // 5. 空太多就合并 blank，控制在 5–7 左右。
   while (countBlankParts(parts) > config.desiredBlankMax) {
     if (!mergeNeighborBlanks()) break;
   }
 
-  // 6. 空太少时，只把不重要 fixed 转回 blank。
   while (countBlankParts(parts) < config.desiredBlankMin) {
     const fixedIndexes = getFixedIndexes();
 
@@ -617,6 +448,7 @@ function buildPartsFromTarget(target, level = "Medium") {
 
   return parts;
 }
+
 function getChunksFromParts(parts) {
   return parts
     .filter((part) => part.type === "blank")
@@ -624,7 +456,7 @@ function getChunksFromParts(parts) {
     .filter(Boolean);
 }
 
-function normalizeQuestion(question, index, level, topic) {
+function normalizeSentenceQuestion(question, index, level, topic) {
   const target =
     typeof question.target === "string" && question.target.trim()
       ? question.target.trim()
@@ -649,51 +481,156 @@ function normalizeQuestion(question, index, level, topic) {
     explanation:
       question.explanation ||
       "This question tests sentence structure and logical connection between two speakers.",
+    knowledgeCategory: question.knowledgeCategory || "句型结构",
   };
 }
 
-export default async function handler(req, res) {
-  if (req.method !== "POST") {
-    return res.status(405).json({ error: "Method not allowed" });
+function safeJsonParse(text) {
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new Error(`Gemini returned invalid JSON: ${String(text).slice(0, 300)}`);
+  }
+}
+
+export async function generateBuildSentenceQuestions({
+  ai,
+  count = 5,
+  level = "Medium",
+  topic = "Mixed",
+  randomSeed,
+  excludeTargets = [],
+}) {
+  const requestedCount = Number(count) || 5;
+  const generatedCount = requestedCount + 3;
+  const seed =
+    randomSeed || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+  const prompt = `
+You are a TOEFL Build a Sentence exercise generator.
+
+Generate ${generatedCount} TOEFL-style A/B dialogue sentence-building questions.
+
+Important:
+You only need to generate Speaker A's context sentence, Speaker B's full target sentence, and the explanation.
+Do not decide blanks.
+Do not create word banks.
+The website will automatically split the B sentence into blanks.
+
+The exercise is NOT a translation task.
+It is a dialogue sentence-building task.
+
+Good style examples:
+
+Example 1:
+A: What was the highlight of your trip?
+B target: The tour guides who showed us around the old city were fantastic.
+
+Example 2:
+A: I heard Anna got a promotion.
+B target: Do you know if she will be moving to a different department?
+
+Example 3:
+A: We're planning a trip to the mountains next weekend.
+B target: Can you tell me whether the cabins will be available?
+
+Example 4:
+A: What did Maria ask you about the book you're reading?
+B target: She wanted to know where she could buy a copy.
+
+Random seed: ${seed}
+
+Important:
+- Generate ${generatedCount} completely new questions.
+- Do not reuse any of these target sentences:
+${Array.isArray(excludeTargets) ? excludeTargets.join("\n") : ""}
+- Do not copy the examples.
+- Each question must have a different context and target sentence.
+
+Rules:
+1. Speaker A should provide a natural dialogue context.
+2. Speaker B's target sentence should be a natural response.
+3. Difficulty is based mainly on the complexity of the target sentence, not on the number of blanks.
+4. B target length and complexity should match the selected difficulty:
+   - Easy: 4 to 6 words. Use simple but natural responses.
+   - Medium: 5 to 7 words. Use useful collocations, embedded questions, or simple relative clauses.
+   - Hard: 8 to 10 words. Use compact but more complex structures, such as relative clauses, embedded questions, comparisons, or cause-effect phrases.
+5. For Hard difficulty, prefer compact sentences that can naturally be divided into 7 to 8 short blanks.
+6. Do not generate target sentences longer than 15 words.
+7. Avoid long clauses that would force many words into one blank.
+8. Avoid unnecessary adverbs like usually, often, actually, also, or generally unless they are essential to the meaning.
+9. Prefer sentence structures where each word or short phrase has a clear position.
+10. Do not make the sentence all blanks except punctuation.
+11. Avoid childish, mechanical, or overly repetitive responses.
+12. Avoid responses that simply repeat Speaker A's wording without adding a natural answer.
+13. Do not include Chinese.
+14. Do not include markdown.
+15. Make every question different in topic and sentence pattern.
+
+Selected difficulty: ${level}
+Selected topic: ${topic}
+
+For each question, include a hidden field called "knowledgeCategory".
+
+The value of "knowledgeCategory" must be exactly one of:
+从句, 短语搭配, 连词使用, 句型结构, 时态一致.
+
+Choose the category based on the main grammar or expression point tested by the sentence.
+
+Return valid JSON only.
+
+Return this exact JSON structure:
+{
+  "questions": [
+    {
+      "id": 1,
+      "level": "Medium",
+      "topic": "Travel",
+      "relationType": "question-answer",
+      "contextSpeaker": "A",
+      "contextSentence": "What was the highlight of your trip?",
+      "answerSpeaker": "B",
+      "target": "The tour guides who showed us around the old city were fantastic.",
+      "explanation": "A asks about the highlight of the trip. B answers with a noun phrase followed by a relative clause.",
+      "knowledgeCategory": "从句"
+    }
+  ]
+}
+`;
+
+  const { response, modelUsed } = await generateContentWithModelFallback(ai, {
+    contents: prompt,
+    config: {
+      responseMimeType: "application/json",
+      temperature: 0.8,
+    },
+  });
+
+  console.log("Build sentence model used:", modelUsed);
+
+  const text = response.text || "";
+
+  if (!text.trim()) {
+    throw new Error("Gemini returned empty response");
   }
 
-  try {
-    if (!process.env.GEMINI_API_KEY) {
-      throw new Error("Missing GEMINI_API_KEY environment variable");
-    }
+  const json = safeJsonParse(text);
 
-    const ai = new GoogleGenAI({
-      apiKey: process.env.GEMINI_API_KEY,
-    });
+  if (!Array.isArray(json.questions)) {
+    throw new Error("Gemini response does not contain questions array");
+  }
 
-    const {
-      count = 5,
-      level = "Medium",
-      topic = "Mixed",
-      randomSeed,
-      excludeTargets = [],
-    } = req.body || {};
+  const cleanedQuestions = json.questions.map((question, index) =>
+    normalizeSentenceQuestion(question, index, level, topic)
+  );
 
-    const questions = await generateBuildSentenceQuestions({
-      ai,
-      count,
-      level,
-      topic,
-      randomSeed,
-      excludeTargets,
-    });
+  const finalQuestions = cleanedQuestions.slice(0, requestedCount);
 
-    return res.status(200).json({
-      questions,
-    });
+  if (finalQuestions.length < requestedCount) {
+    throw new Error(
+      `Gemini only generated ${finalQuestions.length} usable questions, but ${requestedCount} were requested`
+    );
+  }
 
-
-    } catch (error) {
-      console.error("generate-sentences error:", error);
-      currentDesignRules = {};
-
-      return res.status(500).json({
-        error: error?.message || "Failed to generate questions",
-      });
-    }
+  return finalQuestions;
 }
