@@ -1,15 +1,8 @@
 {
-
   "rewrites": [
-
     {
-
-      "source": "/(.*)",
-
-      "destination": "/"
-
+      "source": "/((?!api/|assets/|favicon.svg|icons.svg|logo.png|customer-service-qr.png).*)",
+      "destination": "/index.html"
     }
-
   ]
-
 }
