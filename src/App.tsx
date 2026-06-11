@@ -6,6 +6,7 @@ import {
   type ReactNode,
   type CSSProperties,
 } from "react";
+import "./App.css";
 import {
   LineChart,
   Line,
@@ -70,6 +71,10 @@ function assignDiscussionKnowledgeCategory(): string {
 
 type Page =
   | "home"
+  | "sentence-setup"
+  | "email-setup"
+  | "discussion-setup"
+  | "mock-setup"
   | "sentence"
   | "email"
   | "discussion"
@@ -90,6 +95,9 @@ type Page =
   | "improvement-record-detail"
   | "improvement-vocabulary"
   | "improvement-vocabulary-detail";
+
+type AiPracticeKind = "sentence" | "email" | "discussion" | "mock";
+type AiGenerationStatus = "idle" | "generating" | "ready";
 
 type Part =
   | {
@@ -286,33 +294,48 @@ type PracticeSession = {
   score: number | string;
   date: string;
 };
+const SENTENCE_GENERATION_COST = 3;
 const EMAIL_SCORING_COST = 3;
 const DISCUSSION_SCORING_COST = 3;
 const announcements = [
   {
     id: 0,
     tag: "置顶",
-    title: "Happy Mother's Day",
+    title: "新用户体验兑换码",
     date: "Pinned",
-    content:
-      "Use code MAY10TH to claim 15 bonus points before June",
+    content: "输入兑换码 TOEFL 可获得 10 points，用于体验写作批改或完整模考。",
   },
   {
     id: 1,
-    tag: "优惠",
-    title: "新用户体验兑换码",
-    content: "输入兑换码 TOEFL 可获得 10 points，用于体验写作批改或完整模考。",
-    date: "2026-05-13",
-  },
-  {
-    id: 2,
     tag: "题库持续更新中",
     title: "往届真题 与 ETS模拟题 已上线",
     content:
       "完成三部分内容后可获得 6 分制总分、知识点分析和备考建议。请联系客服获取",
     date: "2026-05-15",
   },
+  {
+    id: 2,
+    tag: "节日活动",
+    title: "Dragon Boat Festival Bonus",
+    content:
+      "Use code DRAGONBOAT to claim 12 bonus points during the Dragon Boat Festival weekend.",
+    date: "2026-06-19",
+  },
+  {
+    id: 3,
+    tag: "节日活动",
+    title: "Father's Day Practice Gift",
+    content:
+      "Use code FATHER2026 to claim 12 bonus points for writing practice on Father's Day.",
+    date: "2026-06-21",
+  },
 ];
+
+const GENERATED_SENTENCE_STORAGE_KEY = "generatedSentencePractice";
+const GENERATED_EMAIL_STORAGE_KEY = "generatedEmailPractice";
+const GENERATED_DISCUSSION_STORAGE_KEY = "generatedDiscussionPractice";
+const GENERATED_MOCK_STORAGE_KEY = "generatedMockPractice";
+const EXAM_GOAL_STORAGE_KEY = "toeflExamGoal";
 
 // Format a duration in seconds as minutes:seconds (e.g., 5:07).  This helper
 // is used to display elapsed times for single practice sessions.  If seconds
@@ -322,6 +345,29 @@ function formatDuration(seconds: number): string {
   const minutes = Math.floor(secs / 60);
   const rest = secs % 60;
   return `${minutes}:${String(rest).padStart(2, "0")}`;
+}
+
+function getDaysUntilExam(examDate: string): number | null {
+  if (!examDate) return null;
+
+  const targetDate = new Date(`${examDate}T00:00:00`);
+  if (Number.isNaN(targetDate.getTime())) return null;
+
+  const today = new Date();
+  const todayStart = new Date(
+    today.getFullYear(),
+    today.getMonth(),
+    today.getDate()
+  );
+  const targetStart = new Date(
+    targetDate.getFullYear(),
+    targetDate.getMonth(),
+    targetDate.getDate()
+  );
+
+  return Math.ceil(
+    (targetStart.getTime() - todayStart.getTime()) / (1000 * 60 * 60 * 24)
+  );
 }
 
 
@@ -1153,6 +1199,32 @@ function App() {
   // practice.  This value is updated once per second when a practice page
   // is active and a start time is defined.  Other pages reset it to 0.
   const [elapsedSeconds, setElapsedSeconds] = useState<number>(0);
+  const [aiSetupKind, setAiSetupKind] = useState<AiPracticeKind>("sentence");
+  const [aiGenerationStatus, setAiGenerationStatus] =
+    useState<AiGenerationStatus>("idle");
+  const [aiGenerationProgress, setAiGenerationProgress] = useState(0);
+  const [aiGenerationMessage, setAiGenerationMessage] = useState("");
+  const [examDate, setExamDate] = useState(() => {
+    if (typeof window === "undefined") return "";
+    try {
+      const stored = localStorage.getItem(EXAM_GOAL_STORAGE_KEY);
+      if (!stored) return "";
+      return (JSON.parse(stored) as { examDate?: string }).examDate || "";
+    } catch {
+      return "";
+    }
+  });
+  const [targetScore, setTargetScore] = useState(() => {
+    if (typeof window === "undefined") return "";
+    try {
+      const stored = localStorage.getItem(EXAM_GOAL_STORAGE_KEY);
+      if (!stored) return "";
+      return (JSON.parse(stored) as { targetScore?: string }).targetScore || "";
+    } catch {
+      return "";
+    }
+  });
+  const daysUntilExam = getDaysUntilExam(examDate);
 
   // Persist sessions to localStorage whenever they change.  Errors are
   // silently ignored.
@@ -1163,6 +1235,17 @@ function App() {
       // ignore persistence errors
     }
   }, [practiceSessions]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        EXAM_GOAL_STORAGE_KEY,
+        JSON.stringify({ examDate, targetScore })
+      );
+    } catch {
+      // ignore persistence errors
+    }
+  }, [examDate, targetScore]);
 
   // Update the elapsed seconds timer based on the currently active practice
   // session.  The timer observes the start timestamps directly rather than
@@ -1230,6 +1313,22 @@ function App() {
   if (path === "/ets-mock-practice") return "ets-mock-practice";
 
   if (path.startsWith("/ets-mock-practice/")) return "ets-mock-detail";
+
+  if (path === "/build-a-sentence") return "sentence";
+
+  if (path === "/email-writing") return "email";
+
+  if (path === "/academic-discussion") return "discussion";
+
+  if (path === "/mock") return "mock";
+
+  if (path === "/ai-build-sentence") return "sentence-setup";
+
+  if (path === "/ai-email-writing") return "email-setup";
+
+  if (path === "/ai-academic-discussion") return "discussion-setup";
+
+  if (path === "/ai-full-mock-test") return "mock-setup";
 
   if (path === "/records") return "records";
 
@@ -1300,6 +1399,16 @@ function setPage(nextPage: Page) {
 
     home: "/",
 
+    "sentence-setup": "/ai-build-sentence",
+
+    "email-setup": "/ai-email-writing",
+
+    "discussion-setup": "/ai-academic-discussion",
+
+    "mock-setup": "/ai-full-mock-test",
+
+    mock: "/mock",
+
     records: "/records",
 
     "mock-records": "/mock-records",
@@ -1328,6 +1437,30 @@ function setPage(nextPage: Page) {
 
   }
 
+}
+
+function openAiSetup(kind: AiPracticeKind) {
+  setAiSetupKind(kind);
+  setAiGenerationStatus("idle");
+  setAiGenerationProgress(0);
+  setAiGenerationMessage("");
+
+  if (kind === "sentence") {
+    setPage("sentence-setup");
+    return;
+  }
+
+  if (kind === "email") {
+    setPage("email-setup");
+    return;
+  }
+
+  if (kind === "mock") {
+    setPage("mock-setup");
+    return;
+  }
+
+  setPage("discussion-setup");
 }
 
  useEffect(() => {
@@ -1867,6 +2000,7 @@ async function handleStartMockTest() {
   // balance is insufficient, open the points purchase modal.
   if (!user) {
     setMockMessage("Please sign in before starting a mock test.");
+    alert("请先登录后再开始完整模考。");
     return;
   }
   const MOCK_COST = 10;
@@ -1874,15 +2008,12 @@ async function handleStartMockTest() {
     setShowPointsModal(true);
     return;
   }
-  // Deduct the mock test cost up front and record the start time for
-  // duration tracking.  We update local points here; the backend will
-  // deduct separately when submitting the mock test.
-  setPoints((prev) => prev - MOCK_COST);
-  setMockStartTime(Date.now());
-
   setActiveQuestionSetId("");
   setActiveQuestionSourceType("");
   setIsStartingMock(true);
+  setAiGenerationStatus("generating");
+  setAiGenerationProgress(8);
+  setAiGenerationMessage("正在生成完整模考...");
   setMockMessage("");
   setMockResult(null);
   setMockTestData(null);
@@ -1892,18 +2023,21 @@ async function handleStartMockTest() {
   setMockEmailAnswer("");
   setMockDiscussionAnswer("");
 
+  const progressTimer = window.setInterval(() => {
+    setAiGenerationProgress((progress) => Math.min(progress + 5, 90));
+  }, 300);
+
   try {
     const data = await startMockTestWithAPI("medium", "general campus and daily life");
 
     setMockTestData(data);
     setMockSentenceSlots(createInitialSlots(data.sentenceQuestions));
     setMockSentenceBanks(createBankOrders(data.sentenceQuestions));
-
-    // Do not update points here based on the API response to avoid
-    // double-deducting the mock cost.  The local state has already been
-    // decremented and the session will update the backend on submission.
-
-    setPage("mock");
+    localStorage.setItem(GENERATED_MOCK_STORAGE_KEY, JSON.stringify(data));
+    setPoints((prev) => prev - MOCK_COST);
+    setAiGenerationProgress(100);
+    setAiGenerationStatus("ready");
+    setAiGenerationMessage("完整模考已生成，可以进入做题页面。");
   } catch (error) {
     const message =
       error instanceof Error
@@ -1911,7 +2045,12 @@ async function handleStartMockTest() {
         : "Failed to start mock test.";
 
     setMockMessage(message);
+    setAiGenerationStatus("idle");
+    setAiGenerationProgress(0);
+    setAiGenerationMessage(message);
+    alert(message);
   } finally {
+    window.clearInterval(progressTimer);
     setIsStartingMock(false);
   }
 }
@@ -2056,9 +2195,9 @@ async function submitMockTestWithAPI({
 }
 
   const [questions, setQuestions] = useState<Question[]>(fallbackQuestions);
-  const [questionCount, setQuestionCount] = useState(5);
-  const [level, setLevel] = useState("Medium");
-  const [topic, setTopic] = useState("Mixed");
+  const [questionCount] = useState(5);
+  const [level] = useState("Medium");
+  const [topic] = useState("Mixed");
 
   const [currentIndex, setCurrentIndex] = useState(0);
   const [slotsByQuestion, setSlotsByQuestion] = useState(() =>
@@ -2213,18 +2352,24 @@ async function submitMockTestWithAPI({
   }
 
   async function startNewPractice() {
-    // Require authentication before starting a practice.  If the user is
-    // not signed in, show an alert and abort.  When authenticated, record
-    // the start time so that the elapsed timer begins counting up.
     if (!user) {
       alert('请先登录后再开始练习。');
       return;
     }
-    // Record the start time for the sentence practice.  This timestamp
-    // will be used to compute the total duration when the session ends.
-    setSentenceStartTime(Date.now());
+    if (points < SENTENCE_GENERATION_COST) {
+      setShowPointsModal(true);
+      return;
+    }
+
     setIsLoading(true);
     setApiMessage("");
+    setAiGenerationStatus("generating");
+    setAiGenerationProgress(8);
+    setAiGenerationMessage("正在生成 Build a Sentence 题组...");
+
+    const progressTimer = window.setInterval(() => {
+      setAiGenerationProgress((progress) => Math.min(progress + 7, 90));
+    }, 260);
 
     try {
       const generated = await generateQuestionsFromAPI(
@@ -2248,7 +2393,14 @@ async function submitMockTestWithAPI({
       setResults({});
       setIsSubmitted(false);
       setApiMessage("已成功由 Gemini 生成新题组。");
-      setPage("sentence");
+      localStorage.setItem(
+        GENERATED_SENTENCE_STORAGE_KEY,
+        JSON.stringify(processedGenerated)
+      );
+      setAiGenerationProgress(100);
+      setAiGenerationStatus("ready");
+      setAiGenerationMessage("题目已生成，可以进入做题页面。");
+      setPoints((prev) => prev - SENTENCE_GENERATION_COST);
     } catch (error) {
       console.error(error);
 
@@ -2258,15 +2410,24 @@ async function submitMockTestWithAPI({
           : "AI 生成题目失败，请稍后再试。";
 
       setApiMessage(message);
+      setAiGenerationStatus("idle");
+      setAiGenerationProgress(0);
+      setAiGenerationMessage(message);
       alert(
         `AI 生成题目失败：${message}`
       );
     } finally {
+      window.clearInterval(progressTimer);
       setIsLoading(false);
     }
   }
 
   async function generateNewEmailPrompt() {
+    if (points < EMAIL_SCORING_COST) {
+      setShowPointsModal(true);
+      return;
+    }
+
     setEmailAnswer("");
     setEmailSubmitted(false);
     setEmailFeedback(null);
@@ -2281,6 +2442,7 @@ async function submitMockTestWithAPI({
         knowledgeCategory: assignEmailKnowledgeCategory(),
       };
       setCurrentEmailPrompt(processedPrompt as EmailPrompt);
+      setPoints((prev) => prev - EMAIL_SCORING_COST);
     } catch (error) {
       // Fallback sample prompt also receives a knowledge category for consistency.
       const fallback: any = {
@@ -2288,12 +2450,18 @@ async function submitMockTestWithAPI({
         knowledgeCategory: assignEmailKnowledgeCategory(),
       };
       setCurrentEmailPrompt(fallback as EmailPrompt);
+      setPoints((prev) => prev - EMAIL_SCORING_COST);
     } finally {
       setIsGeneratingEmailPrompt(false);
     }
   }
 
   async function generateNewDiscussionPrompt() {
+    if (points < DISCUSSION_SCORING_COST) {
+      setShowPointsModal(true);
+      return;
+    }
+
     setDiscussionAnswer("");
     setDiscussionSubmitted(false);
     setDiscussionFeedback(null);
@@ -2307,6 +2475,7 @@ async function submitMockTestWithAPI({
         knowledgeCategory: assignDiscussionKnowledgeCategory(),
       };
       setCurrentDiscussionPrompt(processedPrompt as DiscussionPrompt);
+      setPoints((prev) => prev - DISCUSSION_SCORING_COST);
     } catch (error) {
       // Fallback sample prompt also receives a knowledge category
       const fallback: any = {
@@ -2314,17 +2483,13 @@ async function submitMockTestWithAPI({
         knowledgeCategory: assignDiscussionKnowledgeCategory(),
       };
       setCurrentDiscussionPrompt(fallback as DiscussionPrompt);
+      setPoints((prev) => prev - DISCUSSION_SCORING_COST);
     } finally {
       setIsGeneratingDiscussionPrompt(false);
     }
   }
 
   async function startEmailPractice() {
-    // Require authentication and sufficient points before starting the email
-    // writing practice.  If the user is not signed in, prompt them to log
-    // in.  If there are insufficient points, open the points modal instead
-    // of starting the practice.  Otherwise deduct the points up front and
-    // record the start time.
     if (!user) {
       alert('请先登录后再开始练习。');
       return;
@@ -2333,18 +2498,52 @@ async function submitMockTestWithAPI({
       setShowPointsModal(true);
       return;
     }
-    // Deduct the cost immediately.  We update local points here; the
-    // scoring API will no longer adjust the balance on submission.
-    setPoints((prev) => prev - EMAIL_SCORING_COST);
-    setEmailStartTime(Date.now());
-    setPage('email');
-    await generateNewEmailPrompt();
+
+    setEmailAnswer("");
+    setEmailSubmitted(false);
+    setEmailFeedback(null);
+    setIsGeneratingEmailPrompt(true);
+    setAiGenerationStatus("generating");
+    setAiGenerationProgress(8);
+    setAiGenerationMessage("正在生成 Extended Email 写作题...");
+
+    const progressTimer = window.setInterval(() => {
+      setAiGenerationProgress((progress) => Math.min(progress + 7, 90));
+    }, 260);
+
+    try {
+      const prompt = await generateEmailPromptWithAPI(level, topic);
+      const processedPrompt: any = {
+        ...prompt,
+        knowledgeCategory: assignEmailKnowledgeCategory(),
+      };
+      setCurrentEmailPrompt(processedPrompt as EmailPrompt);
+      localStorage.setItem(
+        GENERATED_EMAIL_STORAGE_KEY,
+        JSON.stringify(processedPrompt)
+      );
+      setAiGenerationProgress(100);
+      setAiGenerationStatus("ready");
+      setAiGenerationMessage("写作题已生成，可以进入做题页面。");
+      setPoints((prev) => prev - EMAIL_SCORING_COST);
+    } catch {
+      const fallback: any = {
+        ...sampleEmailPrompt,
+        knowledgeCategory: assignEmailKnowledgeCategory(),
+      };
+      setCurrentEmailPrompt(fallback as EmailPrompt);
+      localStorage.setItem(GENERATED_EMAIL_STORAGE_KEY, JSON.stringify(fallback));
+      setAiGenerationProgress(100);
+      setAiGenerationStatus("ready");
+      setAiGenerationMessage("已使用备用题目，可以进入做题页面。");
+      setPoints((prev) => prev - EMAIL_SCORING_COST);
+    } finally {
+      window.clearInterval(progressTimer);
+      setIsGeneratingEmailPrompt(false);
+    }
   }
 
   async function startDiscussionPractice() {
-    // Ensure the user is signed in and has enough points before starting the
-    // academic discussion practice.  If not signed in, alert the user.  If
-    // their balance is insufficient, show the points purchase modal.
     if (!user) {
       alert('请先登录后再开始练习。');
       return;
@@ -2353,12 +2552,188 @@ async function submitMockTestWithAPI({
       setShowPointsModal(true);
       return;
     }
-    // Deduct the discussion practice cost up front and start timing.
-    setPoints((prev) => prev - DISCUSSION_SCORING_COST);
-    setDiscussionStartTime(Date.now());
-    setPage('discussion');
-    await generateNewDiscussionPrompt();
+
+    setDiscussionAnswer("");
+    setDiscussionSubmitted(false);
+    setDiscussionFeedback(null);
+    setIsGeneratingDiscussionPrompt(true);
+    setAiGenerationStatus("generating");
+    setAiGenerationProgress(8);
+    setAiGenerationMessage("正在生成 Academic Discussion 题目...");
+
+    const progressTimer = window.setInterval(() => {
+      setAiGenerationProgress((progress) => Math.min(progress + 7, 90));
+    }, 260);
+
+    try {
+      const prompt = await generateAcademicDiscussionWithAPI(level, topic);
+      const processedPrompt: any = {
+        ...prompt,
+        knowledgeCategory: assignDiscussionKnowledgeCategory(),
+      };
+      setCurrentDiscussionPrompt(processedPrompt as DiscussionPrompt);
+      localStorage.setItem(
+        GENERATED_DISCUSSION_STORAGE_KEY,
+        JSON.stringify(processedPrompt)
+      );
+      setAiGenerationProgress(100);
+      setAiGenerationStatus("ready");
+      setAiGenerationMessage("讨论题已生成，可以进入做题页面。");
+      setPoints((prev) => prev - DISCUSSION_SCORING_COST);
+    } catch {
+      const fallback: any = {
+        ...sampleDiscussionPrompt,
+        knowledgeCategory: assignDiscussionKnowledgeCategory(),
+      };
+      setCurrentDiscussionPrompt(fallback as DiscussionPrompt);
+      localStorage.setItem(
+        GENERATED_DISCUSSION_STORAGE_KEY,
+        JSON.stringify(fallback)
+      );
+      setAiGenerationProgress(100);
+      setAiGenerationStatus("ready");
+      setAiGenerationMessage("已使用备用题目，可以进入做题页面。");
+      setPoints((prev) => prev - DISCUSSION_SCORING_COST);
+    } finally {
+      window.clearInterval(progressTimer);
+      setIsGeneratingDiscussionPrompt(false);
+    }
   }
+
+  function confirmEnterAiPractice(kind: AiPracticeKind) {
+    if (aiGenerationStatus !== "ready") return;
+
+    const practicePath =
+      kind === "sentence"
+        ? "/build-a-sentence"
+        : kind === "email"
+          ? "/email-writing"
+          : kind === "discussion"
+            ? "/academic-discussion"
+            : "/mock";
+
+    const openedWindow = window.open(practicePath, "_blank");
+
+    if (!openedWindow) {
+      if (kind === "sentence") {
+        setSentenceStartTime(Date.now());
+        setPage("sentence");
+        return;
+      }
+
+      if (kind === "email") {
+        setEmailStartTime(Date.now());
+        setPage("email");
+        return;
+      }
+
+      if (kind === "discussion") {
+        setDiscussionStartTime(Date.now());
+        setPage("discussion");
+        return;
+      }
+
+      setMockStartTime(Date.now());
+      setPage("mock");
+    }
+  }
+
+  useEffect(() => {
+    if (page === "sentence-setup") {
+      setAiSetupKind("sentence");
+    }
+
+    if (page === "email-setup") {
+      setAiSetupKind("email");
+    }
+
+    if (page === "discussion-setup") {
+      setAiSetupKind("discussion");
+    }
+
+    if (page === "mock-setup") {
+      setAiSetupKind("mock");
+    }
+
+    if (page === "sentence") {
+      try {
+        const stored = localStorage.getItem(GENERATED_SENTENCE_STORAGE_KEY);
+        if (stored) {
+          const generated = JSON.parse(stored) as Question[];
+          setQuestions(generated);
+          setSlotsByQuestion(createInitialSlots(generated));
+          setBankOrders(createBankOrders(generated));
+          setCurrentIndex(0);
+          setDragged(null);
+          setResults({});
+          setIsSubmitted(false);
+        }
+      } catch {
+        // Keep the current in-memory questions if the saved payload is invalid.
+      }
+
+      if (sentenceStartTime === null) {
+        setSentenceStartTime(Date.now());
+      }
+    }
+
+    if (page === "email") {
+      try {
+        const stored = localStorage.getItem(GENERATED_EMAIL_STORAGE_KEY);
+        if (stored) {
+          setCurrentEmailPrompt(JSON.parse(stored) as EmailPrompt);
+          setEmailAnswer("");
+          setEmailSubmitted(false);
+          setEmailFeedback(null);
+        }
+      } catch {
+        // Keep the current prompt if the saved payload is invalid.
+      }
+
+      if (emailStartTime === null) {
+        setEmailStartTime(Date.now());
+      }
+    }
+
+    if (page === "discussion") {
+      try {
+        const stored = localStorage.getItem(GENERATED_DISCUSSION_STORAGE_KEY);
+        if (stored) {
+          setCurrentDiscussionPrompt(JSON.parse(stored) as DiscussionPrompt);
+          setDiscussionAnswer("");
+          setDiscussionSubmitted(false);
+          setDiscussionFeedback(null);
+        }
+      } catch {
+        // Keep the current prompt if the saved payload is invalid.
+      }
+
+      if (discussionStartTime === null) {
+        setDiscussionStartTime(Date.now());
+      }
+    }
+
+    if (page === "mock") {
+      try {
+        const stored = localStorage.getItem(GENERATED_MOCK_STORAGE_KEY);
+        if (stored) {
+          const data = JSON.parse(stored) as MockTestData;
+          setMockTestData(data);
+          setMockSentenceSlots(createInitialSlots(data.sentenceQuestions));
+          setMockSentenceBanks(createBankOrders(data.sentenceQuestions));
+          setMockDragged(null);
+          setMockEmailAnswer("");
+          setMockDiscussionAnswer("");
+        }
+      } catch {
+        // Keep the current in-memory mock data if the saved payload is invalid.
+      }
+
+      if (mockStartTime === null) {
+        setMockStartTime(Date.now());
+      }
+    }
+  }, [page]);
 
   async function submitEmailWriting() {
     if (emailWordCount === 0) return;
@@ -2465,267 +2840,94 @@ async function submitMockTestWithAPI({
     }
   }
 
-  const cardStyle = {
-    padding: "26px",
-    border: "1px solid #e2e8f0",
-    borderRadius: "22px",
-    background: "#f8fafc",
-  };
-
-  const primaryButtonStyle: CSSProperties = {
-    padding: "12px 24px",
-    border: "none",
-    borderRadius: "12px",
-    background: "#111827",
-    color: "white",
-    fontWeight: 700,
-    cursor: "pointer",
-    minHeight: "44px",
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    textAlign: "center",
-    whiteSpace: "nowrap",
-  };
-
   return (
-    <div
-      style={{
-        width: "100%",
-        minHeight: "100vh",
-        background: "white",
-        padding: 0,
-        margin: 0,
-        fontFamily:
-          '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-        overflowX: "hidden",
-        overflowY: page === "mock" ? "hidden" : "auto",
-        boxSizing: "border-box",
-      }}
-    >
-      <div
-        style={{
-          width: "100%",
-          maxWidth:
-            page === "mock" || page === "sentence"
-              ? "1280px"
-              : "980px",
-          minHeight: page === "mock" ? "100vh" : "auto",
-          margin: "0 auto",
-          background: "white",
-          padding:
-            page === "mock" || page === "sentence"
-              ? "0"
-              : "40px",
-          borderRadius: 0,
-          boxShadow: "none",
-          boxSizing: "border-box",
-        }}
-      >
-        {page !== "mock" && (
-          <h1 style={{ fontSize: "36px", marginBottom: "10px" }}>
-            TOEFL Practice Lab
-          </h1>
-        )}
+    <main className="shell">
+      <aside className="sidebar" aria-label="Practice navigation">
+        <button
+          className="brand"
+          type="button"
+          onClick={() => setPage("home")}
+          aria-label="TOEFL Practice Lab home"
+        >
+          <span className="brand-mark">T</span>
+          <span>TOEFL Practice Lab</span>
+        </button>
 
-        {page === "home" && (
-          <>
-            <p style={{ color: "#64748b", marginBottom: "30px" }}>
-              练习新TOEFL写作版块。
-            </p>
+        <nav className="nav-list">
+          <div className="nav-section">
+            <span className="nav-label">主页</span>
+            <button
+              className={`nav-item ${page === "home" ? "active" : ""}`}
+              type="button"
+              onClick={() => setPage("home")}
+            >
+              Today
+            </button>
+          </div>
 
+          <div className="nav-section">
+            <span className="nav-label">AI 练习</span>
+            <button
+              className={`nav-item ${page === "sentence-setup" || page === "sentence" ? "active" : ""}`}
+              type="button"
+              onClick={() => openAiSetup("sentence")}
+            >
+              Build Sentence
+            </button>
+            <button
+              className={`nav-item ${page === "email-setup" || page === "email" ? "active" : ""}`}
+              type="button"
+              onClick={() => openAiSetup("email")}
+            >
+              Extended Email
+            </button>
+            <button
+              className={`nav-item ${page === "discussion-setup" || page === "discussion" ? "active" : ""}`}
+              type="button"
+              onClick={() => openAiSetup("discussion")}
+            >
+              Academic Discussion
+            </button>
+            <button
+              className={`nav-item ${page === "mock-setup" || page === "mock" || page === "mock-result" ? "active" : ""}`}
+              type="button"
+              disabled={isStartingMock}
+              onClick={() => openAiSetup("mock")}
+            >
+              Full Mock Test
+            </button>
+          </div>
 
-            <AuthPanel
-              user={user}
-              points={points}
-              authEmail={authEmail}
-              authPassword={authPassword}
-              authMessage={authMessage}
-              isAuthLoading={isAuthLoading}
-              redeemCode={redeemCode}
-              redeemMessage={redeemMessage}
-              isRedeeming={isRedeeming}
-              setAuthEmail={setAuthEmail}
-              setAuthPassword={setAuthPassword}
-              setRedeemCode={setRedeemCode}
-              onSignUp={handleSignUp}
-              onSignIn={handleSignIn}
-              onSignOut={handleSignOut}
-              onRedeemCode={handleRedeemCode}
-              onShowPointsModal={() => setShowPointsModal(true)}
-              onViewRecords={async () => {
-                setPage("records");
-                await loadPracticeRecords();
-              }}
-              onViewMockRecords={async () => {
-                await loadMockRecords();
-                setPage("mock-records");
-              }}
-              onViewAnalytics={async () => {
-                await loadMockRecords();
-                setPage("analytics");
-              }}
-            />
-            <AnnouncementBoard />
-
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
-                gap: "20px",
+          <div className="nav-section">
+            <span className="nav-label">真题 / 模拟题</span>
+            <button
+              className={`nav-item ${page === "past-exam" || page === "past-exam-detail" ? "active" : ""}`}
+              type="button"
+              onClick={() => {
+                setPageState("past-exam");
+                window.history.pushState({}, "", "/past-exam");
               }}
             >
-              <div style={cardStyle}>
-                <h2 style={{ marginTop: 0 }}>Build a Sentence</h2>
-                <p style={{ color: "#64748b", lineHeight: 1.7 }}>
-                  A/B 对话补全。根据语境把词块拖到横线上，训练句序、搭配和语法结构。
-                </p>
+              TOEFL Past Exam
+            </button>
+            <button
+              className={`nav-item ${page === "ets-mock-practice" || page === "ets-mock-detail" ? "active" : ""}`}
+              type="button"
+              onClick={() => {
+                setPageState("ets-mock-practice");
+                window.history.pushState({}, "", "/ets-mock-practice");
+              }}
+            >
+              ETS Mock Practice
+            </button>
+          </div>
 
-                <PracticeControls
-                  questionCount={questionCount}
-                  setQuestionCount={setQuestionCount}
-                  level={level}
-                  setLevel={setLevel}
-                  topic={topic}
-                  setTopic={setTopic}
-                  disabled={isLoading}
-                />
-
-                <button
-                  onClick={startNewPractice}
-                  disabled={isLoading}
-                  style={{
-                    ...primaryButtonStyle,
-                    background: isLoading ? "#cbd5e1" : "#111827",
-                    cursor: isLoading ? "not-allowed" : "pointer",
-                  }}
-                >
-                  {isLoading ? "正在生成..." : "开始练习"}
-                </button>
-              </div>
-
-              <div style={cardStyle}>
-                <h2 style={{ marginTop: 0 }}>Extended Email</h2>
-                <p style={{ color: "#64748b", lineHeight: 1.7 }}>
-                  练习 TOEFL 邮件写作。进入后自动随机生成邮件写作题，并提供 AI
-                  评分。
-                </p>
-                <p style={{ color: "#475569", fontWeight: 700 }}>
-                  AI 批改消耗：{EMAIL_SCORING_COST} points
-                </p>
-                <button
-                  onClick={startEmailPractice}
-                  disabled={isGeneratingEmailPrompt}
-                  style={{
-                    ...primaryButtonStyle,
-                    background: isGeneratingEmailPrompt ? "#cbd5e1" : "#111827",
-                    cursor: isGeneratingEmailPrompt ? "not-allowed" : "pointer",
-                  }}
-                >
-                  {isGeneratingEmailPrompt ? "正在生成..." : "进入邮件写作"}
-                </button>
-              </div>
-
-              <div style={cardStyle}>
-                <h2 style={{ marginTop: 0 }}>Academic Discussion</h2>
-                <p style={{ color: "#64748b", lineHeight: 1.7 }}>
-                  练习 TOEFL 学术讨论写作。进入后自动随机生成讨论题，并提供 AI
-                  评分。
-                </p>
-                <p style={{ color: "#475569", fontWeight: 700 }}>
-                  AI 批改消耗：{DISCUSSION_SCORING_COST} points
-                </p>
-
-                <button
-                  onClick={startDiscussionPractice}
-                  disabled={isGeneratingDiscussionPrompt}
-                  style={{
-                    ...primaryButtonStyle,
-                    background: isGeneratingDiscussionPrompt
-                      ? "#cbd5e1"
-                      : "#111827",
-                    cursor: isGeneratingDiscussionPrompt
-                      ? "not-allowed"
-                      : "pointer",
-                  }}
-                >
-                  {isGeneratingDiscussionPrompt ? "正在生成..." : "进入学术讨论"}
-                </button>
-              </div>
-              <div style={cardStyle}>
-                <h2 style={{ marginTop: 0 }}>Full Mock Test</h2>
-                <p style={{ color: "#64748b", lineHeight: 1.7 }}>
-                  完整完成 Build a Sentence、Extended Email 和 Academic Discussion，最后获得新 TOEFL 6 分制总分、知识点分析和备考建议。
-                </p>
-                <p style={{ color: "#475569", fontWeight: 700 }}>
-                  完整模考消耗：10 points
-                </p>
-                <button
-                  onClick={handleStartMockTest}
-                  disabled={isStartingMock}
-                  style={{
-                    ...primaryButtonStyle,
-                    background: isStartingMock ? "#cbd5e1" : "#111827",
-                    cursor: isStartingMock ? "not-allowed" : "pointer",
-                  }}
-                >
-                  {isStartingMock ? "正在生成模考..." : "开始完整模考"}
-                  </button>
-                  {mockMessage && (
-                    <p style={{ color: "#be123c", fontWeight: 700, marginBottom: 0 }}>
-                      {mockMessage}
-                    </p>
-                  )}
-                </div>
-                <div style={cardStyle}>
-                  <h2 style={{ marginTop: 0 }}>TOEFL Past Exam</h2>
-
-                  <p style={{ color: "#64748b", lineHeight: 1.7 }}>
-                    练习 TOEFL 改革真题，适合用于熟悉真实考试题型。
-                  </p>
-
-                  <button
-                    onClick={() => window.open("/past-exam", "_blank")}
-                    style={primaryButtonStyle}
-                  >
-                    进入真题练习
-                  </button>
-                </div>
-
-                <div style={cardStyle}>
-                  <h2 style={{ marginTop: 0 }}>ETS Mock Practice</h2>
-
-                  <p style={{ color: "#64748b", lineHeight: 1.7 }}>
-                    使用 ETS 官方模拟题进行写作练习。
-                  </p>
-
-                  <button
-                    onClick={() => window.open("/ets-mock-practice", "_blank")}
-                    style={primaryButtonStyle}
-                  >
-                    进入模拟真题
-                  </button>
-                </div>
-
-                {/* Card for viewing total practice sessions */}
-                <div style={cardStyle}>
-                  <h2 style={{ marginTop: 0 }}>总练习记录</h2>
-                  <p style={{ color: "#64748b", lineHeight: 1.7 }}>
-                    查看所有练习的耗时、得分与日期汇总。
-                  </p>
-                  <button
-                    onClick={() => {
-                      setPage("practice-sessions");
-                    }}
-                    style={primaryButtonStyle}
-                  >
-                    查看练习总记录
-                  </button>
-                </div>
-            </div>
-
-            <ImprovementBanner
-              onOpen={() => {
+          <div className="nav-section">
+            <span className="nav-label">提分工具箱</span>
+            <button
+              className={`nav-item ${page.startsWith("improvement") ? "active" : ""}`}
+              type="button"
+              onClick={() => {
                 if (!user) {
                   alert("请先登录后再使用提分百宝箱。");
                   return;
@@ -2733,12 +2935,125 @@ async function submitMockTestWithAPI({
 
                 if (!hasImprovementAccess) {
                   setShowImprovementContact(true);
+                  setPage("home");
                   return;
                 }
 
-                window.open("/improvement", "_blank");
+                setPage("improvement");
               }}
-            />
+            >
+              Toolbox
+            </button>
+          </div>
+
+          <div className="nav-section">
+            <span className="nav-label">记录分析</span>
+            <button
+              className={`nav-item ${page === "records" ? "active" : ""}`}
+              type="button"
+              onClick={async () => {
+                setPage("records");
+                await loadPracticeRecords();
+              }}
+            >
+              Review
+            </button>
+            <button
+              className={`nav-item ${page === "analytics" ? "active" : ""}`}
+              type="button"
+              onClick={async () => {
+                await loadMockRecords();
+                setPage("analytics");
+              }}
+            >
+              Analytics
+            </button>
+            <button
+              className={`nav-item ${page === "practice-sessions" ? "active" : ""}`}
+              type="button"
+              onClick={() => setPage("practice-sessions")}
+            >
+              Sessions
+            </button>
+          </div>
+        </nav>
+
+        <div className="sidebar-note">
+          <span className="note-label">Current balance</span>
+          <strong>{user ? `${points} points` : "Sign in to practice"}</strong>
+        </div>
+      </aside>
+
+      <section className={`workspace page-${page}`}>
+        {page !== "mock" && (
+          <h1
+            style={
+              page === "home"
+                ? {
+                    fontSize: "48px",
+                    lineHeight: 1.04,
+                    fontWeight: 700,
+                    color: "#000000",
+                    margin: "0 0 14px",
+                    maxWidth: "780px",
+                  }
+                : { fontSize: "36px", marginBottom: "10px" }
+            }
+          >
+            TOEFL Practice Lab
+          </h1>
+        )}
+
+        {page === "home" && (
+          <>
+            <div className="home-layout">
+              <div className="home-main">
+                <p className="home-lede">练习新 TOEFL 写作版块。</p>
+
+                <AnnouncementBoard />
+
+                <ExamGoalPanel
+                  examDate={examDate}
+                  targetScore={targetScore}
+                  daysUntilExam={daysUntilExam}
+                  setExamDate={setExamDate}
+                  setTargetScore={setTargetScore}
+                />
+              </div>
+
+              <aside className="practice-dock" aria-label="Account panel">
+                <div className="panel-heading">
+                  <div>
+                    <h2>账号与兑换</h2>
+                  </div>
+                </div>
+
+                <AuthPanel
+                  user={user}
+                  points={points}
+                  authEmail={authEmail}
+                  authPassword={authPassword}
+                  authMessage={authMessage}
+                  isAuthLoading={isAuthLoading}
+                  redeemCode={redeemCode}
+                  redeemMessage={redeemMessage}
+                  isRedeeming={isRedeeming}
+                  setAuthEmail={setAuthEmail}
+                  setAuthPassword={setAuthPassword}
+                  setRedeemCode={setRedeemCode}
+                  onSignUp={handleSignUp}
+                  onSignIn={handleSignIn}
+                  onSignOut={handleSignOut}
+                  onRedeemCode={handleRedeemCode}
+                  onShowPointsModal={() => setShowPointsModal(true)}
+                  onViewAnalytics={async () => {
+                    await loadMockRecords();
+                    setPage("analytics");
+                  }}
+                />
+              </aside>
+            </div>
+
             {showImprovementContact && (
               <div
                 style={{
@@ -2759,6 +3074,34 @@ async function submitMockTestWithAPI({
             )}
           </>
 
+        )}
+
+        {(page === "sentence-setup" ||
+          page === "email-setup" ||
+          page === "discussion-setup" ||
+          page === "mock-setup") && (
+          <AiPracticeSetupPage
+            kind={aiSetupKind}
+            isGenerating={
+              aiGenerationStatus === "generating" ||
+              isLoading ||
+              isGeneratingEmailPrompt ||
+              isGeneratingDiscussionPrompt
+            }
+            generationStatus={aiGenerationStatus}
+            generationProgress={aiGenerationProgress}
+            generationMessage={aiGenerationMessage}
+            startGeneration={
+              aiSetupKind === "sentence"
+                ? startNewPractice
+                : aiSetupKind === "email"
+                  ? startEmailPractice
+                  : aiSetupKind === "discussion"
+                    ? startDiscussionPractice
+                    : handleStartMockTest
+            }
+            enterPractice={() => confirmEnterAiPractice(aiSetupKind)}
+          />
         )}
 
         {page === "sentence" && (
@@ -2793,7 +3136,6 @@ async function submitMockTestWithAPI({
         {page === "email" && (
             <WritingPracticePage
               title={currentEmailPrompt.title}
-              submitCost={EMAIL_SCORING_COST}
               isGenerating={isGeneratingEmailPrompt}
               onGenerateNew={generateNewEmailPrompt}
               promptBlock={
@@ -2849,7 +3191,6 @@ async function submitMockTestWithAPI({
         {page === "discussion" && (
             <WritingPracticePage
             title={currentDiscussionPrompt.title}
-            submitCost={DISCUSSION_SCORING_COST}
             isGenerating={isGeneratingDiscussionPrompt}
             onGenerateNew={generateNewDiscussionPrompt}
             promptBlock={
@@ -3215,101 +3556,179 @@ async function submitMockTestWithAPI({
           />
         )}
 
-      </div>
+      </section>
        {showPointsModal && (
 
         <PointsModal onClose={() => setShowPointsModal(false)} />
 
       )}
-    </div>
+    </main>
   );
 }
 
-function PracticeControls({
-  questionCount,
-  setQuestionCount,
-  level,
-  setLevel,
-  topic,
-  setTopic,
-  disabled,
-  hideCount,
+function ExamGoalPanel({
+  examDate,
+  targetScore,
+  daysUntilExam,
+  setExamDate,
+  setTargetScore,
 }: {
-  questionCount: number;
-  setQuestionCount: (count: number) => void;
-  level: string;
-  setLevel: (level: string) => void;
-  topic: string;
-  setTopic: (topic: string) => void;
-  disabled: boolean;
-  hideCount?: boolean;
+  examDate: string;
+  targetScore: string;
+  daysUntilExam: number | null;
+  setExamDate: (value: string) => void;
+  setTargetScore: (value: string) => void;
 }) {
+  const dayText =
+    daysUntilExam === null
+      ? "Set date"
+      : daysUntilExam > 0
+        ? `${daysUntilExam} days`
+        : daysUntilExam === 0
+          ? "Today"
+          : "Past date";
+
   return (
-    <div
-      style={{
-        display: "flex",
-        flexWrap: "wrap",
-        gap: "10px",
-        marginBottom: "18px",
-      }}
-    >
-      {!hideCount && (
-        <select
-          value={questionCount}
-          onChange={(e) => setQuestionCount(Number(e.target.value))}
-          disabled={disabled}
-          style={{
-            padding: "10px 14px",
-            border: "1px solid #cbd5e1",
-            borderRadius: "12px",
-            background: "white",
-            fontWeight: 700,
-          }}
+    <section className="exam-goal-panel">
+      <div className="panel-heading">
+        <div>
+          <p className="eyebrow">Exam Goal</p>
+          <h2>考试目标</h2>
+        </div>
+      </div>
+
+      <div className="goal-form">
+        <label>
+          <span>考试日期</span>
+          <input
+            type="date"
+            value={examDate}
+            onChange={(event) => setExamDate(event.target.value)}
+          />
+        </label>
+
+        <label>
+          <span>目标分数</span>
+          <input
+            type="number"
+            min="0"
+            max="120"
+            placeholder="100"
+            value={targetScore}
+            onChange={(event) => setTargetScore(event.target.value)}
+          />
+        </label>
+      </div>
+
+      <div className="goal-summary">
+        <div>
+          <span>距离考试</span>
+          <strong>{dayText}</strong>
+        </div>
+        <div>
+          <span>目标分数</span>
+          <strong>{targetScore ? `${targetScore}` : "Not set"}</strong>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function AiPracticeSetupPage({
+  kind,
+  isGenerating,
+  generationStatus,
+  generationProgress,
+  generationMessage,
+  startGeneration,
+  enterPractice,
+}: {
+  kind: AiPracticeKind;
+  isGenerating: boolean;
+  generationStatus: AiGenerationStatus;
+  generationProgress: number;
+  generationMessage: string;
+  startGeneration: () => void;
+  enterPractice: () => void;
+}) {
+  const config = {
+    sentence: {
+      eyebrow: "AI Practice",
+      title: "Build a Sentence",
+      description:
+        "根据 A/B 对话语境补全句子，通过词块排序训练句法、搭配和语法结构。",
+      button: "生成句子题组",
+      ready: "进入 Build a Sentence",
+      cost: `${SENTENCE_GENERATION_COST} points · 生成题目与批改`,
+    },
+    email: {
+      eyebrow: "AI Writing",
+      title: "Extended Email",
+      description:
+        "生成一封 TOEFL 邮件写作题，完成后可提交 AI 批改并获得反馈。",
+      button: "生成邮件写作题",
+      ready: "进入邮件写作",
+      cost: `${EMAIL_SCORING_COST} points · 生成题目与批改`,
+    },
+    discussion: {
+      eyebrow: "AI Writing",
+      title: "Academic Discussion",
+      description:
+        "生成学术讨论场景、学生观点和作答问题，训练观点展开与语言组织。",
+      button: "生成学术讨论题",
+      ready: "进入学术讨论",
+      cost: `${DISCUSSION_SCORING_COST} points · 生成题目与批改`,
+    },
+    mock: {
+      eyebrow: "AI Mock",
+      title: "Full Mock Test",
+      description:
+        "生成完整模考，包含 Build a Sentence、Extended Email 和 Academic Discussion 三部分。",
+      button: "生成完整模考",
+      ready: "进入完整模考",
+      cost: "10 points · 生成完整模考",
+    },
+  }[kind];
+
+  return (
+    <section className="ai-setup-page">
+      <div className="ai-setup-copy">
+        <p className="eyebrow">{config.eyebrow}</p>
+        <h2>{config.title}</h2>
+        <p>{config.description}</p>
+        <span>{config.cost}</span>
+      </div>
+
+      <div className="ai-setup-card">
+        <button
+          type="button"
+          onClick={startGeneration}
+          disabled={isGenerating}
+          className="setup-primary-button"
         >
-          <option value={5}>5题</option>
-          <option value={10}>10题</option>
-        </select>
-      )}
+          {isGenerating ? "正在生成..." : config.button}
+        </button>
 
-      <select
-        value={level}
-        onChange={(e) => setLevel(e.target.value)}
-        disabled={disabled}
-        style={{
-          padding: "10px 14px",
-          border: "1px solid #cbd5e1",
-          borderRadius: "12px",
-          background: "white",
-          fontWeight: 700,
-        }}
-      >
-        <option value="Mixed">Mixed</option>
-        <option value="Easy">Easy</option>
-        <option value="Medium">Medium</option>
-        <option value="Hard">Hard</option>
-      </select>
+        {generationStatus !== "idle" && (
+          <div className="generation-panel">
+            <div className="generation-track" aria-hidden="true">
+              <span style={{ width: `${generationProgress}%` }} />
+            </div>
+            <p>{generationMessage || "正在准备题目..."}</p>
+          </div>
+        )}
 
-      <select
-        value={topic}
-        onChange={(e) => setTopic(e.target.value)}
-        disabled={disabled}
-        style={{
-          padding: "10px 14px",
-          border: "1px solid #cbd5e1",
-          borderRadius: "12px",
-          background: "white",
-          fontWeight: 700,
-        }}
-      >
-        <option value="Mixed">Mixed</option>
-        <option value="Travel">Travel</option>
-        <option value="Campus Life">Campus Life</option>
-        <option value="Academic Discussion">Academic Discussion</option>
-        <option value="Technology">Technology</option>
-        <option value="Environment">Environment</option>
-        <option value="Health">Health</option>
-      </select>
-    </div>
+        {generationStatus === "ready" && (
+          <div className="ready-panel">
+            <strong>题目准备好了</strong>
+            <p>点击进入后会打开新的做题网页，计时也会从进入页面后开始。</p>
+            <button type="button" onClick={enterPractice}>
+              {config.ready}
+            </button>
+          </div>
+        )}
+      </div>
+    </section>
   );
 }
 
@@ -3409,7 +3828,7 @@ function SentencePractice({
           gap: "16px",
           marginBottom: "24px",
           padding: "20px",
-          background: "#075985",
+          background: "#006b67",
           borderRadius: "20px",
           color: "white",
           flexWrap: "wrap",
@@ -3744,7 +4163,6 @@ function SentencePractice({
 
 function WritingPracticePage({
   title,
-  submitCost,
   isGenerating,
   onGenerateNew,
   promptBlock,
@@ -3760,7 +4178,6 @@ function WritingPracticePage({
   elapsedSeconds,
 }: {
   title: string;
-  submitCost: number;
   isGenerating: boolean;
   onGenerateNew: () => void;
   promptBlock: ReactNode;
@@ -3783,7 +4200,7 @@ function WritingPracticePage({
   // background with a soft border and shadow.  If you later decide to wrap
   // the content in a card, you can reuse the `cardStyle` constant.
   const headerCardStyle = {
-    background: "#075985",
+    background: "#006b67",
     color: "white",
     borderRadius: "20px",
     padding: "20px",
@@ -3919,7 +4336,7 @@ function WritingPracticePage({
             Word Count: {wordCount}
           </span>
           <div style={{ color: "#64748b", fontSize: "14px", marginTop: "6px" }}>
-            AI scoring costs {submitCost} points.
+            生成题目时已包含 AI 批改积分。
           </div>
         </div>
 
@@ -3942,7 +4359,7 @@ function WritingPracticePage({
                 : "pointer",
           }}
         >
-          {isScoring ? "正在评分..." : `提交并查看反馈（-${submitCost} points）`}
+          {isScoring ? "正在评分..." : "提交并查看反馈"}
         </button>
       </div>
 
@@ -4105,9 +4522,7 @@ function AuthPanel({
   onSignIn,
   onSignOut,
   onRedeemCode,
-  onViewRecords,
   onShowPointsModal,
-  onViewMockRecords,
   onViewAnalytics,
 }: {
   user: User | null;
@@ -4126,40 +4541,69 @@ function AuthPanel({
   onSignIn: () => void;
   onSignOut: () => void;
   onRedeemCode: () => void;
-  onViewRecords:()=> void;
   onShowPointsModal: () => void;
-  onViewMockRecords: () => void;
   onViewAnalytics: () => void;
 }) {
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [isSignUpModalOpen, setIsSignUpModalOpen] = useState(false);
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [signUpMessage, setSignUpMessage] = useState("");
+
+  const compactButtonStyle: CSSProperties = {
+    padding: "12px 18px",
+    border: "1px solid #eeeeee",
+    borderRadius: "999px",
+    background: "#f4f4f2",
+    color: "#000000",
+    fontWeight: 700,
+    cursor: "pointer",
+    fontSize: "15px",
+    minHeight: "48px",
+  };
+
+  const compactInputStyle: CSSProperties = {
+    width: "100%",
+    border: "1px solid #d8d8d5",
+    borderRadius: "999px",
+    padding: "11px 12px",
+    fontSize: "14px",
+    boxSizing: "border-box",
+    background: "#ffffff",
+    color: "#171717",
+  };
+
+  function openSignUpModal() {
+    setSignUpMessage("");
+    setConfirmPassword("");
+    setIsAuthModalOpen(false);
+    setIsSignUpModalOpen(true);
+  }
+
+  function handleCreateAccount() {
+    if (authPassword !== confirmPassword) {
+      setSignUpMessage("Passwords do not match.");
+      return;
+    }
+
+    setSignUpMessage("");
+    onSignUp();
+  }
+
   return (
     <section
       style={{
-        background: "#ffffff",
-        border: "1px solid #e5e7eb",
-        borderRadius: "24px",
+        background: "#f4f4f2",
+        border: "1px solid #eeeeee",
+        borderRadius: "6px",
         padding: "24px",
-        marginBottom: "24px",
-        boxShadow: "0 10px 30px rgba(15, 23, 42, 0.06)",
+        marginBottom: "22px",
       }}
     >
-      <div
-        style={{
-          fontSize: "13px",
-          fontWeight: 700,
-          color: "#64748b",
-          marginBottom: "8px",
-          textTransform: "uppercase",
-          letterSpacing: "0.08em",
-        }}
-      >
-        Account
-      </div>
-
       {user ? (
         <>
-          <h2 style={{ marginTop: 0 }}>Welcome back</h2>
-          <p style={{ color: "#64748b" }}>Signed in as {user.email}</p>
-          <p style={{ color: "#64748b", fontWeight: 700 }}>
+          <h2 style={{ marginTop: 0, color: "#171717", fontSize: "20px" }}>Welcome back</h2>
+          <p style={{ color: "#696863" }}>Signed in as {user.email}</p>
+          <p style={{ color: "#55515f", fontWeight: 650 }}>
             Current points: {points}
           </p>
           {/* Ability analysis section - show after points balance */}
@@ -4168,35 +4612,32 @@ function AuthPanel({
               marginTop: "16px",
               marginBottom: "16px",
               padding: "16px",
-              border: "1px solid #d8dee8",
-              borderRadius: "14px",
-              background: "#f5f5f7",
+              border: "1px solid #e7e5e1",
+              borderRadius: "8px",
+              background: "#ffffff",
             }}
           >
-            <h3 style={{ marginTop: 0, marginBottom: "8px" }}>能力分析</h3>
+            <h3 style={{ marginTop: 0, marginBottom: "8px", color: "#171717" }}>Ability analysis</h3>
             <p
               style={{
-                color: "#64748b",
+                color: "#696863",
                 lineHeight: 1.6,
                 marginBottom: "12px",
               }}
             >
-              查看你的练习记录并获取薄弱项分析和学习建议。
+              Review your practice records and get study recommendations.
             </p>
             <button
               type="button"
               onClick={onViewAnalytics}
               style={{
-                padding: "8px 14px",
-                border: "none",
-                borderRadius: "12px",
-                background: "#111827",
-                color: "white",
-                fontWeight: 700,
-                cursor: "pointer",
+                ...compactButtonStyle,
+                borderColor: "#171717",
+                background: "#171717",
+                color: "#ffffff",
               }}
             >
-              查看能力分析
+              View analysis
             </button>
           </div>
           {/*
@@ -4210,20 +4651,13 @@ function AuthPanel({
           */}
           {(() => {
             const accountButtonStyle: CSSProperties = {
-              padding: "10px 16px",
-              border: "1px solid #d8dee8",
-              borderRadius: "14px",
-              background: "#f5f5f7",
-              color: "#111827",
-              fontWeight: 700,
-              cursor: "pointer",
-              fontSize: "14px",
+              ...compactButtonStyle,
             };
             const accountPrimaryButtonStyle: CSSProperties = {
               ...accountButtonStyle,
-              border: "none",
-              background: "#111827",
-              color: "white",
+              border: "1px solid #171717",
+              background: "#171717",
+              color: "#ffffff",
             };
             return (
               <>
@@ -4262,12 +4696,7 @@ function AuthPanel({
                     placeholder="Enter redeem code"
                     type="text"
                     style={{
-                      width: "100%",
-                      border: "1px solid #d8dee8",
-                      borderRadius: "14px",
-                      padding: "12px 14px",
-                      fontSize: "14px",
-                      boxSizing: "border-box",
+                      ...compactInputStyle,
                       textTransform: "uppercase",
                     }}
                   />
@@ -4278,7 +4707,8 @@ function AuthPanel({
                     disabled={isRedeeming}
                     style={{
                       ...accountPrimaryButtonStyle,
-                      background: isRedeeming ? "#cbd5e1" : accountPrimaryButtonStyle.background,
+                      background: isRedeeming ? "#d8d5cf" : accountPrimaryButtonStyle.background,
+                      borderColor: isRedeeming ? "#d8d5cf" : "#171717",
                       cursor: isRedeeming ? "not-allowed" : accountPrimaryButtonStyle.cursor,
                     }}
                   >
@@ -4287,7 +4717,7 @@ function AuthPanel({
                 </div>
 
                 {redeemMessage && (
-                  <p style={{ color: "#64748b", marginTop: "12px" }}>{redeemMessage}</p>
+                  <p style={{ color: "#696863", marginTop: "12px" }}>{redeemMessage}</p>
                 )}
 
                 {/* Additional actions */}
@@ -4299,22 +4729,6 @@ function AuthPanel({
                     marginTop: "16px",
                   }}
                 >
-                  <button
-                    type="button"
-                    onClick={onViewMockRecords}
-                    style={accountButtonStyle}
-                  >
-                    View Mock Records
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={onViewRecords}
-                    style={accountButtonStyle}
-                  >
-                    View Practice Records
-                  </button>
-
                   <button
                     type="button"
                     onClick={onSignOut}
@@ -4341,71 +4755,403 @@ function AuthPanel({
         </>
       ) : (
         <>
-          <h2 style={{ marginTop: 0 }}>Sign in to use your points</h2>
-          <p style={{ color: "#64748b" }}>
-            Create an account or sign in before using practice credits.
-          </p>
-
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-              gap: "12px",
-              marginTop: "16px",
-            }}
-          >
-            <input
-              value={authEmail}
-              onChange={(event) => setAuthEmail(event.target.value)}
-              placeholder="Email"
-              type="email"
-              style={{
-                width: "100%",
-                border: "1px solid #d8dee8",
-                borderRadius: "14px",
-                padding: "12px 14px",
-                fontSize: "14px",
-                boxSizing: "border-box",
-              }}
-            />
-
-            <input
-              value={authPassword}
-              onChange={(event) => setAuthPassword(event.target.value)}
-              placeholder="Password"
-              type="password"
-              style={{
-                width: "100%",
-                border: "1px solid #d8dee8",
-                borderRadius: "14px",
-                padding: "12px 14px",
-                fontSize: "14px",
-                boxSizing: "border-box",
-              }}
-            />
-          </div>
-
           <div
             style={{
               display: "flex",
-              gap: "12px",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: "18px",
               flexWrap: "wrap",
-              marginTop: "14px",
             }}
           >
-            <button type="button" onClick={onSignIn} disabled={isAuthLoading}>
-              Sign in
-            </button>
+            <div>
+              <h2
+                style={{
+                  margin: "0 0 8px",
+                  color: "#000000",
+                  fontSize: "28px",
+                  lineHeight: 1.15,
+                }}
+              >
+                Sign in to use your points
+              </h2>
+              <p style={{ color: "#333333" }}>
+                Log in before using practice credits and saved records.
+              </p>
+            </div>
 
-            <button type="button" onClick={onSignUp} disabled={isAuthLoading}>
-              Sign up
+            <button
+              type="button"
+              onClick={() => setIsAuthModalOpen(true)}
+              style={{
+                ...compactButtonStyle,
+                minWidth: "132px",
+                background: "#000000",
+                borderColor: "#000000",
+                color: "#ffffff",
+              }}
+            >
+              Log in
             </button>
           </div>
 
           {authMessage && (
-            <p style={{ color: "#64748b", marginTop: "14px" }}>
+            <p style={{ color: "#696863", marginTop: "14px" }}>
               {authMessage}
             </p>
+          )}
+
+          {isAuthModalOpen && (
+            <div
+              role="presentation"
+              onClick={() => setIsAuthModalOpen(false)}
+              style={{
+                position: "fixed",
+                inset: 0,
+                zIndex: 50,
+                display: "grid",
+                placeItems: "center",
+                padding: "24px",
+                background: "rgba(0, 0, 0, 0.34)",
+                backdropFilter: "blur(10px)",
+              }}
+            >
+              <section
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="auth-dialog-title"
+                onClick={(event) => event.stopPropagation()}
+                style={{
+                  width: "min(100%, 460px)",
+                  border: "1px solid #e5e5e5",
+                  borderRadius: "24px",
+                  background: "#ffffff",
+                  padding: "28px",
+                  boxShadow: "0 24px 80px rgba(0, 0, 0, 0.22)",
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "flex-start",
+                    justifyContent: "space-between",
+                    gap: "16px",
+                    marginBottom: "22px",
+                  }}
+                >
+                  <div>
+                    <p
+                      style={{
+                        margin: "0 0 8px",
+                        color: "#666666",
+                        fontSize: "13px",
+                        fontWeight: 700,
+                        letterSpacing: "0.08em",
+                        textTransform: "uppercase",
+                      }}
+                    >
+                      Account
+                    </p>
+                    <h2
+                      id="auth-dialog-title"
+                      style={{
+                        margin: 0,
+                        color: "#000000",
+                        fontSize: "30px",
+                        lineHeight: 1.1,
+                        fontWeight: 700,
+                      }}
+                    >
+                      Welcome back
+                    </h2>
+                  </div>
+
+                  <button
+                    type="button"
+                    aria-label="Close login dialog"
+                    onClick={() => setIsAuthModalOpen(false)}
+                    style={{
+                      width: "36px",
+                      height: "36px",
+                      border: "1px solid #eeeeee",
+                      borderRadius: "999px",
+                      background: "#f4f4f2",
+                      color: "#000000",
+                      cursor: "pointer",
+                      fontSize: "20px",
+                      lineHeight: 1,
+                    }}
+                  >
+                    ×
+                  </button>
+                </div>
+
+                <div style={{ display: "grid", gap: "12px" }}>
+                  <input
+                    value={authEmail}
+                    onChange={(event) => setAuthEmail(event.target.value)}
+                    placeholder="Email"
+                    type="email"
+                    style={{
+                      ...compactInputStyle,
+                      borderRadius: "14px",
+                      padding: "14px 16px",
+                    }}
+                  />
+
+                  <input
+                    value={authPassword}
+                    onChange={(event) => setAuthPassword(event.target.value)}
+                    placeholder="Password"
+                    type="password"
+                    style={{
+                      ...compactInputStyle,
+                      borderRadius: "14px",
+                      padding: "14px 16px",
+                    }}
+                  />
+                </div>
+
+                <div
+                  style={{
+                    display: "grid",
+                    gap: "10px",
+                    marginTop: "18px",
+                  }}
+                >
+                  <button
+                    type="button"
+                    onClick={onSignIn}
+                    disabled={isAuthLoading}
+                    style={{
+                      ...compactButtonStyle,
+                      width: "100%",
+                      background: isAuthLoading ? "#9ca3af" : "#000000",
+                      borderColor: isAuthLoading ? "#9ca3af" : "#000000",
+                      color: "#ffffff",
+                    }}
+                  >
+                    {isAuthLoading ? "Signing in..." : "Sign in"}
+                  </button>
+
+                  <p
+                    style={{
+                      margin: "4px 0 0",
+                      color: "#666666",
+                      fontSize: "14px",
+                      textAlign: "center",
+                    }}
+                  >
+                    No account?
+                    <button
+                      type="button"
+                      onClick={openSignUpModal}
+                      disabled={isAuthLoading}
+                      style={{
+                        marginLeft: "6px",
+                        padding: 0,
+                        border: "none",
+                        background: "transparent",
+                        color: "#000000",
+                        font: "inherit",
+                        fontWeight: 700,
+                        cursor: isAuthLoading ? "not-allowed" : "pointer",
+                        textDecoration: "underline",
+                        textUnderlineOffset: "3px",
+                      }}
+                    >
+                      Sign up
+                    </button>
+                  </p>
+                </div>
+
+                {authMessage && (
+                  <p style={{ color: "#696863", margin: "14px 0 0" }}>
+                    {authMessage}
+                  </p>
+                )}
+              </section>
+            </div>
+          )}
+
+          {isSignUpModalOpen && (
+            <div
+              role="presentation"
+              onClick={() => setIsSignUpModalOpen(false)}
+              style={{
+                position: "fixed",
+                inset: 0,
+                zIndex: 50,
+                display: "grid",
+                placeItems: "center",
+                padding: "24px",
+                background: "rgba(0, 0, 0, 0.34)",
+                backdropFilter: "blur(10px)",
+              }}
+            >
+              <section
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="signup-dialog-title"
+                onClick={(event) => event.stopPropagation()}
+                style={{
+                  width: "min(100%, 460px)",
+                  border: "1px solid #e5e5e5",
+                  borderRadius: "24px",
+                  background: "#ffffff",
+                  padding: "28px",
+                  boxShadow: "0 24px 80px rgba(0, 0, 0, 0.22)",
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "flex-start",
+                    justifyContent: "space-between",
+                    gap: "16px",
+                    marginBottom: "22px",
+                  }}
+                >
+                  <div>
+                    <p
+                      style={{
+                        margin: "0 0 8px",
+                        color: "#666666",
+                        fontSize: "13px",
+                        fontWeight: 700,
+                        letterSpacing: "0.08em",
+                        textTransform: "uppercase",
+                      }}
+                    >
+                      Account
+                    </p>
+                    <h2
+                      id="signup-dialog-title"
+                      style={{
+                        margin: 0,
+                        color: "#000000",
+                        fontSize: "30px",
+                        lineHeight: 1.1,
+                        fontWeight: 700,
+                      }}
+                    >
+                      Create your account
+                    </h2>
+                  </div>
+
+                  <button
+                    type="button"
+                    aria-label="Close sign up dialog"
+                    onClick={() => setIsSignUpModalOpen(false)}
+                    style={{
+                      width: "36px",
+                      height: "36px",
+                      border: "1px solid #eeeeee",
+                      borderRadius: "999px",
+                      background: "#f4f4f2",
+                      color: "#000000",
+                      cursor: "pointer",
+                      fontSize: "20px",
+                      lineHeight: 1,
+                    }}
+                  >
+                    ×
+                  </button>
+                </div>
+
+                <div style={{ display: "grid", gap: "12px" }}>
+                  <input
+                    value={authEmail}
+                    onChange={(event) => setAuthEmail(event.target.value)}
+                    placeholder="Email"
+                    type="email"
+                    style={{
+                      ...compactInputStyle,
+                      borderRadius: "14px",
+                      padding: "14px 16px",
+                    }}
+                  />
+
+                  <input
+                    value={authPassword}
+                    onChange={(event) => setAuthPassword(event.target.value)}
+                    placeholder="Password"
+                    type="password"
+                    style={{
+                      ...compactInputStyle,
+                      borderRadius: "14px",
+                      padding: "14px 16px",
+                    }}
+                  />
+
+                  <input
+                    value={confirmPassword}
+                    onChange={(event) => setConfirmPassword(event.target.value)}
+                    placeholder="Confirm password"
+                    type="password"
+                    style={{
+                      ...compactInputStyle,
+                      borderRadius: "14px",
+                      padding: "14px 16px",
+                    }}
+                  />
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleCreateAccount}
+                  disabled={isAuthLoading}
+                  style={{
+                    ...compactButtonStyle,
+                    width: "100%",
+                    marginTop: "18px",
+                    background: isAuthLoading ? "#9ca3af" : "#000000",
+                    borderColor: isAuthLoading ? "#9ca3af" : "#000000",
+                    color: "#ffffff",
+                  }}
+                >
+                  {isAuthLoading ? "Creating account..." : "Create account"}
+                </button>
+
+                <p
+                  style={{
+                    margin: "14px 0 0",
+                    color: "#666666",
+                    fontSize: "14px",
+                    textAlign: "center",
+                  }}
+                >
+                  Already have an account?
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsSignUpModalOpen(false);
+                      setIsAuthModalOpen(true);
+                    }}
+                    style={{
+                      marginLeft: "6px",
+                      padding: 0,
+                      border: "none",
+                      background: "transparent",
+                      color: "#000000",
+                      font: "inherit",
+                      fontWeight: 700,
+                      cursor: "pointer",
+                      textDecoration: "underline",
+                      textUnderlineOffset: "3px",
+                    }}
+                  >
+                    Sign in
+                  </button>
+                </p>
+
+                {(signUpMessage || authMessage) && (
+                  <p style={{ color: "#696863", margin: "14px 0 0" }}>
+                    {signUpMessage || authMessage}
+                  </p>
+                )}
+              </section>
+            </div>
           )}
         </>
       )}
@@ -5013,7 +5759,7 @@ function MockTestPage({
   // padding/radius to echo the minimalist, rounded look in the sample exam
   // screenshots.
   const headerCardStyle = {
-    background: "#075985",
+    background: "#006b67",
     color: "white",
     borderRadius: "0",
     padding: "12px 28px",
@@ -6884,104 +7630,6 @@ function MockRecordDetailPage({
   );
 }
 
-function ImprovementBanner({ onOpen }: { onOpen: () => void }) {
-  return (
-    <section
-      style={{
-        marginTop: "36px",
-        borderRadius: "30px",
-        padding: "30px",
-        background:
-          "linear-gradient(135deg, #111827 0%, #1e293b 45%, #2563eb 100%)",
-        color: "white",
-        boxShadow: "0 24px 60px rgba(15, 23, 42, 0.22)",
-        overflow: "hidden",
-        position: "relative",
-      }}
-    >
-      <div
-        style={{
-          position: "absolute",
-          width: "220px",
-          height: "220px",
-          borderRadius: "999px",
-          background: "rgba(255,255,255,0.12)",
-          right: "-70px",
-          top: "-80px",
-        }}
-      />
-
-      <div
-        style={{
-          position: "absolute",
-          width: "140px",
-          height: "140px",
-          borderRadius: "999px",
-          background: "rgba(96, 165, 250, 0.28)",
-          right: "90px",
-          bottom: "-70px",
-        }}
-      />
-
-      <div
-        style={{
-          position: "relative",
-          display: "grid",
-          gridTemplateColumns: "1.4fr auto",
-          gap: "24px",
-          alignItems: "center",
-        }}
-      >
-        <div>
-          <p
-            style={{
-              margin: "0 0 10px",
-              fontSize: "20px",
-              fontWeight: 800,
-              letterSpacing: "0.20em",
-              textTransform: "uppercase",
-              color: "#bfdbfe",
-            }}
-          >
-            Improvement Toolbox
-          </p>
-
-
-
-          <p
-            style={{
-              margin: "14px 0 0",
-              maxWidth: "620px",
-              color: "#dbeafe",
-              lineHeight: 1.8,
-              fontSize: "14px",
-            }}
-          >
-            使用AI驱动的工具帮助提高新TOEFL写作能力。
-          </p>
-        </div>
-
-        <button
-          type="button"
-          onClick={onOpen}
-          style={{
-            border: "none",
-            borderRadius: "999px",
-            background: "white",
-            color: "#111827",
-            padding: "14px 22px",
-            fontWeight: 900,
-            cursor: "pointer",
-            boxShadow: "0 12px 30px rgba(15, 23, 42, 0.25)",
-            whiteSpace: "nowrap",
-          }}
-        >
-          进入提分百宝箱 →
-        </button>
-      </div>
-    </section>
-  );
-}
 function ImprovementPage({
   user,
   points,
@@ -9762,12 +10410,12 @@ function AnnouncementBoard() {
   return (
     <section
       style={{
-        background: "linear-gradient(135deg, #eef2ff, #ffffff)",
-        border: "1px solid #c7d2fe",
-        borderRadius: "22px",
-        padding: "24px",
-        marginBottom: "28px",
-        boxShadow: "0 10px 30px rgba(15, 23, 42, 0.06)",
+        background: "#fbfbfa",
+        border: "1px solid #e7e5e1",
+        borderRadius: "10px",
+        padding: "18px",
+        marginBottom: "12px",
+        boxShadow: "0 1px 1px rgba(20, 20, 20, 0.03)",
       }}
     >
       <div
@@ -9781,35 +10429,36 @@ function AnnouncementBoard() {
         }}
       >
         <div>
-          <h2 style={{ margin: 0 }}>Announcements</h2>
-          <p style={{ color: "#64748b", marginBottom: 0 }}>
+          <h2 style={{ margin: 0, color: "#171717", fontSize: "20px" }}>Announcements</h2>
+          <p style={{ color: "#696863", marginBottom: 0 }}>
             最新活动、优惠兑换码和功能更新
           </p>
         </div>
 
         <span
           style={{
-            padding: "8px 12px",
-            borderRadius: "999px",
-            background: "#312e81",
-            color: "white",
-            fontWeight: 800,
-            fontSize: "14px",
+            padding: "5px 9px",
+            border: "1px solid #d8d5cf",
+            borderRadius: "8px",
+            background: "#ffffff",
+            color: "#55515f",
+            fontWeight: 650,
+            fontSize: "12px",
           }}
         >
           Latest
         </span>
       </div>
 
-      <div style={{ display: "grid", gap: "14px" }}>
+      <div style={{ display: "grid", gap: "10px" }}>
         {announcements.map((item) => (
           <article
             key={item.id}
             style={{
-              background: "white",
-              border: "1px solid #e2e8f0",
-              borderRadius: "18px",
-              padding: "18px",
+              background: "#ffffff",
+              border: "1px solid #e7e5e1",
+              borderRadius: "8px",
+              padding: "14px",
             }}
           >
             <div
@@ -9823,25 +10472,26 @@ function AnnouncementBoard() {
             >
               <span
                 style={{
-                  padding: "5px 10px",
-                  borderRadius: "999px",
-                  background: "#eef2ff",
-                  color: "#312e81",
-                  fontWeight: 800,
-                  fontSize: "13px",
+                  padding: "4px 8px",
+                  border: "1px solid #e7e5e1",
+                  borderRadius: "7px",
+                  background: "#f7f7f4",
+                  color: "#55515f",
+                  fontWeight: 650,
+                  fontSize: "12px",
                 }}
               >
                 {item.tag}
               </span>
 
-              <span style={{ color: "#94a3b8", fontSize: "14px" }}>
+              <span style={{ color: "#8b8983", fontSize: "13px" }}>
                 {item.date}
               </span>
             </div>
 
-            <h3 style={{ marginTop: 0, marginBottom: "8px" }}>{item.title}</h3>
+            <h3 style={{ marginTop: 0, marginBottom: "8px", color: "#171717", fontSize: "16px" }}>{item.title}</h3>
 
-            <p style={{ color: "#475569", lineHeight: 1.8, marginBottom: 0 }}>
+            <p style={{ color: "#696863", lineHeight: 1.65, marginBottom: 0 }}>
               {item.content}
             </p>
           </article>
@@ -9860,6 +10510,14 @@ function getPageFromPath(): Page {
     return "past-exam";
   if (path.includes("/ets-mock-practice")) 
     return "ets-mock-practice";
+  if (path.includes("/ai-build-sentence")) 
+    return "sentence-setup";
+  if (path.includes("/ai-email-writing")) 
+    return "email-setup";
+  if (path.includes("/ai-academic-discussion")) 
+    return "discussion-setup";
+  if (path.includes("/ai-full-mock-test")) 
+    return "mock-setup";
   if (path.includes("/build-a-sentence")) 
     return "sentence";
   if (path.includes("/email-writing")) 
@@ -9867,6 +10525,8 @@ function getPageFromPath(): Page {
   if (path.includes("/academic-discussion")) 
     return "discussion";
   if (path.includes("/full-mock-test")) 
+    return "mock";
+  if (path === "/mock") 
     return "mock";
 
   if (path.includes("/practice-sessions")) 
