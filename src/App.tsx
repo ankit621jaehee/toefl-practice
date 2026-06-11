@@ -2849,7 +2849,9 @@ async function submitMockTestWithAPI({
           onClick={() => setPage("home")}
           aria-label="TOEFL Practice Lab home"
         >
-          <span className="brand-mark">T</span>
+          <span className="brand-mark">
+            <img src="/logo.png" alt="" />
+          </span>
           <span>TOEFL Practice Lab</span>
         </button>
 
