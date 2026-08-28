@@ -4,11 +4,11 @@ import {
   applyMinimumLengthCap,
   formatFivePointScore,
   validateFivePointScore,
-} from "./writing-scoring.js";
+} from "../server/writing-scoring.js";
 import {
   ABILITY_MODEL_VERSION,
   normalizeAbilityScores,
-} from "./writing-ability.js";
+} from "../server/writing-ability.js";
 
 const EMAIL_SCORE_COST = 2;
 // Temporary school review access. Remove or set to false after review.

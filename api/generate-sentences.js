@@ -1,6 +1,6 @@
 import { GoogleGenAI } from "@google/genai";
 import { generateContentWithModelFallback } from "./gemini-helper.js";
-import { chargeRequestAfterSuccess } from "./points.js";
+import { chargeRequestAfterSuccess } from "../server/points.js";
 
 const SENTENCE_PROMPT_COST = 1;
 

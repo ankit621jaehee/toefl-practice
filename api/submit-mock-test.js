@@ -7,11 +7,11 @@ import {
   extractFivePointScore,
   formatFivePointScore as formatValidatedFivePointScore,
   validateFivePointScore,
-} from "./writing-scoring.js";
+} from "../server/writing-scoring.js";
 import {
   ABILITY_MODEL_VERSION,
   normalizeAbilityScores,
-} from "./writing-ability.js";
+} from "../server/writing-ability.js";
 
 const MOCK_TEST_COST = 3;
 
