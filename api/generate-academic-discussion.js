@@ -1,4 +1,7 @@
 import { GoogleGenAI } from "@google/genai";
+import { chargeRequestAfterSuccess } from "./points.js";
+
+const DISCUSSION_PROMPT_COST = 1;
 
 function safeJsonParse(text) {
   try {
@@ -27,11 +30,17 @@ You are a TOEFL Academic Discussion prompt generator.
 
 Generate one TOEFL-style academic discussion writing task.
 
-The prompt should include:
-1. A professor's discussion question.
-2. One student post supporting one side.
-3. Another student post giving a different view.
-4. A final question asking the test taker to express and support their opinion.
+The task must closely match the real TOEFL Academic Discussion screen structure:
+1. First show general instructions/background for the test taker.
+2. Then show the professor's post.
+3. The debatable question the test taker answers must be raised inside the professor's post.
+4. Then show two student posts with different opinions.
+
+The instruction/background should follow this style:
+"Your professor is teaching a class on [subject]. Write a post responding to the professor's question. In your response, you should
+· express and support your personal opinion
+· make a contribution to the discussion in your own words
+An effective response will contain at least 100 words. You have ten minutes to write."
 
 Topic categories:
 - education
@@ -48,14 +57,16 @@ Topic categories:
 Requirements:
 1. The prompt must be in English.
 2. Do not include Chinese.
-3. The professor's post should introduce a debatable academic topic.
-4. The two student posts should be short but meaningful.
-5. The final question should ask for the student's opinion.
-6. The task should be suitable for TOEFL learners.
-7. Avoid overly political or sensitive topics.
-8. Suggested length should be at least 100 words.
-9. Make the topic different from common sample prompts when possible.
-10. Do not include markdown.
+3. Include an "instruction" field with the test-taker background and requirements.
+4. The professor's post should first briefly state what the class has been discussing.
+5. The professor's post must end with one clear question, such as "Do you believe... Why or why not?"
+6. The "question" field must repeat only the professor's final debatable question.
+7. The two student posts should be short but meaningful, and they should answer the professor's question from different angles.
+8. The task should be suitable for TOEFL learners.
+9. Avoid overly political or sensitive topics.
+10. Suggested length should be at least 100 words.
+11. Make the topic different from common sample prompts when possible.
+12. Do not include markdown.
 
 Also include a hidden field called "knowledgeCategory".
 The value must be exactly one of:
@@ -68,13 +79,15 @@ Return valid JSON only.
 Return this exact JSON structure:
 {
   "title": "Academic Discussion Practice",
-  "professor": "We've been discussing whether universities should require students to take courses outside their major. Some people believe these courses help students become more well-rounded, while others think students should focus only on their chosen field.",
-  "studentOneName": "Kelly",
-  "studentOnePost": "I think students should take courses outside their major because they may discover new interests.",
-  "studentTwoName": "Andrew",
-  "studentTwoPost": "I disagree. College is already expensive and stressful, so students should focus on courses that directly help their future careers.",
-  "question": "Do you think universities should require students to take courses outside their major? Why or why not?",
-  "suggestedLength": "Recommended length: at least 100 words"
+  "instruction": "Your professor is teaching a class on sociology. Write a post responding to the professor's question. In your response, you should\n· express and support your personal opinion\n· make a contribution to the discussion in your own words\nAn effective response will contain at least 100 words. You have ten minutes to write.",
+  "professorName": "Doctor Achebe",
+  "professor": "We've been discussing government budgets and the difficult decisions governments must make regarding the use of public funds. Some services are clearly essential and must be paid for by any government. But what about public funding of the arts? Do you believe that governments should provide financial support to artists-for example, painters, sculptors, musicians, or filmmakers? Why or why not?",
+  "studentOneName": "Claire",
+  "studentOnePost": "I don't think taxpayers' money should be spent on impractical or inessential services. Artists should support themselves by selling their work to private individuals and companies.",
+  "studentTwoName": "Paul",
+  "studentTwoPost": "I think art is essential. Public spaces in my hometown would not be the same without statues, murals, and other artwork that residents and visitors enjoy.",
+  "question": "Do you believe that governments should provide financial support to artists? Why or why not?",
+  "suggestedLength": "Recommended length: at least 100 words",
   "knowledgeCategory": "内容发展"
 }
 `;
@@ -96,8 +109,18 @@ Return this exact JSON structure:
 
     const json = safeJsonParse(text);
 
+    const { balance } = await chargeRequestAfterSuccess(
+      req,
+      DISCUSSION_PROMPT_COST,
+      "Academic Discussion practice"
+    );
+
     return res.status(200).json({
       title: json.title || "Academic Discussion Practice",
+      instruction:
+        json.instruction ||
+        "Your professor is teaching a class on sociology. Write a post responding to the professor's question. In your response, you should\n· express and support your personal opinion\n· make a contribution to the discussion in your own words\nAn effective response will contain at least 100 words. You have ten minutes to write.",
+      professorName: json.professorName || "Professor",
       professor:
         json.professor ||
         "We've been discussing how students can balance academic success with personal well-being. Some people believe students should focus mainly on grades, while others think mental health and personal growth are equally important.",
@@ -114,14 +137,17 @@ Return this exact JSON structure:
         "Do you think students should prioritize academic success or personal well-being? Explain your reasoning.",
       suggestedLength:
         json.suggestedLength || "Recommended length: at least 100 words",
+      balance,
     });
   } catch (error) {
     console.error("Generate academic discussion error:", error);
 
-    return res.status(500).json({
+    return res.status(error.statusCode || 500).json({
       error:
         error?.message || "Failed to generate academic discussion prompt",
       details: String(error),
+      balance: error.balance,
+      cost: error.cost,
     });
   }
 }

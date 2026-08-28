@@ -1,5 +1,8 @@
 import { GoogleGenAI } from "@google/genai";
 import { generateContentWithModelFallback } from "./gemini-helper.js";
+import { chargeRequestAfterSuccess } from "./points.js";
+
+const SENTENCE_PROMPT_COST = 1;
 
 let currentDesignRules = {};
 
@@ -671,6 +674,7 @@ export default async function handler(req, res) {
       level = "Medium",
       topic = "Mixed",
       randomSeed,
+      chargePoints = true,
       excludeTargets = [],
       designRules = {},
     } = req.body || {};
@@ -830,8 +834,17 @@ Return this exact JSON structure:
 
     currentDesignRules = {};
 
+    const { balance } = chargePoints
+      ? await chargeRequestAfterSuccess(
+          req,
+          SENTENCE_PROMPT_COST,
+          "Build a Sentence practice"
+        )
+      : { balance: undefined };
+
     return res.status(200).json({
       questions: finalQuestions,
+      balance,
     });
 
 
@@ -839,8 +852,10 @@ Return this exact JSON structure:
       console.error("generate-sentences error:", error);
       currentDesignRules = {};
 
-      return res.status(500).json({
+      return res.status(error.statusCode || 500).json({
         error: error?.message || "Failed to generate questions",
+        balance: error.balance,
+        cost: error.cost,
       });
     }
 }

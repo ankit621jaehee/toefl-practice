@@ -1,7 +1,19 @@
 import { GoogleGenAI } from "@google/genai";
 import { createClient } from "@supabase/supabase-js";
+import {
+  applyMinimumLengthCap,
+  formatFivePointScore,
+  validateFivePointScore,
+} from "./writing-scoring.js";
+import {
+  ABILITY_MODEL_VERSION,
+  normalizeAbilityScores,
+} from "./writing-ability.js";
 
-const EMAIL_SCORE_COST = 3;
+const EMAIL_SCORE_COST = 2;
+// Temporary school review access. Remove or set to false after review.
+const TEMP_REVIEW_ACCESS_ENABLED = true;
+const TEMP_REVIEW_POINTS = 999;
 
 function createAdminClient() {
   const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
@@ -34,40 +46,6 @@ function countWords(text) {
     : 0;
 }
 
-function clampScore(score) {
-  const number = Number(score);
-
-  if (Number.isNaN(number)) return 0;
-
-  return Math.max(0, Math.min(5, number));
-}
-
-function roundToOneDecimal(score) {
-  return Math.round(score * 10) / 10;
-}
-
-function formatScore(score) {
-  return `${roundToOneDecimal(score).toFixed(1)} / 5.0`;
-}
-
-function applyMinimumLengthCap(score, wordCount) {
-  let finalScore = score;
-
-  if (wordCount < 5) {
-    finalScore = Math.min(finalScore, 0.5);
-  } else if (wordCount < 10) {
-    finalScore = Math.min(finalScore, 1.0);
-  } else if (wordCount < 30) {
-    finalScore = Math.min(finalScore, 2.0);
-  } else if (wordCount < 60) {
-    finalScore = Math.min(finalScore, 3.0);
-  } else if (wordCount < 90) {
-    finalScore = Math.min(finalScore, 3.5);
-  }
-
-  return finalScore;
-}
-
 function normalizeArray(value) {
   return Array.isArray(value) ? value : [];
 }
@@ -81,20 +59,23 @@ function safeJsonParse(text) {
 }
 
 function calculateEmailScore(json, wordCount) {
-  const taskScore = clampScore(json.taskScore);
-  const organizationScore = clampScore(json.organizationScore);
-  const languageScore = clampScore(json.languageScore);
-  const naturalnessScore = clampScore(json.naturalnessScore);
+  if (json.overallScore === undefined) {
+    throw new Error("Gemini response is missing overallScore.");
+  }
 
-  let score =
-    taskScore * 0.4 +
-    organizationScore * 0.2 +
-    languageScore * 0.3 +
-    naturalnessScore * 0.1;
+  const score = applyMinimumLengthCap(
+    validateFivePointScore(json.overallScore, "email overallScore"),
+    wordCount,
+    [
+      { words: 5, cap: 0.5 },
+      { words: 10, cap: 1 },
+      { words: 30, cap: 2 },
+      { words: 60, cap: 3 },
+      { words: 90, cap: 3.5 },
+    ]
+  );
 
-  score = applyMinimumLengthCap(score, wordCount);
-
-  return formatScore(score);
+  return formatFivePointScore(score);
 }
 
 async function getUserFromToken(supabaseAdmin, token) {
@@ -115,6 +96,10 @@ async function getUserFromToken(supabaseAdmin, token) {
 }
 
 async function getUserProfile(supabaseAdmin, userId) {
+  if (TEMP_REVIEW_ACCESS_ENABLED) {
+    return { points: TEMP_REVIEW_POINTS };
+  }
+
   const { data, error } = await supabaseAdmin
     .from("profiles")
     .select("points")
@@ -129,6 +114,10 @@ async function getUserProfile(supabaseAdmin, userId) {
 }
 
 async function deductPoints(supabaseAdmin, userId, currentPoints, cost) {
+  if (TEMP_REVIEW_ACCESS_ENABLED) {
+    return TEMP_REVIEW_POINTS;
+  }
+
   const newBalance = currentPoints - cost;
 
   const { error } = await supabaseAdmin
@@ -228,28 +217,33 @@ A response with 90+ words should be scored mainly based on task completion, emai
 
 Student word count: ${wordCount}
 
-Score each dimension from 0.0 to 5.0 using one decimal place.
+Assign an overallScore using this TOEFL-style FORGE practice rubric. The score must be exactly one of:
+0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5.
 
-Dimension 1: taskScore
-- Does the email address all required points?
-- Does it respond appropriately to the situation?
-- Does it have a clear purpose?
+Use a two-step scoring process:
+1. First decide the integer band that best describes the response.
+2. Then use a .5 score only when the response is clearly stronger than that band but not consistently strong enough for the next band.
 
-Dimension 2: organizationScore
-- Does it have a clear email structure?
-- Greeting, body, closing.
-- Logical order and easy flow.
+Do not return arbitrary decimal scores such as 3.7 or 4.2.
 
-Dimension 3: languageScore
-- Grammar accuracy.
-- Vocabulary.
-- Sentence control.
-- Clarity.
+Rubric:
+- 5: A fully successful response. The response is effective, clearly expressed, and shows consistent facility in language use. It supports the communicative purpose, uses effective syntactic variety and precise word choice, follows appropriate social conventions, and has almost no lexical or grammatical errors.
+- 4: A generally successful response. The response is mostly effective and easily understood. It has adequate elaboration, syntactic variety, appropriate word choice, mostly appropriate social conventions, and few lexical or grammatical errors.
+- 3: A partially successful response. The response generally accomplishes the task, but limitations in language facility may prevent parts of the message from being fully clear and effective. It may have partial elaboration, moderate syntax/vocabulary range, and noticeable errors.
+- 2: A mostly unsuccessful response. The response attempts the task but is mostly ineffective, limited, or difficult to interpret. It may have limited or irrelevant elaboration, limited syntax/vocabulary, and accumulated language errors.
+- 1: An unsuccessful response. The response is ineffective, may be nearly unintelligible, has very little elaboration, telegraphic language, serious frequent errors, or mostly borrowed language.
+- 0: Blank, rejects the topic, not in English, entirely copied from the prompt, disconnected from the prompt, or arbitrary keystrokes.
 
-Dimension 4: naturalnessScore
-- Polite and appropriate tone.
-- Natural email style.
-- Appropriate formality.
+Also return abilityScores for long-term Writing Ability Analysis.
+Ability scores are separate from overallScore. They must be based on the student's actual response, use 0.0 to 5.0, and may use 0.1 precision.
+Do not force ability scores to average exactly to overallScore, but keep them reasonably consistent with the response quality.
+
+Email ability dimensions:
+- email_task_fulfillment: task completion, coverage of required information, and effective response to the email purpose.
+- email_clarity: clear, specific, understandable information with little ambiguity.
+- email_organization: logical order, natural flow, and clear email structure.
+- email_appropriacy: appropriate tone, register, relationship awareness, and natural requests/explanations/suggestions/complaints.
+- email_language_use: grammar, vocabulary, sentence structure, language control, naturalness, and accuracy.
 
 Minimum length rules:
 - If fewer than 5 words, all dimension scores should be very low.
@@ -265,15 +259,19 @@ Do not give a high score to a very short response just because it has few gramma
 Do not be overly harsh on a complete 90+ word response only because it is not very long.
 
 Feedback quality rules:
-1. Do not give generic comments like "good job" or "improve grammar" unless you explain exactly why.
-2. Every strength should mention a specific feature of the student's response.
-3. Every problem should identify a specific weakness and explain how it affects the score.
-4. Grammar corrections should only include real issues from the student's response.
-5. If the student's response has few grammar errors, focus on style, clarity, development, and naturalness instead.
-6. The improvedVersion should preserve the student's original meaning and improve it, not replace it with a completely unrelated model answer.
-7. The sampleAnswer should be a separate high-scoring answer for the prompt.
-8. The actionPlan should give 3 short, practical steps for improving the next response.
-9. Use clear and direct language suitable for a TOEFL learner.
+1. All feedback explanations must be written in Simplified Chinese.
+2. The student's original phrases, corrected phrases, improvedVersion, and sampleAnswer should remain in English.
+3. Do not give generic comments like "good job" or "improve grammar" unless you explain exactly why.
+4. Every strength should mention a specific feature of the student's response.
+5. Every problem should identify a specific weakness and explain how it affects the score.
+6. Grammar corrections should only include real issues from the student's response.
+7. If the student's response has few grammar errors, focus on style, clarity, development, and naturalness instead.
+8. The improvedVersion should preserve the student's original meaning and improve it, not replace it with a completely unrelated model answer.
+9. The sampleAnswer should be a separate high-scoring answer for the prompt.
+10. The actionPlan should give 3 short, practical, personalized steps in Simplified Chinese.
+11. Use clear and direct Chinese suitable for a TOEFL learner.
+12. Do not mention internal raw scores, score conversion, score caps, formulas, point deductions, or hidden scoring rules.
+13. Feedback should explain strengths, problems, and how to improve. Do not say things like "扣0.5分".
 
 Email prompt:
 ${JSON.stringify(prompt)}
@@ -285,31 +283,35 @@ Return valid JSON only. No markdown.
 
 Return this exact JSON structure:
 {
-  "taskScore": 4.0,
-  "organizationScore": 4.0,
-  "languageScore": 4.0,
-  "naturalnessScore": 4.0,
+  "overallScore": 4.0,
+  "abilityScores": {
+    "email_task_fulfillment": 4.4,
+    "email_clarity": 4.2,
+    "email_organization": 4.0,
+    "email_appropriacy": 4.3,
+    "email_language_use": 3.9
+  },
   "strengths": [
-    "Specific strength based on the student's email.",
-    "Specific strength based on the student's email.",
-    "Specific strength based on the student's email."
+    "用中文说明学生邮件中的一个具体亮点。",
+    "用中文说明学生邮件中的一个具体亮点。",
+    "用中文说明学生邮件中的一个具体亮点。"
   ],
   "problems": [
-    "Specific problem and why it matters.",
-    "Specific problem and why it matters.",
-    "Specific problem and why it matters."
+    "用中文指出一个具体问题，并说明它为什么影响得分。",
+    "用中文指出一个具体问题，并说明它为什么影响得分。",
+    "用中文指出一个具体问题，并说明它为什么影响得分。"
   ],
   "grammarCorrections": [
     {
       "original": "student's original phrase or sentence",
       "corrected": "corrected phrase or sentence",
-      "explanation": "brief explanation"
+      "explanation": "用中文简要说明为什么这样改"
     }
   ],
   "actionPlan": [
-    "Next time, make sure the email has a clear greeting and closing.",
-    "Address every bullet point in the prompt directly.",
-    "Add one specific detail to make the explanation more convincing."
+    "用中文给出下一次写邮件时最需要优先改进的一步。",
+    "用中文给出一个和本次答案直接相关的内容提升建议。",
+    "用中文给出一个语言表达或结构方面的提分动作。"
   ],
   "improvedVersion": "A polished version that preserves the student's original meaning.",
   "sampleAnswer": "A separate strong sample email for this prompt."
@@ -333,6 +335,10 @@ Return this exact JSON structure:
 
     const json = safeJsonParse(text);
     const finalScore = calculateEmailScore(json, wordCount);
+    const abilityScores = normalizeAbilityScores(
+      "email",
+      json.abilityScores || json.ability_scores
+    );
 
     const newBalance = await deductPoints(
       supabaseAdmin,
@@ -349,6 +355,8 @@ Return this exact JSON structure:
       actionPlan: normalizeArray(json.actionPlan),
       improvedVersion: json.improvedVersion || "",
       sampleAnswer: json.sampleAnswer || "",
+      abilityScores,
+      abilityModelVersion: ABILITY_MODEL_VERSION,
     };
 
     await savePracticeRecord({

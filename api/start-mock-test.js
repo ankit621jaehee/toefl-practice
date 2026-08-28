@@ -250,7 +250,10 @@ function safeJsonParse(text) {
   }
 }
 
-const MOCK_TEST_COST = 10;
+const MOCK_TEST_COST = 3;
+// Temporary school review access. Remove or set to false after review.
+const TEMP_REVIEW_ACCESS_ENABLED = true;
+const TEMP_REVIEW_POINTS = 999;
 
 function createAdminClient() {
   const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
@@ -291,6 +294,10 @@ async function getUserFromToken(supabaseAdmin, token) {
 }
 
 async function getUserProfile(supabaseAdmin, userId) {
+  if (TEMP_REVIEW_ACCESS_ENABLED) {
+    return { points: TEMP_REVIEW_POINTS };
+  }
+
   const { data, error } = await supabaseAdmin
     .from("profiles")
     .select("points")
@@ -305,6 +312,10 @@ async function getUserProfile(supabaseAdmin, userId) {
 }
 
 async function deductPoints(supabaseAdmin, userId, currentPoints, cost) {
+  if (TEMP_REVIEW_ACCESS_ENABLED) {
+    return TEMP_REVIEW_POINTS;
+  }
+
   const newBalance = currentPoints - cost;
 
   const { error } = await supabaseAdmin
@@ -321,6 +332,7 @@ async function deductPoints(supabaseAdmin, userId, currentPoints, cost) {
 function normalizeEmailPrompt(value) {
   return {
     title: String(value?.title || "Email Writing").trim(),
+    subject: String(value?.subject || value?.title || "Email Writing Task").trim(),
     scenario: String(value?.scenario || "").trim(),
     task: String(value?.task || "").trim(),
     requirements: Array.isArray(value?.requirements)
@@ -335,6 +347,8 @@ function normalizeEmailPrompt(value) {
 function normalizeDiscussionPrompt(value) {
   return {
     title: String(value?.title || "Academic Discussion").trim(),
+    instruction: String(value?.instruction || "").trim(),
+    professorName: String(value?.professorName || "Professor").trim(),
     professor: String(value?.professor || "").trim(),
     studentOneName: String(value?.studentOneName || "Student A").trim(),
     studentOnePost: String(value?.studentOnePost || "").trim(),
@@ -377,14 +391,6 @@ export default async function handler(req, res) {
       });
     }
 
-    const newBalance = await deductPoints(
-      supabaseAdmin,
-      user.id,
-      profile.points,
-      MOCK_TEST_COST
-    );
-
-
     const { level = "Medium", topic = "Mixed" } = req.body || {};
     const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
@@ -409,14 +415,22 @@ Build a Sentence rules:
 - Do not include Chinese.
 
 Email Writing rules:
+- The prompt must follow the real TOEFL-style structure: a clear background paragraph, then a task sentence, then requirements.
 - The scenario should be realistic for school, work, campus service, travel, application, or daily communication.
-- Include a clear task and 3 to 4 requirements.
+- The scenario must explain who the student is, what happened, and why the email is needed.
+- The task must be one sentence in this pattern: "Write an email to [recipient]. In your email, do the following:"
+- Include exactly 3 concrete requirements.
+- Each requirement should start with an action verb.
 - Recommended length should be 100–150 words.
+- Include a concise subject field that matches the specific situation. Do not use a generic subject like "Email Writing Practice".
 
 Academic Discussion rules:
-- Include a professor's discussion question.
+- Include an instruction field before the professor post. It should explain the class subject and list the response requirements.
+- The instruction should say the student should express and support a personal opinion and make a contribution in their own words.
+- The professor's post should first state what the class has been discussing.
+- The debatable question must be asked by the professor inside the professor's post.
+- The question field must repeat only that final debatable question.
 - Include two student posts with different opinions.
-- The final question should ask the test taker to express and support an opinion.
 - Recommended length should be at least 100 words.
 
 Difficulty level: ${level}
@@ -439,14 +453,17 @@ Return this exact JSON structure:
   ],
   "emailPrompt": {
     "title": "string",
-    "scenario": "string",
-    "task": "string",
+    "subject": "A Stress Management Tip That Might Help",
+    "scenario": "You are a university student, and you participated in a recent campus workshop about stress management. There was a particular technique or activity from the workshop that you found especially effective in reducing your stress. You think this might be helpful to your friend, Sarah, who has been feeling overwhelmed with her workload lately.",
+    "task": "Write an email to Sarah. In your email, do the following:",
     "requirements": ["string", "string", "string"],
     "suggestedLength": "Recommended length: 100–150 words"
   },
   "discussionPrompt": {
     "title": "string",
-    "professor": "string",
+    "instruction": "Your professor is teaching a class on sociology. Write a post responding to the professor's question. In your response, you should\n· express and support your personal opinion\n· make a contribution to the discussion in your own words\nAn effective response will contain at least 100 words. You have ten minutes to write.",
+    "professorName": "Doctor Achebe",
+    "professor": "We've been discussing government budgets and the difficult decisions governments must make regarding the use of public funds. Some services are clearly essential and must be paid for by any government. But what about public funding of the arts? Do you believe that governments should provide financial support to artists-for example, painters, sculptors, musicians, or filmmakers? Why or why not?",
     "studentOneName": "string",
     "studentOnePost": "string",
     "studentTwoName": "string",
@@ -497,6 +514,13 @@ Return this exact JSON structure:
     if (!discussionPrompt.professor || !discussionPrompt.question) {
       throw new Error("Generated discussion prompt is incomplete");
     }
+
+    const newBalance = await deductPoints(
+      supabaseAdmin,
+      user.id,
+      profile.points,
+      MOCK_TEST_COST
+    );
 
     return res.status(200).json({
       sentenceQuestions,
