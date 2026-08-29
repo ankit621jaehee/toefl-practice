@@ -25,6 +25,43 @@ function getBearerToken(req) {
   return authHeader.replace("Bearer ", "").trim();
 }
 
+function rpcErrorStatus(message) {
+  switch (message) {
+    case "NOT_AUTHENTICATED":
+    case "INVALID_USER":
+      return 401;
+    case "INVALID_CODE":
+    case "PROFILE_NOT_FOUND":
+      return 404;
+    default:
+      return 400;
+  }
+}
+
+function rpcErrorText(message) {
+  switch (message) {
+    case "NOT_AUTHENTICATED":
+    case "INVALID_USER":
+      return "Please sign in first.";
+    case "EMPTY_CODE":
+      return "Please enter a redeem code.";
+    case "INVALID_CODE":
+      return "Invalid redeem code.";
+    case "INACTIVE_CODE":
+      return "This redeem code is no longer active.";
+    case "EXPIRED_CODE":
+      return "This redeem code has expired.";
+    case "CODE_LIMIT_REACHED":
+      return "This redeem code has already reached its usage limit.";
+    case "CODE_ALREADY_REDEEMED":
+      return "You have already used this redeem code.";
+    case "PROFILE_NOT_FOUND":
+      return "User profile not found.";
+    default:
+      return message || "Failed to redeem code.";
+  }
+}
+
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({
@@ -66,100 +103,39 @@ export default async function handler(req, res) {
       });
     }
 
-    const { data: redeemCode, error: codeError } = await supabaseAdmin
-      .from("redeem_codes")
-      .select("id, code, points, max_uses, used_count, expires_at, is_active")
-      .eq("code", code)
-      .single();
-
-    if (codeError || !redeemCode) {
-      return res.status(404).json({
-        error: "Invalid redeem code.",
-      });
-    }
-
-    if (!redeemCode.is_active) {
-      return res.status(400).json({
-        error: "This redeem code is no longer active.",
-      });
-    }
-
-    if (redeemCode.expires_at && new Date(redeemCode.expires_at) < new Date()) {
-      return res.status(400).json({
-        error: "This redeem code has expired.",
-      });
-    }
-
-    if (redeemCode.used_count >= redeemCode.max_uses) {
-      return res.status(400).json({
-        error: "This redeem code has already reached its usage limit.",
-      });
-    }
-
-    const { data: existingLog } = await supabaseAdmin
-      .from("redeem_logs")
-      .select("id")
-      .eq("user_id", user.id)
-      .eq("code_id", redeemCode.id)
-      .maybeSingle();
-
-    if (existingLog) {
-      return res.status(400).json({
-        error: "You have already used this redeem code.",
-      });
-    }
-
-    const { data: profile, error: profileError } = await supabaseAdmin
-      .from("profiles")
-      .select("points")
-      .eq("id", user.id)
-      .single();
-
-    if (profileError || !profile) {
-      return res.status(404).json({
-        error: "User profile not found.",
-      });
-    }
-
-    const newBalance = profile.points + redeemCode.points;
-
-    const { error: updateProfileError } = await supabaseAdmin
-      .from("profiles")
-      .update({
-        points: newBalance,
-      })
-      .eq("id", user.id);
-
-    if (updateProfileError) {
-      throw updateProfileError;
-    }
-
-    const { error: updateCodeError } = await supabaseAdmin
-      .from("redeem_codes")
-      .update({
-        used_count: redeemCode.used_count + 1,
-      })
-      .eq("id", redeemCode.id);
-
-    if (updateCodeError) {
-      throw updateCodeError;
-    }
-
-    const { error: logError } = await supabaseAdmin.from("redeem_logs").insert({
-      user_id: user.id,
-      code_id: redeemCode.id,
-      points_added: redeemCode.points,
+    const { data, error } = await supabaseAdmin.rpc("redeem_code_for_user", {
+      target_user_id: user.id,
+      raw_code: code,
     });
 
-    if (logError) {
-      throw logError;
+    if (error) {
+      const msg = error.message || "";
+      return res.status(rpcErrorStatus(msg)).json({
+        error: rpcErrorText(msg),
+      });
     }
+
+    const rewardType = data?.rewardType || "credits";
+    const pointsAdded = data?.creditsAdded ?? 0;
+    const proDays = data?.proDays ?? 0;
+    const balance = data?.balance;
+    const subscriptionTier = data?.subscriptionTier;
+    const subscriptionExpiresAt = data?.subscriptionExpiresAt;
+
+    const message =
+      rewardType === "pro"
+        ? `Redeemed successfully. Pro membership activated for ${proDays} days.`
+        : `Redeemed successfully. ${pointsAdded} points added.`;
 
     return res.status(200).json({
       success: true,
-      message: `Redeemed successfully. ${redeemCode.points} points added.`,
-      pointsAdded: redeemCode.points,
-      balance: newBalance,
+      message,
+      pointsAdded,
+      balance,
+      rewardType,
+      proDays,
+      subscriptionTier,
+      subscriptionExpiresAt,
     });
   } catch (error) {
     console.error("Redeem code error:", error);
