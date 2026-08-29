@@ -1608,6 +1608,42 @@ async function loadQuestionSets() {
 
   setQuestionSetMessage("");
 
+  if (PUBLIC_PAST_EXAM_ACCESS) {
+    try {
+      const response = await fetch("/api/public-past-exam-sets");
+      const payload = await response.json();
+
+      if (!response.ok) {
+        throw new Error(payload.error || "Failed to load public question sets.");
+      }
+
+      setPastExamSets((payload.items || []) as QuestionSet[]);
+
+      const { data: accessibleSets, error: accessibleSetsError } = await supabase
+        .from("question_sets")
+        .select(
+          "id, source_type, title, display_date, mock_number, sort_order, content, created_at"
+        )
+        .eq("status", "published")
+        .eq("source_type", "ets_mock")
+        .order("sort_order", { ascending: true });
+
+      setEtsMockSets(
+        accessibleSetsError ? [] : ((accessibleSets || []) as QuestionSet[])
+      );
+    } catch (error) {
+      setPastExamSets([]);
+      setEtsMockSets([]);
+      setQuestionSetMessage(
+        error instanceof Error ? error.message : "Failed to load question sets."
+      );
+    } finally {
+      setIsLoadingQuestionSets(false);
+    }
+
+    return;
+  }
+
   const { data, error } = await supabase
 
     .from("question_sets")
