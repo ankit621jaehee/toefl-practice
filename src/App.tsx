@@ -286,6 +286,8 @@ type PracticeSession = {
 };
 const EMAIL_SCORING_COST = 3;
 const DISCUSSION_SCORING_COST = 3;
+const PUBLIC_PAST_EXAM_ACCESS =
+  import.meta.env.VITE_PUBLIC_PAST_EXAM_ACCESS === "true";
 const announcements = [
   {
     id: 0,
@@ -1036,6 +1038,7 @@ function App() {
   // granted access and show a purchase/contact screen instead.  These flags
   // are loaded when the authenticated user changes.
   const [hasPastExamAccess, setHasPastExamAccess] = useState(false);
+  const canAccessPastExam = PUBLIC_PAST_EXAM_ACCESS || hasPastExamAccess;
   const [unlockedEtsMockIds, setUnlockedEtsMockIds] = useState<string[]>([]);
 
 
@@ -3038,7 +3041,7 @@ async function submitMockTestWithAPI({
         )}
 
         {page === "past-exam" && (
-          hasPastExamAccess ? (
+          canAccessPastExam ? (
             <PastExamPage
               items={pastExamSets}
               practicedIds={getPracticedIds("past_exam")}
@@ -3063,7 +3066,7 @@ async function submitMockTestWithAPI({
         )}
         
         {page === "past-exam-detail" && (
-          hasPastExamAccess ? (
+          canAccessPastExam ? (
             <PastExamDetailPage
               examId={selectedPastExamId}
               examSet={getPastExamSetById(selectedPastExamId)}
