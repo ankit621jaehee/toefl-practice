@@ -213,6 +213,8 @@ type QuestionSetTask =
       prompt: DiscussionPrompt;
     };
 
+type PastExamPracticeType = "sentence" | "email" | "discussion";
+
 type QuestionSetContent = {
   description?: string;
   tasks?: QuestionSetTask[];
@@ -1809,6 +1811,66 @@ function handleStartPastExamPractice(questionSet: QuestionSet | null) {
   }
 }
 
+function handleStartPastExamTask(
+  questionSet: QuestionSet | null,
+  practiceType: PastExamPracticeType
+) {
+  if (!questionSet) {
+    setQuestionSetMessage("This past exam question is not available yet.");
+    return;
+  }
+
+  const tasks = Array.isArray(questionSet.content.tasks)
+    ? questionSet.content.tasks
+    : [];
+  const task = tasks.find((item) => item.type === practiceType);
+
+  if (!task) {
+    setQuestionSetMessage("This question type is not available in the selected set.");
+    return;
+  }
+
+  setQuestionSetMessage("");
+  setActiveQuestionSetId(questionSet.id);
+  setActiveQuestionSourceType("past_exam");
+
+  if (task.type === "sentence") {
+    const sentenceQuestions = task.questions.map((question, index) => ({
+      ...question,
+      id: typeof question.id === "number" ? question.id : index + 1,
+    }));
+
+    setQuestions(sentenceQuestions);
+    setSlotsByQuestion(createInitialSlots(sentenceQuestions));
+    setBankOrders(createBankOrders(sentenceQuestions));
+    setCurrentIndex(0);
+    setDragged(null);
+    setResults({});
+    setIsSubmitted(false);
+    setApiMessage("");
+    setSentenceStartTime(Date.now());
+    setPage("sentence");
+    return;
+  }
+
+  if (task.type === "email") {
+    setCurrentEmailPrompt(task.prompt);
+    setEmailAnswer("");
+    setEmailSubmitted(false);
+    setEmailFeedback(null);
+    setEmailStartTime(Date.now());
+    setPage("email");
+    return;
+  }
+
+  setCurrentDiscussionPrompt(task.prompt);
+  setDiscussionAnswer("");
+  setDiscussionSubmitted(false);
+  setDiscussionFeedback(null);
+  setDiscussionStartTime(Date.now());
+  setPage("discussion");
+}
+
 
 function handleStartEtsMockPractice(questionSet: QuestionSet | null) {
   if (!questionSet) {
@@ -2983,11 +3045,12 @@ async function submitMockTestWithAPI({
               isLoading={isLoadingQuestionSets}
               message={questionSetMessage}
               onBackHome={() => setPage("home")}
-              onStart={(id) => {
-                setSelectedPastExamId(id);
-                setPageState("past-exam-detail");
-                window.history.pushState({}, "", `/past-exam/${id}`);
-              }}
+              onStart={(id, practiceType) =>
+                handleStartPastExamTask(
+                  getPastExamSetById(id),
+                  practiceType
+                )
+              }
             />
           ) : (
             <AccessPaywall
@@ -7437,203 +7500,222 @@ function getPageFromPath(): Page {
 }
 
 function PastExamPage({
-
   items,
-
   practicedIds,
   isLoading,
   message,
   onBackHome,
   onStart,
-
 }: {
-
   items: QuestionSet[];
   practicedIds: string[];
   isLoading: boolean;
   message: string;
   onBackHome: () => void;
-  onStart: (id: string) => void;
-
+  onStart: (id: string, practiceType: PastExamPracticeType) => void;
 }) {
+  const [activeBank, setActiveBank] =
+    useState<PastExamPracticeType | null>(null);
+  const bankOptions: Array<{
+    type: PastExamPracticeType;
+    title: string;
+    description: string;
+  }> = [
+    {
+      type: "sentence",
+      title: "Build a Sentence",
+      description: "按真题日期练习句子构建题。",
+    },
+    {
+      type: "email",
+      title: "Email Writing",
+      description: "按真题日期练习邮件写作题。",
+    },
+    {
+      type: "discussion",
+      title: "Academic Discussion",
+      description: "按真题日期练习学术讨论题。",
+    },
+  ];
+  const activeBankOption = bankOptions.find(
+    (option) => option.type === activeBank
+  );
+  const visibleItems = activeBank
+    ? items.filter((item) =>
+        (item.content.tasks || []).some((task) => task.type === activeBank)
+      )
+    : [];
 
   return (
-
     <>
-
       <button
-
         type="button"
-
-        onClick={onBackHome}
-
+        onClick={activeBank ? () => setActiveBank(null) : onBackHome}
         style={{
-
           padding: "10px 16px",
-
           border: "1px solid #cbd5e1",
-
           borderRadius: "12px",
-
           background: "white",
-
           fontWeight: 700,
-
           cursor: "pointer",
-
           marginBottom: "24px",
-
         }}
-
       >
-
-        返回首页
-
+        {activeBank ? "返回三个题库" : "返回首页"}
       </button>
 
       <section
-
         style={{
-
           background: "white",
-
           border: "1px solid #e2e8f0",
-
           borderRadius: "20px",
-
-          padding: "24px",
-
+          padding: "28px",
           marginBottom: "24px",
-
           boxShadow: "0 10px 30px rgba(15, 23, 42, 0.06)",
-
         }}
-
       >
-
-        <h1 style={{ marginTop: 0 }}>TOEFL Past Exam</h1>
-
-        <p style={{ color: "#64748b", lineHeight: 1.8 }}>
-
-          toefl改革真题
-
+        <h1 style={{ margin: "0 0 10px" }}>
+          {activeBankOption?.title || "TOEFL Past Exam"}
+        </h1>
+        <p style={{ color: "#64748b", lineHeight: 1.8, margin: 0 }}>
+          {activeBankOption?.description || "选择一个题库，进行对应题型的真题专项练习。"}
         </p>
-
       </section>
 
       {isLoading && <p style={{ color: "#64748b" }}>Loading question sets...</p>}
-
       {message && <p style={{ color: "#be123c", fontWeight: 700 }}>{message}</p>}
 
-      {!isLoading && items.length === 0 && (
-        <p style={{ color: "#64748b" }}>No question sets available yet.</p>
-      )}
+      {!activeBank ? (
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+            gap: "18px",
+          }}
+        >
+          {bankOptions.map((option) => {
+            const count = items.filter((item) =>
+              (item.content.tasks || []).some((task) => task.type === option.type)
+            ).length;
 
-
-      <div style={{ display: "grid", gap: "12px" }}>
-
-        {items.map((item) => {
-
-          const practiced = practicedIds.includes(item.id);
-
-          return (
-
-            <div
-
-              key={item.id}
-
-              style={{
-
-                display: "grid",
-
-                gridTemplateColumns: "1.2fr 1fr auto",
-
-                gap: "16px",
-
-                alignItems: "center",
-
-                background: "#f8fafc",
-
-                border: "1px solid #e2e8f0",
-
-                borderRadius: "18px",
-
-                padding: "18px 20px",
-
-              }}
-
-            >
-
-              <div>
-
-                <strong>{item.display_date || 'No date'}</strong>
-
-                <p style={{ color: "#64748b", marginBottom: 0 }}>
-
-                  {item.title}
-
-                </p>
-
-              </div>
-
-              <span
-
-                style={{
-
-                  color: practiced ? "#166534" : "#64748b",
-
-                  fontWeight: 800,
-
-                }}
-
-              >
-
-                {practiced ? "已练习" : "未练习"}
-
-              </span>
-
+            return (
               <button
-
+                key={option.type}
                 type="button"
-
-                onClick={() => onStart(item.id)}
-
+                onClick={() => setActiveBank(option.type)}
                 style={{
-
-                  padding: "10px 16px",
-
-                  border: "none",
-
-                  borderRadius: "12px",
-
-                  background: "#111827",
-
-                  color: "white",
-
-                  fontWeight: 800,
-
+                  minHeight: "220px",
+                  padding: "28px 24px",
+                  border: "1px solid #dbe2ea",
+                  borderRadius: "20px",
+                  background: "linear-gradient(145deg, #ffffff 0%, #f8fafc 100%)",
+                  color: "#111827",
+                  textAlign: "left",
                   cursor: "pointer",
-
+                  boxShadow: "0 12px 28px rgba(15, 23, 42, 0.06)",
                 }}
-
               >
-
-                {practiced ? "再次练习" : "开始练习"}
-
+                <span
+                  style={{
+                    display: "inline-flex",
+                    padding: "6px 10px",
+                    borderRadius: "999px",
+                    background: "#eef2ff",
+                    color: "#4338ca",
+                    fontSize: "12px",
+                    fontWeight: 900,
+                    marginBottom: "22px",
+                  }}
+                >
+                  {count} 套真题
+                </span>
+                <strong style={{ display: "block", fontSize: "24px", lineHeight: 1.25 }}>
+                  {option.title}
+                </strong>
+                <span
+                  style={{
+                    display: "block",
+                    color: "#64748b",
+                    lineHeight: 1.7,
+                    marginTop: "14px",
+                  }}
+                >
+                  {option.description}
+                </span>
+                <span
+                  style={{
+                    display: "block",
+                    color: "#4338ca",
+                    fontWeight: 850,
+                    marginTop: "22px",
+                  }}
+                >
+                  查看题库 →
+                </span>
               </button>
+            );
+          })}
+        </div>
+      ) : (
+        <>
+          {!isLoading && visibleItems.length === 0 && (
+            <p style={{ color: "#64748b" }}>该题库暂时没有可用真题。</p>
+          )}
+          <div style={{ display: "grid", gap: "12px" }}>
+            {visibleItems.map((item) => {
+              const practiced = practicedIds.includes(item.id);
 
-            </div>
-
-          );
-
-        })}
-
-      </div>
-
+              return (
+                <div
+                  key={item.id}
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "1.2fr 1fr auto",
+                    gap: "16px",
+                    alignItems: "center",
+                    background: "#f8fafc",
+                    border: "1px solid #e2e8f0",
+                    borderRadius: "18px",
+                    padding: "18px 20px",
+                  }}
+                >
+                  <div>
+                    <strong>{item.display_date || "No date"}</strong>
+                    <p style={{ color: "#64748b", marginBottom: 0 }}>
+                      {item.title}
+                    </p>
+                  </div>
+                  <span
+                    style={{
+                      color: practiced ? "#166534" : "#64748b",
+                      fontWeight: 800,
+                    }}
+                  >
+                    {practiced ? "已练习" : "未练习"}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => onStart(item.id, activeBank)}
+                    style={{
+                      padding: "10px 16px",
+                      border: "none",
+                      borderRadius: "12px",
+                      background: "#111827",
+                      color: "white",
+                      fontWeight: 800,
+                      cursor: "pointer",
+                    }}
+                  >
+                    {practiced ? "再次练习" : "开始练习"}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
     </>
-
   );
-
 }
 
 function EtsMockPracticePage({
