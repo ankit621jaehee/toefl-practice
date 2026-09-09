@@ -1,17 +1,8 @@
 import { GoogleGenAI } from "@google/genai";
 import { createClient } from "@supabase/supabase-js";
-import { generateContentWithModelFallback } from "../lib/gemini-helper.js";
-import {
-  applyMinimumLengthCap as capFivePointScoreByLength,
-  calculateFinalWritingScore,
-  extractFivePointScore,
-  formatFivePointScore as formatValidatedFivePointScore,
-  validateFivePointScore,
-} from "../lib/writing-scoring.js";
-import {
-  ABILITY_MODEL_VERSION,
-  normalizeAbilityScores,
-} from "../lib/writing-ability.js";
+import { generateContentWithModelFallback } from "./gemini-helper.js";
+
+const MOCK_TEST_COST = 10;
 
 function createAdminClient() {
   const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
@@ -51,6 +42,33 @@ async function getUserFromToken(supabaseAdmin, token) {
   return user;
 }
 
+async function getUserProfile(supabaseAdmin, userId) {
+  const { data, error } = await supabaseAdmin
+    .from("profiles")
+    .select("points")
+    .eq("id", userId)
+    .single();
+
+  if (error || !data) {
+    throw new Error("User profile not found.");
+  }
+
+  return data;
+}
+
+async function deductPoints(supabaseAdmin, userId, currentPoints, cost) {
+  const newBalance = currentPoints - cost;
+
+  const { error } = await supabaseAdmin
+    .from("profiles")
+    .update({ points: newBalance })
+    .eq("id", userId);
+
+  if (error) throw error;
+
+  return newBalance;
+}
+
 function safeJsonParse(text) {
   try {
     return JSON.parse(text);
@@ -69,20 +87,24 @@ function countWords(text) {
     : 0;
 }
 
-function createSkippedFeedback(score = "5.0 / 5.0") {
-  return {
-    score,
-    strengths: [],
-    problems: [],
-    grammarCorrections: [],
-    actionPlan: [],
-    improvedVersion: "",
-    sampleAnswer: "",
-  };
+function clampScore(score) {
+  const number = Number(score);
+  if (Number.isNaN(number)) return 0;
+  return Math.max(0, Math.min(5, number));
+}
+
+function roundToOneDecimal(score) {
+  return Math.round(score * 10) / 10;
+}
+
+function formatFivePointScore(score) {
+  return `${roundToOneDecimal(score).toFixed(1)} / 5.0`;
 }
 
 function extractNumericScore(scoreText) {
-  return extractFivePointScore(scoreText);
+  const match = String(scoreText || "").match(/[\d.]+/);
+  if (!match) return 0;
+  return clampScore(Number(match[0]));
 }
 
 function normalizeText(text) {
@@ -116,8 +138,6 @@ function calculateSentenceScore(sentenceQuestions, sentenceAnswers) {
   if (!Array.isArray(sentenceQuestions)) return 0;
 
   let correctCount = 0;
-  const pointValue =
-    sentenceQuestions.length > 0 ? 10 / sentenceQuestions.length : 0;
 
   sentenceQuestions.forEach((question) => {
     const userChunks =
@@ -146,57 +166,63 @@ function calculateSentenceScore(sentenceQuestions, sentenceAnswers) {
     }
   });
 
-  return correctCount * pointValue;
+  return correctCount * 0.5;
 }
 
 
 function calculateFinalScore(sentenceScore, emailScoreNumber, discussionScoreNumber) {
-  return calculateFinalWritingScore({
-    sentenceScore: Math.max(0, Math.min(10, Number(sentenceScore))),
-    emailScore: emailScoreNumber,
-    discussionScore: discussionScoreNumber,
-  }).estimatedScore;
+  const finalScore =
+    ((sentenceScore / 5) * 6 * 0.25) +
+    ((emailScoreNumber / 5) * 6 * 0.35) +
+    ((discussionScoreNumber / 5) * 6 * 0.4);
+
+  return roundToOneDecimal(finalScore);
+}
+
+function applyMinimumLengthCap(score, wordCount) {
+  let finalScore = score;
+
+  if (wordCount < 5) finalScore = Math.min(finalScore, 0.5);
+  else if (wordCount < 10) finalScore = Math.min(finalScore, 1.0);
+  else if (wordCount < 30) finalScore = Math.min(finalScore, 2.0);
+  else if (wordCount < 60) finalScore = Math.min(finalScore, 3.0);
+  else if (wordCount < 90) finalScore = Math.min(finalScore, 3.5);
+
+  return finalScore;
 }
 
 function calculateEmailScore(json, wordCount) {
-  if (json.overallScore === undefined) {
-    throw new Error("Gemini response is missing email overallScore.");
-  }
+  const taskScore = clampScore(json.taskScore);
+  const organizationScore = clampScore(json.organizationScore);
+  const languageScore = clampScore(json.languageScore);
+  const naturalnessScore = clampScore(json.naturalnessScore);
 
-  const score = capFivePointScoreByLength(
-    validateFivePointScore(json.overallScore, "email overallScore"),
-    wordCount,
-    [
-      { words: 5, cap: 0.5 },
-      { words: 10, cap: 1 },
-      { words: 30, cap: 2 },
-      { words: 60, cap: 3 },
-      { words: 90, cap: 3.5 },
-    ]
-  );
+  let score =
+    taskScore * 0.4 +
+    organizationScore * 0.2 +
+    languageScore * 0.3 +
+    naturalnessScore * 0.1;
 
-  return formatValidatedFivePointScore(score);
+  score = applyMinimumLengthCap(score, wordCount);
+
+  return formatFivePointScore(score);
 }
 
 function calculateDiscussionScore(json, wordCount) {
-  if (json.overallScore === undefined) {
-    throw new Error("Gemini response is missing discussion overallScore.");
-  }
+  const taskScore = clampScore(json.taskScore);
+  const developmentScore = clampScore(json.developmentScore);
+  const organizationScore = clampScore(json.organizationScore);
+  const languageScore = clampScore(json.languageScore);
 
-  const score = capFivePointScoreByLength(
-    validateFivePointScore(json.overallScore, "discussion overallScore"),
-    wordCount,
-    [
-      { words: 5, cap: 0.5 },
-      { words: 10, cap: 1 },
-      { words: 30, cap: 2 },
-      { words: 60, cap: 3 },
-      { words: 80, cap: 3.5 },
-      { words: 100, cap: 4 },
-    ]
-  );
+  let score =
+    taskScore * 0.25 +
+    developmentScore * 0.35 +
+    organizationScore * 0.15 +
+    languageScore * 0.25;
 
-  return formatValidatedFivePointScore(score);
+  score = applyMinimumLengthCap(score, wordCount);
+
+  return formatFivePointScore(score);
 }
 
 async function scoreEmailWriting(ai, prompt, answer) {
@@ -213,33 +239,28 @@ Word count is mainly used to identify clearly incomplete responses.
 
 Student word count: ${wordCount}
 
-Assign an overallScore using this TOEFL-style FORGE practice rubric. The score must be exactly one of:
-0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5.
+Score each dimension from 0.0 to 5.0 using one decimal place.
 
-Use a two-step scoring process:
-1. First decide the integer band that best describes the response.
-2. Then use a .5 score only when the response is clearly stronger than that band but not consistently strong enough for the next band.
+Dimension 1: taskScore
+- Does the email address all required points?
+- Does it respond appropriately to the situation?
+- Does it have a clear purpose?
 
-Do not return arbitrary decimal scores such as 3.7 or 4.2.
+Dimension 2: organizationScore
+- Does it have a clear email structure?
+- Greeting, body, closing.
+- Logical order and easy flow.
 
-Rubric:
-- 5: A fully successful response. Effective, clearly expressed, supports the communicative purpose, uses effective syntactic variety and precise word choice, follows appropriate social conventions, and has almost no lexical or grammatical errors.
-- 4: A generally successful response. Mostly effective and easily understood, with adequate elaboration, appropriate syntax and word choice, mostly appropriate social conventions, and few lexical or grammatical errors.
-- 3: A partially successful response. Generally accomplishes the task, but limitations in language may prevent parts of the message from being fully clear and effective. It may have partial elaboration, moderate syntax/vocabulary range, and noticeable errors.
-- 2: A mostly unsuccessful response. Attempts the task but is mostly ineffective, limited, or difficult to interpret, with limited/irrelevant elaboration and accumulated language errors.
-- 1: An unsuccessful response. Ineffective, possibly hard to understand, with very little elaboration, telegraphic language, serious frequent errors, or mostly borrowed language.
-- 0: Blank, rejects the topic, not in English, entirely copied from the prompt, disconnected from the prompt, or arbitrary keystrokes.
+Dimension 3: languageScore
+- Grammar accuracy.
+- Vocabulary.
+- Sentence control.
+- Clarity.
 
-Also return abilityScores for long-term Writing Ability Analysis.
-Ability scores are separate from overallScore. They must be based on the student's actual response, use 0.0 to 5.0, and may use 0.1 precision.
-Do not force ability scores to average exactly to overallScore, but keep them reasonably consistent with the response quality.
-
-Email ability dimensions:
-- email_task_fulfillment: task completion, coverage of required information, and effective response to the email purpose.
-- email_clarity: clear, specific, understandable information with little ambiguity.
-- email_organization: logical order, natural flow, and clear email structure.
-- email_appropriacy: appropriate tone, register, relationship awareness, and natural requests/explanations/suggestions/complaints.
-- email_language_use: grammar, vocabulary, sentence structure, language control, naturalness, and accuracy.
+Dimension 4: naturalnessScore
+- Polite and appropriate tone.
+- Natural email style.
+- Appropriate formality.
 
 Minimum length rules:
 - If fewer than 5 words, all dimension scores should be very low.
@@ -250,14 +271,11 @@ Minimum length rules:
 - If 90 words or more, do not penalize mainly for length.
 
 Feedback quality rules:
-1. All feedback explanations must be written in Simplified Chinese.
-2. The student's original phrases, corrected phrases, and improvedVersion should remain in English.
-3. Give specific feedback based on the student's actual response.
-4. Grammar corrections should only include real issues from the response.
-5. The improvedVersion should preserve the student's meaning.
-6. The actionPlan should give 3 practical, personalized steps in Simplified Chinese.
-7. Do not mention internal raw scores, score conversion, score caps, formulas, point deductions, or hidden scoring rules.
-8. Feedback should explain strengths, problems, and how to improve. Do not say things like "扣0.5分".
+1. Give specific feedback based on the student's actual response.
+2. Grammar corrections should only include real issues from the response.
+3. The improvedVersion should preserve the student's meaning.
+4. The sampleAnswer should be a separate high-scoring answer.
+5. The actionPlan should give 3 practical steps.
 
 Email prompt:
 ${JSON.stringify(prompt)}
@@ -269,25 +287,22 @@ Return valid JSON only. No markdown.
 
 Return this exact JSON structure:
 {
-  "overallScore": 4.0,
-  "abilityScores": {
-    "email_task_fulfillment": 4.4,
-    "email_clarity": 4.2,
-    "email_organization": 4.0,
-    "email_appropriacy": 4.3,
-    "email_language_use": 3.9
-  },
-  "strengths": ["用中文说明一个具体亮点", "用中文说明一个具体亮点", "用中文说明一个具体亮点"],
-  "problems": ["用中文指出一个具体问题并说明影响", "用中文指出一个具体问题并说明影响", "用中文指出一个具体问题并说明影响"],
+  "taskScore": 4.0,
+  "organizationScore": 4.0,
+  "languageScore": 4.0,
+  "naturalnessScore": 4.0,
+  "strengths": ["string", "string", "string"],
+  "problems": ["string", "string", "string"],
   "grammarCorrections": [
     {
       "original": "string",
       "corrected": "string",
-      "explanation": "用中文简要说明为什么这样改"
+      "explanation": "string"
     }
   ],
-  "actionPlan": ["用中文给出一个提分动作", "用中文给出一个提分动作", "用中文给出一个提分动作"],
-  "improvedVersion": "string"
+  "actionPlan": ["string", "string", "string"],
+  "improvedVersion": "string",
+  "sampleAnswer": "string"
 }
 `;
 
@@ -306,10 +321,6 @@ console.log("Email scoring model used:", modelUsed);
 
   const json = safeJsonParse(text);
   const score = calculateEmailScore(json, wordCount);
-  const abilityScores = normalizeAbilityScores(
-    "email",
-    json.abilityScores || json.ability_scores
-  );
 
   return {
     score,
@@ -320,9 +331,7 @@ console.log("Email scoring model used:", modelUsed);
       grammarCorrections: normalizeArray(json.grammarCorrections),
       actionPlan: normalizeArray(json.actionPlan),
       improvedVersion: json.improvedVersion || "",
-      sampleAnswer: "",
-      abilityScores,
-      abilityModelVersion: ABILITY_MODEL_VERSION,
+      sampleAnswer: json.sampleAnswer || "",
     },
   };
 }
@@ -341,33 +350,28 @@ Word count is mainly used to identify clearly incomplete responses.
 
 Student word count: ${wordCount}
 
-Assign an overallScore using this TOEFL-style FORGE practice rubric. The score must be exactly one of:
-0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5.
+Score each dimension from 0.0 to 5.0 using one decimal place.
 
-Use a two-step scoring process:
-1. First decide the integer band that best describes the response.
-2. Then use a .5 score only when the response is clearly stronger than that band but not consistently strong enough for the next band.
+Dimension 1: taskScore
+- Does the response answer the professor's question?
+- Does it clearly express the student's own opinion?
+- Does it connect to the discussion context?
 
-Do not return arbitrary decimal scores such as 3.7 or 4.2.
+Dimension 2: developmentScore
+- Is the opinion well supported?
+- Are reasons and examples specific?
+- Does the response add something meaningful to the discussion?
 
-Rubric:
-- 5: A fully successful response. Relevant and very clearly expressed contribution to the online discussion, with consistent facility in language use, well-elaborated explanations/examples/details, effective syntactic variety and precise word choice, and almost no lexical or grammatical errors.
-- 4: A generally successful response. Relevant and easily understood contribution, with adequate elaboration, a variety of syntactic structures, appropriate word choice, and few lexical or grammatical errors.
-- 3: A partially successful response. Mostly relevant and understandable, but some explanation/example/detail may be missing, unclear, or irrelevant; syntax/vocabulary may be limited; and noticeable errors may appear.
-- 2: A mostly unsuccessful response. Attempts to contribute, but ideas may be hard to follow, poorly elaborated, only partially relevant, and limited by syntax/vocabulary and accumulated errors.
-- 1: An unsuccessful response. Ineffective attempt to contribute, with few coherent ideas, severely limited syntax/vocabulary, serious frequent errors, or mostly borrowed language.
-- 0: Blank, rejects the topic, not in English, entirely copied from the prompt, disconnected from the prompt, or arbitrary keystrokes.
+Dimension 3: organizationScore
+- Is the response logically organized?
+- Are transitions clear?
+- Is it easy to follow?
 
-Also return abilityScores for long-term Writing Ability Analysis.
-Ability scores are separate from overallScore. They must be based on the student's actual response, use 0.0 to 5.0, and may use 0.1 precision.
-Do not force ability scores to average exactly to overallScore, but keep them reasonably consistent with the response quality.
-
-Academic Discussion ability dimensions:
-- discussion_position_relevance: direct response to the question, clear position, and relevant supporting ideas.
-- discussion_development: sufficient explanation of reasons, details, and examples.
-- discussion_reasoning: quality of the logic chain from reason to explanation to example to position; penalize weak, repetitive, or loosely connected support.
-- discussion_coherence: clear organization, logical relationships, natural progression, and limited unnecessary repetition.
-- discussion_language_use: grammar, vocabulary, sentence structure, language control, naturalness, and accuracy.
+Dimension 4: languageScore
+- Grammar accuracy.
+- Vocabulary.
+- Sentence control.
+- Academic tone and clarity.
 
 Minimum length rules:
 - If fewer than 5 words, all dimension scores should be very low.
@@ -378,14 +382,11 @@ Minimum length rules:
 - If 90 words or more, do not penalize mainly for length.
 
 Feedback quality rules:
-1. All feedback explanations must be written in Simplified Chinese.
-2. The student's original phrases, corrected phrases, and improvedVersion should remain in English.
-3. Give specific feedback based on the student's actual response.
-4. Grammar corrections should only include real issues from the response.
-5. The improvedVersion should preserve the student's meaning.
-6. The actionPlan should give 3 practical, personalized steps in Simplified Chinese.
-7. Do not mention internal raw scores, score conversion, score caps, formulas, point deductions, or hidden scoring rules.
-8. Feedback should explain strengths, problems, and how to improve. Do not say things like "扣0.5分".
+1. Give specific feedback based on the student's actual response.
+2. Grammar corrections should only include real issues from the response.
+3. The improvedVersion should preserve the student's meaning.
+4. The sampleAnswer should be a separate high-scoring answer.
+5. The actionPlan should give 3 practical steps.
 
 Academic discussion prompt:
 ${JSON.stringify(prompt)}
@@ -397,25 +398,22 @@ Return valid JSON only. No markdown.
 
 Return this exact JSON structure:
 {
-  "overallScore": 4.0,
-  "abilityScores": {
-    "discussion_position_relevance": 4.3,
-    "discussion_development": 3.6,
-    "discussion_reasoning": 3.4,
-    "discussion_coherence": 4.1,
-    "discussion_language_use": 3.9
-  },
-  "strengths": ["用中文说明一个具体亮点", "用中文说明一个具体亮点", "用中文说明一个具体亮点"],
-  "problems": ["用中文指出一个具体问题并说明影响", "用中文指出一个具体问题并说明影响", "用中文指出一个具体问题并说明影响"],
+  "taskScore": 4.0,
+  "developmentScore": 4.0,
+  "organizationScore": 4.0,
+  "languageScore": 4.0,
+  "strengths": ["string", "string", "string"],
+  "problems": ["string", "string", "string"],
   "grammarCorrections": [
     {
       "original": "string",
       "corrected": "string",
-      "explanation": "用中文简要说明为什么这样改"
+      "explanation": "string"
     }
   ],
-  "actionPlan": ["用中文给出一个提分动作", "用中文给出一个提分动作", "用中文给出一个提分动作"],
-  "improvedVersion": "string"
+  "actionPlan": ["string", "string", "string"],
+  "improvedVersion": "string",
+  "sampleAnswer": "string"
 }
 `;
 
@@ -435,10 +433,6 @@ Return this exact JSON structure:
 
   const json = safeJsonParse(text);
   const score = calculateDiscussionScore(json, wordCount);
-  const abilityScores = normalizeAbilityScores(
-    "discussion",
-    json.abilityScores || json.ability_scores
-  );
 
   return {
     score,
@@ -449,9 +443,7 @@ Return this exact JSON structure:
       grammarCorrections: normalizeArray(json.grammarCorrections),
       actionPlan: normalizeArray(json.actionPlan),
       improvedVersion: json.improvedVersion || "",
-      sampleAnswer: "",
-      abilityScores,
-      abilityModelVersion: ABILITY_MODEL_VERSION,
+      sampleAnswer: json.sampleAnswer || "",
     },
   };
 }
@@ -482,8 +474,13 @@ The mock test has three tasks:
 - Email Writing: communication, task completion, tone, grammar, full score 5.
 - Academic Discussion: opinion, development, logic, academic language, full score 5.
 
+Weights:
+- Build a Sentence: 25%
+- Email Writing: 35%
+- Academic Discussion: 40%
+
 Scores:
-- Build a Sentence: ${sentenceScore} / 10.0
+- Build a Sentence: ${sentenceScore} / 5.0
 - Email Writing: ${emailScore}
 - Academic Discussion: ${discussionScore}
 - Final Score: ${finalScore} / 6.0
@@ -508,12 +505,6 @@ ${discussionAnswer}
 
 Academic discussion feedback:
 ${JSON.stringify(discussionFeedback)}
-
-Rules:
-- Write in Simplified Chinese.
-- Be specific and useful.
-- Do not give generic encouragement only.
-- Do not mention internal raw scores, score conversion, score caps, formulas, point deductions, or hidden scoring rules.
 
 Return valid JSON only. No markdown.
 
@@ -587,38 +578,15 @@ export default async function handler(req, res) {
       emailAnswer,
       discussionPrompt,
       discussionAnswer,
-      selectedTypes,
-      sourceType,
-      practiceMode,
     } = req.body || {};
-
-    const recordSourceType = ["forge_ai", "past_exam", "ets_mock"].includes(
-      sourceType
-    )
-      ? sourceType
-      : "forge_ai";
-    const recordPracticeMode = ["fixed", "random"].includes(practiceMode)
-      ? practiceMode
-      : undefined;
-
-    const selectedTypeSet = new Set(
-      Array.isArray(selectedTypes) && selectedTypes.length > 0
-        ? selectedTypes.filter((type) =>
-            ["sentence", "email", "discussion"].includes(type)
-          )
-        : ["sentence", "email", "discussion"]
-    );
-    const includesSentence = selectedTypeSet.has("sentence");
-    const includesEmail = selectedTypeSet.has("email");
-    const includesDiscussion = selectedTypeSet.has("discussion");
 
     if (
       !Array.isArray(sentenceQuestions) ||
       !sentenceAnswers ||
-      (includesSentence && sentenceQuestions.length === 0) ||
-      (includesEmail && (!emailPrompt || !String(emailAnswer || "").trim())) ||
-      (includesDiscussion &&
-        (!discussionPrompt || !String(discussionAnswer || "").trim()))
+      !emailPrompt ||
+      !String(emailAnswer || "").trim() ||
+      !discussionPrompt ||
+      !String(discussionAnswer || "").trim()
     ) {
       return res.status(400).json({
         error: "Missing mock test data.",
@@ -627,53 +595,35 @@ export default async function handler(req, res) {
 
     const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
-    const sentenceScore = includesSentence
-      ? calculateSentenceScore(sentenceQuestions, sentenceAnswers)
-      : 5;
-    const storedSentenceQuestions = includesSentence
-      ? sentenceQuestions.map((question) => ({
-          ...question,
-          recordSourceType,
-          recordPracticeMode,
-        }))
-      : [];
-    const storedSentenceAnswers = includesSentence ? sentenceAnswers : {};
-    const storedSentenceScore = includesSentence ? sentenceScore : 0;
+    const sentenceScore = calculateSentenceScore(
+      sentenceQuestions,
+      sentenceAnswers
+    );
 
-    const emailResult = includesEmail
-      ? await scoreEmailWriting(ai, emailPrompt, emailAnswer)
-      : { score: "5.0 / 5.0", feedback: createSkippedFeedback() };
-    const discussionResult = includesDiscussion
-      ? await scoreAcademicDiscussion(ai, discussionPrompt, discussionAnswer)
-      : { score: "5.0 / 5.0", feedback: createSkippedFeedback() };
+    const emailResult = await scoreEmailWriting(ai, emailPrompt, emailAnswer);
+    const discussionResult = await scoreAcademicDiscussion(
+      ai,
+      discussionPrompt,
+      discussionAnswer
+    );
 
     const emailScoreNumber = extractNumericScore(emailResult.score);
     const discussionScoreNumber = extractNumericScore(discussionResult.score);
 
-    const normalizedSentenceScore = includesSentence
-      ? sentenceScore
-      : emailScoreNumber + discussionScoreNumber;
-    const normalizedEmailScore = includesEmail
-      ? emailScoreNumber
-      : discussionScoreNumber;
-    const normalizedDiscussionScore = includesDiscussion
-      ? discussionScoreNumber
-      : emailScoreNumber;
     const finalScore = calculateFinalScore(
-      normalizedSentenceScore,
-      normalizedEmailScore,
-      normalizedDiscussionScore
+      sentenceScore,
+      emailScoreNumber,
+      discussionScoreNumber
     );
-    const practiceCost = selectedTypeSet.size;
 
     let knowledgeAnalysis = [];
     let studyAdvice = [];
 
     try {
       const analysisResult = await generateMockAnalysis(ai, {
-        sentenceQuestions: storedSentenceQuestions,
-        sentenceAnswers: storedSentenceAnswers,
-        sentenceScore: storedSentenceScore,
+        sentenceQuestions,
+        sentenceAnswers,
+        sentenceScore,
         emailPrompt,
         emailAnswer,
         emailScore: emailResult.score,
@@ -705,24 +655,16 @@ export default async function handler(req, res) {
       .insert({
         user_id: user.id,
 
-        sentence_questions: storedSentenceQuestions,
-        sentence_answers: storedSentenceAnswers,
-        sentence_score: storedSentenceScore,
+        sentence_questions: sentenceQuestions,
+        sentence_answers: sentenceAnswers,
+        sentence_score: sentenceScore,
 
-        email_prompt: {
-          ...(emailPrompt || {}),
-          recordSourceType,
-          recordPracticeMode,
-        },
+        email_prompt: emailPrompt,
         email_answer: emailAnswer,
         email_feedback: emailResult.feedback,
         email_score: emailResult.score,
 
-        discussion_prompt: {
-          ...(discussionPrompt || {}),
-          recordSourceType,
-          recordPracticeMode,
-        },
+        discussion_prompt: discussionPrompt,
         discussion_answer: discussionAnswer,
         discussion_feedback: discussionResult.feedback,
         discussion_score: discussionResult.score,
@@ -731,7 +673,7 @@ export default async function handler(req, res) {
         knowledge_analysis: knowledgeAnalysis,
         study_advice: studyAdvice,
 
-        points_spent: practiceCost,
+        points_spent: MOCK_TEST_COST,
       })
       .select("id")
       .single();
@@ -750,8 +692,7 @@ export default async function handler(req, res) {
       discussionFeedback: discussionResult.feedback,
       knowledgeAnalysis,
       studyAdvice,
-      cost: practiceCost,
-      selectedTypes: Array.from(selectedTypeSet),
+      cost: MOCK_TEST_COST,
     });
 
 

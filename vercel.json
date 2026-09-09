@@ -1,26 +1,15 @@
 {
-  "$schema": "https://openapi.vercel.sh/vercel.json",
-  "regions": ["iad1"],
+
   "rewrites": [
+
     {
-      "source": "/api/generate-email-prompt",
-      "destination": "/api/generate-writing?task=email"
-    },
-    {
-      "source": "/api/generate-academic-discussion",
-      "destination": "/api/generate-writing?task=discussion"
-    },
-    {
-      "source": "/api/score-email-writing",
-      "destination": "/api/score-writing?task=email"
-    },
-    {
-      "source": "/api/score-academic-discussion",
-      "destination": "/api/score-writing?task=discussion"
-    },
-    {
-      "source": "/((?!api/|assets/|favicon.ico|forge-mark-20260908.ico|forge-mark-32-20260908.png|forge-mark-192-20260908.png|forge-mark-512-20260908.png|forge-apple-touch-20260908.png|site.webmanifest|icons.svg|logo.png|customer-service-qr.png).*)",
-      "destination": "/index.html"
+
+      "source": "/(.*)",
+
+      "destination": "/"
+
     }
+
   ]
+
 }

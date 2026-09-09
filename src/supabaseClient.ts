@@ -12,11 +12,3 @@ if (!supabaseAnonKey) {
 }
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
-
-export const supportAdminSupabase = createClient(supabaseUrl, supabaseAnonKey, {
-  auth: {
-    storageKey: "forge-support-admin-auth",
-    persistSession: true,
-    autoRefreshToken: true,
-  },
-});

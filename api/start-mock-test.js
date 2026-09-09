@@ -1,11 +1,6 @@
 import { GoogleGenAI } from "@google/genai";
-import { generateContentWithModelFallback } from "../lib/gemini-helper.js";
-import {
-  createAdminClient,
-  deductPoints,
-  getCreditBalance,
-  getUserFromRequest,
-} from "../lib/points.js";
+import { createClient } from "@supabase/supabase-js";
+import { generateContentWithModelFallback } from "./gemini-helper.js";
 
 function getEndPunctuation(sentence) {
   const match = String(sentence || "").trim().match(/[.!?]$/);
@@ -247,155 +242,85 @@ function normalizeSentenceQuestion(question, index, level, topic) {
   };
 }
 
-const MOCK_TEST_COST = 3;
-const PRACTICE_TYPES = ["sentence", "email", "discussion"];
-const MOCK_TEST_MAX_OUTPUT_TOKENS = 8192;
-const MOCK_TEST_GENERATION_ATTEMPTS = 2;
-
-const mockTestResponseSchema = {
-  type: "object",
-  additionalProperties: false,
-  properties: {
-    sentenceQuestions: {
-      type: "array",
-      minItems: 10,
-      maxItems: 10,
-      items: {
-        type: "object",
-        additionalProperties: false,
-        properties: {
-          id: { type: "integer" },
-          level: { type: "string" },
-          topic: { type: "string" },
-          relationType: { type: "string" },
-          contextSentence: { type: "string" },
-          target: { type: "string" },
-          explanation: { type: "string" },
-        },
-        required: [
-          "id",
-          "level",
-          "topic",
-          "relationType",
-          "contextSentence",
-          "target",
-          "explanation",
-        ],
-      },
-    },
-    emailPrompt: {
-      type: "object",
-      additionalProperties: false,
-      properties: {
-        title: { type: "string" },
-        subject: { type: "string" },
-        scenario: { type: "string" },
-        task: { type: "string" },
-        requirements: {
-          type: "array",
-          minItems: 3,
-          maxItems: 3,
-          items: { type: "string" },
-        },
-        suggestedLength: { type: "string" },
-      },
-      required: [
-        "title",
-        "subject",
-        "scenario",
-        "task",
-        "requirements",
-        "suggestedLength",
-      ],
-    },
-    discussionPrompt: {
-      type: "object",
-      additionalProperties: false,
-      properties: {
-        title: { type: "string" },
-        instruction: { type: "string" },
-        professorName: { type: "string" },
-        professor: { type: "string" },
-        studentOneName: { type: "string" },
-        studentOnePost: { type: "string" },
-        studentTwoName: { type: "string" },
-        studentTwoPost: { type: "string" },
-        question: { type: "string" },
-        suggestedLength: { type: "string" },
-      },
-      required: [
-        "title",
-        "instruction",
-        "professorName",
-        "professor",
-        "studentOneName",
-        "studentOnePost",
-        "studentTwoName",
-        "studentTwoPost",
-        "question",
-        "suggestedLength",
-      ],
-    },
-  },
-  required: ["sentenceQuestions", "emailPrompt", "discussionPrompt"],
-};
-
-function getFinishReason(response) {
-  return response?.candidates?.[0]?.finishReason || "UNKNOWN";
+function safeJsonParse(text) {
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new Error(`Gemini returned invalid JSON: ${text.slice(0, 300)}`);
+  }
 }
 
-async function generateCompleteMockTest(ai, prompt) {
-  let lastError;
+const MOCK_TEST_COST = 10;
 
-  for (let attempt = 0; attempt < MOCK_TEST_GENERATION_ATTEMPTS; attempt += 1) {
-    const { response, modelUsed } = await generateContentWithModelFallback(ai, {
-      contents: prompt,
-      config: {
-        responseMimeType: "application/json",
-        responseJsonSchema: mockTestResponseSchema,
-        maxOutputTokens: MOCK_TEST_MAX_OUTPUT_TOKENS,
-        temperature: attempt === 0 ? 0.7 : 0.4,
-      },
-    });
+function createAdminClient() {
+  const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-    const text = response.text || "";
-    const finishReason = getFinishReason(response);
-
-    try {
-      if (!text.trim()) {
-        throw new Error("Gemini returned an empty response");
-      }
-
-      if (finishReason !== "STOP" && finishReason !== "UNKNOWN") {
-        throw new Error(`Gemini stopped with finish reason ${finishReason}`);
-      }
-
-      return {
-        json: JSON.parse(text),
-        modelUsed,
-        finishReason,
-      };
-    } catch (error) {
-      lastError = error;
-      console.error("Incomplete mock-test generation", {
-        attempt: attempt + 1,
-        modelUsed,
-        finishReason,
-        responseLength: text.length,
-        error: error instanceof Error ? error.message : String(error),
-      });
-    }
+  if (!supabaseUrl) {
+    throw new Error("Missing SUPABASE_URL");
   }
 
-  const error = new Error("AI mock-test generation was incomplete");
-  error.cause = lastError;
-  throw error;
+  if (!serviceRoleKey) {
+    throw new Error("Missing SUPABASE_SERVICE_ROLE_KEY");
+  }
+
+  return createClient(supabaseUrl, serviceRoleKey);
 }
+
+function getBearerToken(req) {
+  const authHeader = req.headers.authorization || "";
+
+  if (!authHeader.startsWith("Bearer ")) {
+    return "";
+  }
+
+  return authHeader.replace("Bearer ", "").trim();
+}
+
+async function getUserFromToken(supabaseAdmin, token) {
+  if (!token) return null;
+
+  const {
+    data: { user },
+    error,
+  } = await supabaseAdmin.auth.getUser(token);
+
+  if (error || !user) return null;
+
+  return user;
+}
+
+async function getUserProfile(supabaseAdmin, userId) {
+  const { data, error } = await supabaseAdmin
+    .from("profiles")
+    .select("points")
+    .eq("id", userId)
+    .single();
+
+  if (error || !data) {
+    throw new Error("User profile not found.");
+  }
+
+  return data;
+}
+
+async function deductPoints(supabaseAdmin, userId, currentPoints, cost) {
+  const newBalance = currentPoints - cost;
+
+  const { error } = await supabaseAdmin
+    .from("profiles")
+    .update({ points: newBalance })
+    .eq("id", userId);
+
+  if (error) throw error;
+
+  return newBalance;
+}
+
 
 function normalizeEmailPrompt(value) {
   return {
     title: String(value?.title || "Email Writing").trim(),
-    subject: String(value?.subject || value?.title || "Email Writing Task").trim(),
     scenario: String(value?.scenario || "").trim(),
     task: String(value?.task || "").trim(),
     requirements: Array.isArray(value?.requirements)
@@ -410,8 +335,6 @@ function normalizeEmailPrompt(value) {
 function normalizeDiscussionPrompt(value) {
   return {
     title: String(value?.title || "Academic Discussion").trim(),
-    instruction: String(value?.instruction || "").trim(),
-    professorName: String(value?.professorName || "Professor").trim(),
     professor: String(value?.professor || "").trim(),
     studentOneName: String(value?.studentOneName || "Student A").trim(),
     studentOnePost: String(value?.studentOnePost || "").trim(),
@@ -435,7 +358,8 @@ export default async function handler(req, res) {
     }
 
     const supabaseAdmin = createAdminClient();
-    const user = await getUserFromRequest(supabaseAdmin, req);
+    const token = getBearerToken(req);
+    const user = await getUserFromToken(supabaseAdmin, token);
 
     if (!user) {
       return res.status(401).json({
@@ -443,31 +367,25 @@ export default async function handler(req, res) {
       });
     }
 
-    const creditBalance = await getCreditBalance(supabaseAdmin, user.id);
+    const profile = await getUserProfile(supabaseAdmin, user.id);
 
-    const { level = "Medium", topic = "Mixed" } = req.body || {};
-    const requestedTypes = Array.isArray(req.body?.selectedTypes)
-      ? req.body.selectedTypes
-      : PRACTICE_TYPES;
-    const selectedTypes = PRACTICE_TYPES.filter((type) =>
-      requestedTypes.includes(type)
+    if (profile.points < MOCK_TEST_COST) {
+      return res.status(402).json({
+        error: `Not enough points. Full Mock Test costs ${MOCK_TEST_COST} points.`,
+        balance: profile.points,
+        cost: MOCK_TEST_COST,
+      });
+    }
+
+    const newBalance = await deductPoints(
+      supabaseAdmin,
+      user.id,
+      profile.points,
+      MOCK_TEST_COST
     );
 
-    if (selectedTypes.length < 2) {
-      return res.status(400).json({
-        error: "Combined practice requires at least two task types.",
-      });
-    }
 
-    const practiceCost = Math.min(MOCK_TEST_COST, selectedTypes.length);
-
-    if (creditBalance.balance < practiceCost) {
-      return res.status(402).json({
-        error: `Not enough points. This practice costs ${practiceCost} points.`,
-        ...creditBalance,
-        cost: practiceCost,
-      });
-    }
+    const { level = "Medium", topic = "Mixed" } = req.body || {};
     const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
     const prompt = `
@@ -491,22 +409,14 @@ Build a Sentence rules:
 - Do not include Chinese.
 
 Email Writing rules:
-- The prompt must follow the real TOEFL-style structure: a clear background paragraph, then a task sentence, then requirements.
 - The scenario should be realistic for school, work, campus service, travel, application, or daily communication.
-- The scenario must explain who the student is, what happened, and why the email is needed.
-- The task must be one sentence in this pattern: "Write an email to [recipient]. In your email, do the following:"
-- Include exactly 3 concrete requirements.
-- Each requirement should start with an action verb.
+- Include a clear task and 3 to 4 requirements.
 - Recommended length should be 100–150 words.
-- Include a concise subject field that matches the specific situation. Do not use a generic subject like "Email Writing Practice".
 
 Academic Discussion rules:
-- Include an instruction field before the professor post. It should explain the class subject and list the response requirements.
-- The instruction should say the student should express and support a personal opinion and make a contribution in their own words.
-- The professor's post should first state what the class has been discussing.
-- The debatable question must be asked by the professor inside the professor's post.
-- The question field must repeat only that final debatable question.
+- Include a professor's discussion question.
 - Include two student posts with different opinions.
+- The final question should ask the test taker to express and support an opinion.
 - Recommended length should be at least 100 words.
 
 Difficulty level: ${level}
@@ -529,17 +439,14 @@ Return this exact JSON structure:
   ],
   "emailPrompt": {
     "title": "string",
-    "subject": "A Stress Management Tip That Might Help",
-    "scenario": "You are a university student, and you participated in a recent campus workshop about stress management. There was a particular technique or activity from the workshop that you found especially effective in reducing your stress. You think this might be helpful to your friend, Sarah, who has been feeling overwhelmed with her workload lately.",
-    "task": "Write an email to Sarah. In your email, do the following:",
+    "scenario": "string",
+    "task": "string",
     "requirements": ["string", "string", "string"],
     "suggestedLength": "Recommended length: 100–150 words"
   },
   "discussionPrompt": {
     "title": "string",
-    "instruction": "Your professor is teaching a class on sociology. Write a post responding to the professor's question. In your response, you should\n· express and support your personal opinion\n· make a contribution to the discussion in your own words\nAn effective response will contain at least 100 words. You have ten minutes to write.",
-    "professorName": "Doctor Achebe",
-    "professor": "We've been discussing government budgets and the difficult decisions governments must make regarding the use of public funds. Some services are clearly essential and must be paid for by any government. But what about public funding of the arts? Do you believe that governments should provide financial support to artists-for example, painters, sculptors, musicians, or filmmakers? Why or why not?",
+    "professor": "string",
     "studentOneName": "string",
     "studentOnePost": "string",
     "studentTwoName": "string",
@@ -550,14 +457,19 @@ Return this exact JSON structure:
 }
 `;
 
-    const { json, modelUsed, finishReason } = await generateCompleteMockTest(
-      ai,
-      prompt
-    );
-    console.log("Start mock test generation completed", {
-      modelUsed,
-      finishReason,
+    const { response, modelUsed } = await generateContentWithModelFallback(ai, {
+      contents: prompt,
+      config: {
+        responseMimeType: "application/json",
+        temperature: 0.8,
+      },
     });
+    console.log("Start mock test model used:", modelUsed);
+
+    const text = response.text || "";
+    if (!text.trim()) throw new Error("Gemini returned empty response");
+
+    const json = safeJsonParse(text);
 
     if (!Array.isArray(json.sentenceQuestions)) {
       throw new Error("Gemini response does not contain sentenceQuestions");
@@ -586,19 +498,12 @@ Return this exact JSON structure:
       throw new Error("Generated discussion prompt is incomplete");
     }
 
-    const updatedCredits = await deductPoints(
-      supabaseAdmin,
-      user.id,
-      practiceCost
-    );
-
     return res.status(200).json({
       sentenceQuestions,
       emailPrompt,
       discussionPrompt,
-      selectedTypes,
-      cost: practiceCost,
-      ...updatedCredits,
+      cost: MOCK_TEST_COST,
+      balance: newBalance,
     });
 
 
@@ -606,15 +511,9 @@ Return this exact JSON structure:
   } catch (error) {
     console.error("Start mock test error:", error);
 
-    return res.status(error?.statusCode || 500).json({
-      error:
-        error?.statusCode && error?.message
-          ? error.message
-          : "AI 题目生成未完成，请重试。",
-      balance: error?.balance,
-      temporaryBalance: error?.temporaryBalance,
-      permanentBalance: error?.permanentBalance,
-      cost: error?.cost,
+    return res.status(500).json({
+      error: error?.message || "Failed to start mock test",
+      details: String(error),
     });
   }
 }
