@@ -1,0 +1,2 @@
+create index personalized_practice_question_set_fk_idx
+  on public.personalized_practice_recommendations (question_set_id);

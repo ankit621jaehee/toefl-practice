@@ -1,148 +1,71 @@
-import { createClient } from "@supabase/supabase-js";
+import {
+  createAdminClient,
+  getUserFromRequest,
+} from "../lib/points.js";
 
-function createAdminClient() {
-  const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const REDEEM_ERROR_MESSAGES = {
+  INVALID_USER: "登录状态无效，请重新登录。",
+  EMPTY_CODE: "请输入兑换码。",
+  INVALID_CODE: "兑换码无效，请检查后重试。",
+  INACTIVE_CODE: "该兑换码已失效。",
+  EXPIRED_CODE: "该兑换码已过期。",
+  CODE_LIMIT_REACHED: "该兑换码的可用次数已用完。",
+  CODE_ALREADY_REDEEMED: "你已经使用过这个兑换码。",
+  PROFILE_NOT_FOUND: "未找到当前账户资料。",
+};
 
-  if (!supabaseUrl) {
-    throw new Error("Missing SUPABASE_URL");
-  }
+function getRedeemErrorMessage(error) {
+  const errorText = String(error?.message || "");
+  const matchedCode = Object.keys(REDEEM_ERROR_MESSAGES).find((code) =>
+    errorText.includes(code)
+  );
 
-  if (!serviceRoleKey) {
-    throw new Error("Missing SUPABASE_SERVICE_ROLE_KEY");
-  }
-
-  return createClient(supabaseUrl, serviceRoleKey);
-}
-
-function getBearerToken(req) {
-  const authHeader = req.headers.authorization || "";
-
-  if (!authHeader.startsWith("Bearer ")) {
-    return "";
-  }
-
-  return authHeader.replace("Bearer ", "").trim();
-}
-
-function rpcErrorStatus(message) {
-  switch (message) {
-    case "NOT_AUTHENTICATED":
-    case "INVALID_USER":
-      return 401;
-    case "INVALID_CODE":
-    case "PROFILE_NOT_FOUND":
-      return 404;
-    default:
-      return 400;
-  }
-}
-
-function rpcErrorText(message) {
-  switch (message) {
-    case "NOT_AUTHENTICATED":
-    case "INVALID_USER":
-      return "Please sign in first.";
-    case "EMPTY_CODE":
-      return "Please enter a redeem code.";
-    case "INVALID_CODE":
-      return "Invalid redeem code.";
-    case "INACTIVE_CODE":
-      return "This redeem code is no longer active.";
-    case "EXPIRED_CODE":
-      return "This redeem code has expired.";
-    case "CODE_LIMIT_REACHED":
-      return "This redeem code has already reached its usage limit.";
-    case "CODE_ALREADY_REDEEMED":
-      return "You have already used this redeem code.";
-    case "PROFILE_NOT_FOUND":
-      return "User profile not found.";
-    default:
-      return message || "Failed to redeem code.";
-  }
+  return matchedCode
+    ? REDEEM_ERROR_MESSAGES[matchedCode]
+    : "兑换失败，请稍后重试。";
 }
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
-    return res.status(405).json({
-      error: "Method not allowed",
-    });
+    return res.status(405).json({ error: "Method not allowed" });
   }
 
   try {
     const supabaseAdmin = createAdminClient();
+    const user = await getUserFromRequest(supabaseAdmin, req);
 
-    const token = getBearerToken(req);
-
-    if (!token) {
-      return res.status(401).json({
-        error: "Please sign in first.",
-      });
+    if (!user) {
+      return res.status(401).json({ error: "请先登录再使用兑换码。" });
     }
 
-    const {
-      data: { user },
-      error: userError,
-    } = await supabaseAdmin.auth.getUser(token);
-
-    if (userError || !user) {
-      return res.status(401).json({
-        error: "Invalid or expired login session.",
-      });
-    }
-
-    const rawCode = req.body?.code;
-
-    const code = String(rawCode || "")
-      .trim()
-      .toUpperCase();
-
+    const code = String(req.body?.code || "").trim().toUpperCase();
     if (!code) {
-      return res.status(400).json({
-        error: "Please enter a redeem code.",
-      });
+      return res.status(400).json({ error: "请输入兑换码。" });
     }
 
-    const { data, error } = await supabaseAdmin.rpc("redeem_code_for_user", {
-      target_user_id: user.id,
-      raw_code: code,
-    });
+    const { data, error } = await supabaseAdmin.rpc(
+      "redeem_code_for_user",
+      {
+        target_user_id: user.id,
+        raw_code: code,
+      }
+    );
 
     if (error) {
-      const msg = error.message || "";
-      return res.status(rpcErrorStatus(msg)).json({
-        error: rpcErrorText(msg),
-      });
+      return res.status(400).json({ error: getRedeemErrorMessage(error) });
     }
 
-    const rewardType = data?.rewardType || "credits";
-    const pointsAdded = data?.creditsAdded ?? 0;
-    const proDays = data?.proDays ?? 0;
-    const balance = data?.balance;
-    const subscriptionTier = data?.subscriptionTier;
-    const subscriptionExpiresAt = data?.subscriptionExpiresAt;
-
+    const rewardType = data?.rewardType === "pro" ? "pro" : "credits";
     const message =
       rewardType === "pro"
-        ? `Redeemed successfully. Pro membership activated for ${proDays} days.`
-        : `Redeemed successfully. ${pointsAdded} points added.`;
+        ? `兑换成功，已获得 ${Number(data?.proDays || 0)} 天 Pro 和 ${Number(
+            data?.creditsAdded || 0
+          )} 永久 Credits。`
+        : `兑换成功，已获得 ${Number(data?.creditsAdded || 0)} 永久 Credits。`;
 
-    return res.status(200).json({
-      success: true,
-      message,
-      pointsAdded,
-      balance,
-      rewardType,
-      proDays,
-      subscriptionTier,
-      subscriptionExpiresAt,
-    });
+    return res.status(200).json({ ...data, message });
   } catch (error) {
     console.error("Redeem code error:", error);
-
-    return res.status(500).json({
-      error: error?.message || "Failed to redeem code.",
-      details: String(error),
-    });
+    return res.status(500).json({ error: "兑换失败，请稍后重试。" });
   }
 }
